@@ -1,0 +1,18 @@
+[package]
+name = "pgcl"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.69"
+bevy = { version = "0.9.1", default-features = false }
+clap = { version = "4.1.4", features = [ "derive" ] }
+crossbeam-channel = "0.5.6"
+iyes_loopless = { version = "0.9.1", default-features = false }
+logos = "0.12.1"
+num = { version = "0.4.0", features = [ "libm", "serde", "alloc" ] }
+rowan = { version = "0.15.10", features = [ "serde" ] }
+rustyline = { version = "10.1.1", features = [ "case_insensitive_history_search" ] }
+serde = { version = "1.0.152", features = [ "derive", "alloc" ] }
