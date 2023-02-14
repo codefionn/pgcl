@@ -415,14 +415,25 @@ impl TryInto<Syntax> for SyntaxElement {
                             })
                             .collect();
 
+                        fn build_let(
+                            asgs: &[(SyntaxElement, SyntaxElement)],
+                            expr: SyntaxElement,
+                        ) -> Result<Syntax, anyhow::Error> {
+                            if asgs.len() == 0 {
+                                expr.try_into()
+                            } else {
+                                Ok(Syntax::Let(
+                                    (
+                                        Box::new(asgs[0].0.clone().try_into()?),
+                                        Box::new(asgs[0].1.clone().try_into()?),
+                                    ),
+                                    Box::new(build_let(&asgs[1..], expr)?),
+                                ))
+                            }
+                        }
+
                         let expr: SyntaxElement = children.last().unwrap().clone();
-                        Ok(Syntax::Let(
-                            (
-                                Box::new(asgs[0].0.clone().try_into()?),
-                                Box::new(asgs[0].1.clone().try_into()?),
-                            ),
-                            Box::new(expr.try_into()?),
-                        ))
+                        build_let(&asgs, expr)
                     }
                     SyntaxKind::BiOp => {
                         let lhs = children.next().ok_or(expected_expr())?;
