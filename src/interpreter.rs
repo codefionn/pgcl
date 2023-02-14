@@ -38,7 +38,7 @@ fn lexer(mut ev: EventReader<crate::reader::Message>, mut evw: EventWriter<Lexer
     }
 }
 
-fn parse(mut ev: EventReader<LexerEvent>, _args: Res<Args>) {
+fn parse(mut ev: EventReader<LexerEvent>, _args: Res<Args>, mut state: Local<Context>) {
     for lexer_result in ev.iter() {
         let lexer_result = &**lexer_result;
         debug!("{:?}", lexer_result);
@@ -59,7 +59,7 @@ fn parse(mut ev: EventReader<LexerEvent>, _args: Res<Args>) {
         if let Ok(typed) = typed {
             let reduced = typed.reduce();
             println!("{:?}", reduced);
-            println!("{:?}", reduced.execute(&mut Context::default()));
+            println!("{:?}", reduced.execute(true, &mut state));
         }
     }
 }

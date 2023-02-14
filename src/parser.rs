@@ -37,6 +37,7 @@ pub enum SyntaxKind {
     KwLet,
     KwIn,
     If,
+    IfLet,
     KwThen,
     KwElse,
     Any,
@@ -147,16 +148,27 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             }
             Some(SyntaxKind::If) => {
                 self.iter.next(); // skip
-                self.builder.start_node(SyntaxKind::If.into());
-                self.parse_expr();
                 if self
                     .peek()
-                    .map(|tok| tok == SyntaxKind::KwThen)
+                    .map(|tok| tok == SyntaxKind::KwLet)
                     .unwrap_or(false)
                 {
                     self.iter.next(); // skip
+                    self.builder.start_node(SyntaxKind::IfLet.into());
+                    self.parse_let_args(SyntaxKind::KwThen);
                 } else {
-                    self.errors.push(format!("Expected 'then'"));
+                    self.builder.start_node(SyntaxKind::If.into());
+                    self.parse_expr();
+
+                    if self
+                        .peek()
+                        .map(|tok| tok == SyntaxKind::KwThen)
+                        .unwrap_or(false)
+                    {
+                        self.iter.next(); // skip
+                    } else {
+                        self.errors.push(format!("Expected 'then'"));
+                    }
                 }
 
                 self.parse_expr();
@@ -181,7 +193,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 self.iter.next(); // Skip let
 
                 self.builder.start_node(SyntaxKind::KwLet.into());
-                self.parse_let_args();
+                self.parse_let_args(SyntaxKind::KwIn);
                 self.parse_expr();
                 self.builder.finish_node();
 
@@ -227,7 +239,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         }
     }
 
-    fn parse_let_args(&mut self) {
+    fn parse_let_args(&mut self, end: SyntaxKind) {
         loop {
             self.builder.start_node(SyntaxKind::BiOp.into());
             self.parse_call();
@@ -255,16 +267,15 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 continue;
             }
 
-            if self
-                .peek()
-                .map(|tok| tok == SyntaxKind::KwIn)
-                .unwrap_or(false)
-            {
+            if self.peek().map(|tok| tok == end).unwrap_or(false) {
                 self.iter.next();
                 break;
             }
 
-            self.errors.push(format!("Expected either ';' or 'in'"));
+            match end {
+                SyntaxKind::KwIn => self.errors.push(format!("Expected either ';' or 'in'")),
+                _ => self.errors.push(format!("Expected either ';' or 'then'")),
+            }
             break;
         }
     }
@@ -479,6 +490,45 @@ impl TryInto<Syntax> for SyntaxElement {
                                 Box::new(rhs.try_into()?),
                             ))
                         }
+                    }
+                    SyntaxKind::IfLet => {
+                        let children: Vec<SyntaxElement> = children.collect();
+                        let asgs: Vec<(Syntax, Syntax)> = children.clone()[..children.len() - 2]
+                            .iter()
+                            .map(|child| -> Result<(Syntax, Syntax), anyhow::Error> {
+                                if let NodeOrToken::Node(node) = child {
+                                    let mut children = node.children_with_tokens();
+                                    let lhs =
+                                        children.next().ok_or(anyhow::anyhow!("Expected LHS"))?;
+                                    children.next();
+                                    let rhs =
+                                        children.next().ok_or(anyhow::anyhow!("Expected RHS"))?;
+
+                                    Ok((lhs.try_into()?, rhs.try_into()?))
+                                } else {
+                                    panic!("Not allowed here!");
+                                }
+                            })
+                            .fold(
+                                Ok(Vec::<(Syntax, Syntax)>::new()),
+                                |lhs, rhs| -> Result<Vec<(Syntax, Syntax)>, anyhow::Error> {
+                                    if let Ok(mut lhs) = lhs {
+                                        lhs.push(rhs?);
+                                        Ok(lhs)
+                                    } else {
+                                        lhs
+                                    }
+                                },
+                            )?;
+
+                        let expr_true = children[children.len() - 2].clone();
+                        let expr_false = children[children.len() - 1].clone();
+
+                        Ok(Syntax::IfLet(
+                            asgs,
+                            Box::new(expr_true.try_into()?),
+                            Box::new(expr_false.try_into()?),
+                        ))
                     }
                     SyntaxKind::If => {
                         let cond = children.next().ok_or(expected_expr())?;
