@@ -47,6 +47,7 @@ pub enum Syntax {
         /* expr_false: */ Box<Syntax>,
     ),
     Id(/* id: */ String),
+    UnexpectedArguments(),
     ValAny(),
     ValInt(/* num: */ num::BigInt),
     ValFlt(/* num: */ num::BigRational),
@@ -58,7 +59,7 @@ pub enum Syntax {
 pub struct Context {
     /// HashMap with a stack of values
     values: HashMap<String, Vec<Syntax>>,
-    fns: HashMap<String, Vec<(Syntax, Syntax)>>,
+    fns: HashMap<String, Vec<(Vec<Syntax>, Syntax)>>,
     errors: Vec<String>,
 }
 
@@ -124,6 +125,7 @@ impl Syntax {
             Self::BiOp(op, box a, box b) => {
                 Self::BiOp(op, Box::new(a.reduce()), Box::new(b.reduce()))
             }
+            Self::UnexpectedArguments() => self,
         }
     }
 
@@ -145,7 +147,12 @@ impl Syntax {
             Self::IfLet(asgs, box expr_true, box expr_false) => {
                 let mut cond_result = true;
                 for (lhs, rhs) in asgs {
-                    if !set_values_in_context(&lhs, &rhs, &mut values_defined_here, context) {
+                    if !set_values_in_context(
+                        &lhs,
+                        &rhs.clone().execute(false, context)?,
+                        &mut values_defined_here,
+                        context,
+                    ) {
                         cond_result = false;
                         remove_values(context, &values_defined_here);
                     }
@@ -159,8 +166,15 @@ impl Syntax {
                     expr_false.execute(false, context)?
                 })
             }
+            Self::Call(box Syntax::Id(id), body) => {
+                if let Some(value) = get_from_values(&id, context) {
+                    Self::Call(Box::new(value), body).execute(false, context)
+                } else {
+                    Ok(this)
+                }
+            }
             Self::Call(box Syntax::Lambda(id, fn_expr), box expr) => {
-                insert_into_values(&id, expr, context, &mut values_defined_here);
+                insert_into_values(&id, expr, context);
 
                 let result = fn_expr.execute(false, context);
                 remove_values(context, &values_defined_here);
@@ -172,7 +186,7 @@ impl Syntax {
                 if !first {
                     Ok(this)
                 } else {
-                    insert_into_values(&id, rhs, context, &mut values_defined_here);
+                    insert_into_values(&id, rhs, context);
                     Ok(Self::ValAny())
                 }
             }
@@ -218,8 +232,29 @@ impl Syntax {
                         }
                     }
 
+                    fn unpack_params(
+                        syntax: Syntax,
+                        mut result: Vec<Syntax>,
+                    ) -> Result<Vec<Syntax>, anyhow::Error> {
+                        match syntax {
+                            Syntax::Call(box a, box b) => {
+                                result.insert(0, b);
+                                unpack_params(a, result)
+                            }
+                            _ => {
+                                result.insert(0, syntax);
+                                Ok(result)
+                            }
+                        }
+                    }
+
                     let (id, syntax) = extract_id(lhs, Vec::new())?;
-                    insert_fns(id, (syntax, rhs), context, &mut values_defined_here);
+                    insert_fns(
+                        id,
+                        (unpack_params(syntax, Default::default())?, rhs.reduce()),
+                        context,
+                        &mut values_defined_here,
+                    );
 
                     Ok(Syntax::ValAny())
                 }
@@ -277,6 +312,10 @@ impl Syntax {
 
                 Ok(Self::Tuple(Box::new(lhs), Box::new(rhs)))
             }
+            Self::UnexpectedArguments() => {
+                context.errors.push(format!("Unexpected arguments"));
+                Ok(this)
+            }
         }
     }
 }
@@ -297,12 +336,7 @@ impl PartialEq for Syntax {
     }
 }
 
-fn insert_into_values(
-    id: &String,
-    syntax: Syntax,
-    ctx: &mut Context,
-    values_defined_here: &mut Vec<String>,
-) {
+fn insert_into_values(id: &String, syntax: Syntax, ctx: &mut Context) {
     if let Some(stack) = ctx.values.get_mut(id) {
         stack.push(syntax);
     } else {
@@ -314,7 +348,7 @@ fn insert_into_values(
 
 fn insert_fns(
     id: String,
-    syntax: (Syntax, Syntax),
+    syntax: (Vec<Syntax>, Syntax),
     ctx: &mut Context,
     values_defined_here: &mut Vec<String>,
 ) {
@@ -335,11 +369,65 @@ fn remove_values(ctx: &mut Context, values_defined_here: &Vec<String>) {
     }
 }
 
+fn build_fn(name: &String, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
+    let arg_name = {
+        let name = name.clone();
+        move |arg: usize| format!("{}{}_{}", name.len(), name, arg)
+    };
+
+    fn build_fn_part(params: &[String], fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
+        if fns.is_empty() {
+            Syntax::UnexpectedArguments()
+        } else {
+            let (args, body) = &fns[fns.len() - 1];
+            let mut asgs = Vec::new();
+            for i in 0..args.len() {
+                asgs.push((args[i].clone(), Syntax::Id(params[i].clone())));
+            }
+
+            Syntax::IfLet(
+                asgs,
+                Box::new(body.clone()),
+                Box::new(build_fn_part(params, &fns[..fns.len() - 1])),
+            )
+        }
+    }
+
+    fn build_fn_with_args(
+        params: &[String],
+        all_params: &[String],
+        fns: &[(Vec<Syntax>, Syntax)],
+    ) -> Syntax {
+        if params.is_empty() {
+            build_fn_part(all_params, fns)
+        } else {
+            Syntax::Lambda(
+                params[params.len() - 1].clone(),
+                Box::new(build_fn_with_args(
+                    &params[..params.len() - 1],
+                    all_params,
+                    fns,
+                )),
+            )
+        }
+    }
+
+    let params: Vec<String> = (0..fns[0].0.len()).map(|i| arg_name(i)).collect();
+
+    build_fn_with_args(&params, &params, fns)
+}
+
 fn get_from_values(id: &String, ctx: &mut Context) -> Option<Syntax> {
     if let Some(stack) = ctx.values.get(id) {
         stack.last().map(|syntax| syntax.clone())
     } else {
-        None
+        if let Some(fns) = ctx.fns.get(id) {
+            let compiled_fn = build_fn(id, fns);
+            insert_into_values(id, compiled_fn.clone(), ctx);
+            Some(compiled_fn)
+        } else {
+            None
+        }
     }
 }
 
@@ -362,7 +450,7 @@ fn set_values_in_context(
         }
         (Syntax::ValAny(), _) => true,
         (Syntax::Id(id), expr) => {
-            insert_into_values(id, expr.clone(), ctx, values_defined_here);
+            insert_into_values(id, expr.clone(), ctx);
             true
         }
         (Syntax::BiOp(op0, a0, b0), Syntax::BiOp(op1, a1, b1)) => {
