@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use tailcall::tailcall;
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BiOpType {
     /// Operator addition
@@ -112,19 +114,17 @@ impl Syntax {
             Self::BiOp(BiOpType::OpNeq, _, box Self::ValAny()) => {
                 Self::ValAtom("false".to_string())
             }
-            Self::Call(box Self::Lambda(id, box Self::Id(id_in_expr)), box expr)
+            Self::Call(box Self::Lambda(id, box Self::Id(id_in_expr)), expr)
                 if id == id_in_expr =>
             {
-                expr
+                *expr
             }
-            Self::Tuple(box a, box b) => Self::Tuple(Box::new(a.reduce()), Box::new(b.reduce())),
+            Self::Tuple(a, b) => Self::Tuple(Box::new(a.reduce()), Box::new(b.reduce())),
             Self::Call(_, _) => self,
             Self::Let(_, _) => self,
             Self::Asg(_, _) => self,
             Self::If(_, _, _) => self,
-            Self::BiOp(op, box a, box b) => {
-                Self::BiOp(op, Box::new(a.reduce()), Box::new(b.reduce()))
-            }
+            Self::BiOp(op, a, b) => Self::BiOp(op, Box::new(a.reduce()), Box::new(b.reduce())),
             Self::UnexpectedArguments() => self,
         }
     }
@@ -144,7 +144,7 @@ impl Syntax {
             Self::ValStr(_) => Ok(this),
             Self::ValAtom(_) => Ok(this),
             Self::Lambda(_, _) => Ok(this),
-            Self::IfLet(asgs, box expr_true, box expr_false) => {
+            Self::IfLet(asgs, expr_true, expr_false) => {
                 let mut cond_result = true;
                 for (lhs, rhs) in asgs {
                     if !set_values_in_context(
@@ -173,34 +173,42 @@ impl Syntax {
                     Ok(this)
                 }
             }
-            Self::Call(box Syntax::Lambda(id, fn_expr), box expr) => {
-                insert_into_values(&id, expr, context);
+            Self::Call(box Syntax::Lambda(id, fn_expr), expr) => {
+                insert_into_values(&id, expr.execute(false, context)?, context);
 
                 let result = fn_expr.execute(false, context);
                 remove_values(context, &values_defined_here);
 
                 result
             }
-            Self::Call(_, _) => Ok(this),
-            Self::Asg(box Self::Id(id), box rhs) => {
+            Self::Call(lhs, rhs) => {
+                let new_lhs = lhs.clone().execute(false, context)?;
+                if new_lhs == *lhs {
+                    Ok(this)
+                } else {
+                    Self::Call(Box::new(new_lhs), rhs).execute(false, context)
+                }
+            }
+            Self::Asg(box Self::Id(id), rhs) => {
                 if !first {
                     Ok(this)
                 } else {
-                    insert_into_values(&id, rhs, context);
+                    insert_into_values(&id, *rhs, context);
                     Ok(Self::ValAny())
                 }
             }
-            Self::Asg(box lhs, box rhs) => {
+            Self::Asg(lhs, rhs) => {
                 if !first {
                     Ok(this)
                 } else {
+                    #[tailcall]
                     fn extract_id(
                         syntax: Syntax,
                         mut unpacked: Vec<Syntax>,
                     ) -> Result<(String, Syntax), anyhow::Error> {
                         match syntax {
-                            Syntax::Call(box Syntax::Id(id), box rhs) => {
-                                unpacked.push(rhs);
+                            Syntax::Call(box Syntax::Id(id), rhs) => {
+                                unpacked.push(*rhs);
 
                                 fn rebuild(syntax: Syntax, unpacked: &[Syntax]) -> Syntax {
                                     if unpacked.is_empty() {
@@ -224,9 +232,9 @@ impl Syntax {
                                     ),
                                 ))
                             }
-                            Syntax::Call(box lhs, box rhs) => {
-                                unpacked.push(rhs.clone());
-                                extract_id(lhs.clone(), unpacked)
+                            Syntax::Call(lhs, rhs) => {
+                                unpacked.push(*rhs.clone());
+                                extract_id(*lhs.clone(), unpacked)
                             }
                             _ => Err(anyhow::anyhow!("Expected call")),
                         }
@@ -237,9 +245,9 @@ impl Syntax {
                         mut result: Vec<Syntax>,
                     ) -> Result<Vec<Syntax>, anyhow::Error> {
                         match syntax {
-                            Syntax::Call(box a, box b) => {
-                                result.insert(0, b);
-                                unpack_params(a, result)
+                            Syntax::Call(a, b) => {
+                                result.insert(0, *b);
+                                unpack_params(*a, result)
                             }
                             _ => {
                                 result.insert(0, syntax);
@@ -248,7 +256,7 @@ impl Syntax {
                         }
                     }
 
-                    let (id, syntax) = extract_id(lhs, Vec::new())?;
+                    let (id, syntax) = extract_id(*lhs, Vec::new())?;
                     insert_fns(
                         id,
                         (unpack_params(syntax, Default::default())?, rhs.reduce()),
@@ -259,7 +267,7 @@ impl Syntax {
                     Ok(Syntax::ValAny())
                 }
             }
-            Self::Let((box lhs, box rhs), box expr) => {
+            Self::Let((lhs, rhs), expr) => {
                 set_values_in_context(&lhs, &rhs, &mut values_defined_here, context);
 
                 let result = expr.execute(false, context);
@@ -267,7 +275,7 @@ impl Syntax {
 
                 result
             }
-            Self::BiOp(BiOpType::OpEq, box lhs, box rhs) => {
+            Self::BiOp(BiOpType::OpEq, lhs, rhs) => {
                 let lhs = lhs.execute(false, context)?;
                 let rhs = rhs.execute(false, context)?;
 
@@ -277,7 +285,7 @@ impl Syntax {
                     Self::ValAtom("false".to_string())
                 })
             }
-            Self::BiOp(BiOpType::OpNeq, box lhs, box rhs) => {
+            Self::BiOp(BiOpType::OpNeq, lhs, rhs) => {
                 let lhs = lhs.execute(false, context)?;
                 let rhs = rhs.execute(false, context)?;
 
@@ -287,13 +295,13 @@ impl Syntax {
                     Self::ValAtom("false".to_string())
                 })
             }
-            Self::BiOp(op, box lhs, box rhs) => {
+            Self::BiOp(op, lhs, rhs) => {
                 let lhs = lhs.execute(false, context)?;
                 let rhs = rhs.execute(false, context)?;
 
                 Ok(Self::BiOp(op, Box::new(lhs), Box::new(rhs)).reduce())
             }
-            Self::If(box cond, box expr_true, box expr_false) => {
+            Self::If(cond, expr_true, expr_false) => {
                 let cond = cond.execute(false, context)?;
                 Ok(match cond {
                     Self::ValAtom(id) if id == "true" => expr_true.execute(false, context)?,
@@ -306,7 +314,7 @@ impl Syntax {
                     }
                 })
             }
-            Self::Tuple(box lhs, box rhs) => {
+            Self::Tuple(lhs, rhs) => {
                 let lhs = lhs.execute(false, context)?;
                 let rhs = rhs.execute(false, context)?;
 
@@ -438,12 +446,12 @@ fn set_values_in_context(
     ctx: &mut Context,
 ) -> bool {
     match (lhs, rhs) {
-        (Syntax::Tuple(box a0, box b0), Syntax::Tuple(box a1, box b1)) => {
+        (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => {
             let a = set_values_in_context(a0, a1, values_defined_here, ctx);
             let b = set_values_in_context(b0, b1, values_defined_here, ctx);
             a && b
         }
-        (Syntax::Call(box a0, box b0), Syntax::Call(box a1, box b1)) => {
+        (Syntax::Call(a0, b0), Syntax::Call(a1, b1)) => {
             let a = set_values_in_context(a0, a1, values_defined_here, ctx);
             let b = set_values_in_context(b0, b1, values_defined_here, ctx);
             a && b

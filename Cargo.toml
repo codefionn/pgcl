@@ -16,3 +16,4 @@ num = { version = "0.4.0", features = [ "libm", "serde", "alloc" ] }
 rowan = { version = "0.15.10", features = [ "serde" ] }
 rustyline = { version = "10.1.1", features = [ "case_insensitive_history_search" ] }
 serde = { version = "1.0.152", features = [ "derive", "alloc" ] }
+tailcall = "0.1.6"
