@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::debug;
+use num::FromPrimitive;
 use tailcall::tailcall;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -341,9 +342,7 @@ impl Syntax {
 
         Ok(this)
     }
-}
 
-impl Syntax {
     fn eval_equal(&self, other: &Self) -> bool {
         match (self, other) {
             (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => a0 == a1 && b0 == b1,
@@ -353,9 +352,66 @@ impl Syntax {
             (Syntax::ValAtom(a), Syntax::ValAtom(b)) => a == b,
             (Syntax::ValInt(a), Syntax::ValInt(b)) => a == b,
             (Syntax::ValFlt(a), Syntax::ValFlt(b)) => a == b,
+            (Syntax::ValFlt(a), Syntax::ValInt(b)) => {
+                *a == num::BigRational::new(b.clone(), num::BigInt::from_u32(1).unwrap())
+            }
+            (Syntax::ValInt(b), Syntax::ValFlt(a)) => {
+                *a == num::BigRational::new(b.clone(), num::BigInt::from_u32(1).unwrap())
+            }
             (Syntax::ValStr(a), Syntax::ValStr(b)) => a == b,
             _ => false,
         }
+    }
+}
+
+impl std::fmt::Display for BiOpType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::OpAdd => "+",
+            Self::OpSub => "-",
+            Self::OpMul => "*",
+            Self::OpDiv => "/",
+            Self::OpEq => "==",
+            Self::OpNeq => "!=",
+            Self::OpStrictEq => "===",
+            Self::OpStrictNeq => "!==",
+        })
+    }
+}
+
+impl std::fmt::Display for Syntax {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(
+            match self {
+                Self::Lambda(id, expr) => format!("(\\{} {})", id, expr.to_string()),
+                Self::Call(lhs, rhs) => format!("{} {}", lhs, rhs),
+                Self::Asg(lhs, rhs) => format!("({} == {})", lhs.to_string(), rhs.to_string()),
+                Self::Tuple(lhs, rhs) => format!("({}, {})", lhs.to_string(), rhs.to_string()),
+                Self::Let((lhs, rhs), expr) => format!("(let {} = {} in {})", lhs, rhs, expr),
+                Self::BiOp(op, lhs, rhs) => format!("({} {} {})", lhs, op, rhs),
+                Self::IfLet(asgs, expr_true, expr_false) => format!(
+                    "if let {} then {} else {}",
+                    asgs.iter()
+                        .map(|(lhs, rhs)| format!("{} = {}", lhs, rhs))
+                        .fold(String::new(), |x, y| if x.is_empty() {
+                            format!("{}", y)
+                        } else {
+                            format!("{}; {}", x, y)
+                        }),
+                    expr_true,
+                    expr_false
+                ),
+                Self::If(cond, lhs, rhs) => format!("if {} then {} else {}", cond, lhs, rhs),
+                Self::Id(id) => format!("{}", id),
+                Self::UnexpectedArguments() => format!("UnexpectedArguments"),
+                Self::ValAny() => format!("_"),
+                Self::ValInt(x) => x.to_string(),
+                Self::ValFlt(x) => x.to_string(),
+                Self::ValStr(x) => format!("{}", x),
+                Self::ValAtom(x) => format!(":{}", x),
+            }
+            .as_str(),
+        )
     }
 }
 

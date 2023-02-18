@@ -58,8 +58,10 @@ fn parse(mut ev: EventReader<LexerEvent>, _args: Res<Args>, mut state: Local<Con
         println!("{:?}", typed);
         if let Ok(typed) = typed {
             let reduced = typed.reduce();
-            println!("{:?}", reduced);
-            println!("{:?}", reduced.execute(true, &mut state));
+            println!("{}", reduced);
+            if let Ok(executed) = reduced.execute(true, &mut state) {
+                println!("{}", executed);
+            }
         }
     }
 }
