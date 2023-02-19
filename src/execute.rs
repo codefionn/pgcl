@@ -125,6 +125,30 @@ impl Syntax {
             Self::BiOp(BiOpType::OpDiv, box Self::ValFlt(x), box Self::ValFlt(y)) => {
                 Self::ValFlt(x / y)
             }
+            Self::BiOp(BiOpType::OpAdd, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                Self::ValFlt(x + y)
+            }
+            Self::BiOp(BiOpType::OpSub, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                Self::ValFlt(x - y)
+            }
+            Self::BiOp(BiOpType::OpMul, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                Self::ValFlt(x * y)
+            }
+            Self::BiOp(BiOpType::OpDiv, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                Self::ValFlt(x / y)
+            }
+            Self::BiOp(BiOpType::OpAdd, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                Self::ValFlt(num::BigRational::from_integer(x) + y)
+            }
+            Self::BiOp(BiOpType::OpSub, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                Self::ValFlt(num::BigRational::from_integer(x) - y)
+            }
+            Self::BiOp(BiOpType::OpMul, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                Self::ValFlt(num::BigRational::from_integer(x) * y)
+            }
+            Self::BiOp(BiOpType::OpDiv, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                Self::ValFlt(num::BigRational::from_integer(x) / y)
+            }
             Self::BiOp(BiOpType::OpAdd, box Self::ValStr(x), box Self::ValStr(y)) => {
                 Self::ValStr(x + y.as_str())
             }
