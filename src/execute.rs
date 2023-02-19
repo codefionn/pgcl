@@ -80,22 +80,27 @@ impl Syntax {
             Self::ValStr(_) => self,
             Self::ValAtom(_) => self,
             Self::Lambda(id, expr) => Self::Lambda(id, Box::new(expr.reduce())),
-            Self::IfLet(asgs, expr_true, expr_false) if asgs.len() == 1 => {
-                if let Some((Self::Id(lhs), Self::Id(rhs))) = asgs.get(0) {
-                    expr_true.replace_args(lhs, &Self::Id(rhs.clone())).reduce()
+            Self::IfLet(asgs, expr_true, expr_false) => {
+                let mut expr_true = expr_true;
+                let mut new_asgs = Vec::new();
+                for asg in asgs.into_iter() {
+                    if let (Self::Id(lhs), Self::Id(rhs)) = asg {
+                        expr_true = Box::new(expr_true.replace_args(&lhs, &Self::Id(rhs)));
+                    } else {
+                        new_asgs.push(asg);
+                    }
+                }
+
+                if new_asgs.is_empty() {
+                    expr_true.reduce()
                 } else {
                     Self::IfLet(
-                        asgs,
+                        new_asgs,
                         Box::new(expr_true.reduce()),
                         Box::new(expr_false.reduce()),
                     )
                 }
             }
-            Self::IfLet(asgs, expr_true, expr_false) => Self::IfLet(
-                asgs,
-                Box::new(expr_true.reduce()),
-                Box::new(expr_false.reduce()),
-            ),
             Self::BiOp(BiOpType::OpAdd, box Self::ValInt(x), box Self::ValInt(y)) => {
                 Self::ValInt(x + y)
             }
