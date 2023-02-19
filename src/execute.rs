@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, utils::HashSet};
 
 use num::FromPrimitive;
 use std::collections::HashMap;
@@ -181,49 +181,66 @@ impl Syntax {
     }
 
     fn replace_args(self, key: &String, value: &Syntax) -> Syntax {
-        match &self {
+        match self {
             Self::Id(id) if *id == *key => value.clone(),
             Self::Id(_) => self,
+            Self::Lambda(id, expr) if *id != *key => {
+                Self::Lambda(id, Box::new(expr.replace_args(key, value)))
+            }
             Self::Lambda(_, _) => self,
             Self::Call(lhs, rhs) => {
-                let lhs = lhs.clone().replace_args(key, value);
-                let rhs = rhs.clone().replace_args(key, value);
+                let lhs = lhs.replace_args(key, value);
+                let rhs = rhs.replace_args(key, value);
                 Self::Call(Box::new(lhs), Box::new(rhs))
             }
             Self::Asg(lhs, rhs) => {
-                let lhs = lhs.clone().replace_args(key, value);
-                let rhs = rhs.clone().replace_args(key, value);
+                let lhs = lhs.replace_args(key, value);
+                let rhs = rhs.replace_args(key, value);
                 Self::Asg(Box::new(lhs), Box::new(rhs))
             }
             Self::Tuple(lhs, rhs) => {
-                let lhs = lhs.clone().replace_args(key, value);
-                let rhs = rhs.clone().replace_args(key, value);
+                let lhs = lhs.replace_args(key, value);
+                let rhs = rhs.replace_args(key, value);
                 Self::Tuple(Box::new(lhs), Box::new(rhs))
             }
             Self::Let((lhs, rhs), expr) => {
-                let rhs = rhs.clone().replace_args(key, value);
-                let expr = expr.clone().replace_args(key, value);
-                Self::Let((lhs.clone(), Box::new(rhs)), Box::new(expr))
+                let rhs = rhs.replace_args(key, value);
+                if lhs.get_args().contains(key) {
+                    Self::Let((lhs, Box::new(rhs)), expr)
+                } else {
+                    let expr = expr.replace_args(key, value);
+                    Self::Let((lhs, Box::new(rhs)), Box::new(expr))
+                }
             }
             Self::BiOp(op, lhs, rhs) => {
-                let lhs = lhs.clone().replace_args(key, value);
-                let rhs = rhs.clone().replace_args(key, value);
-                Self::BiOp(op.clone(), Box::new(lhs), Box::new(rhs))
+                let rhs = rhs.replace_args(key, value);
+                Self::BiOp(op, lhs, Box::new(rhs))
             }
             Self::If(cond, expr_true, expr_false) => {
-                let cond = cond.clone().replace_args(key, value);
-                let expr_true = expr_true.clone().replace_args(key, value);
-                let expr_false = expr_false.clone().replace_args(key, value);
+                let cond = cond.replace_args(key, value);
+                let expr_true = expr_true.replace_args(key, value);
+                let expr_false = expr_false.replace_args(key, value);
                 Self::If(Box::new(cond), Box::new(expr_true), Box::new(expr_false))
             }
             Self::IfLet(asgs, expr_true, expr_false) => {
-                let asgs = asgs
-                    .iter()
-                    .map(|(lhs, rhs)| (lhs.clone(), rhs.clone().replace_args(key, value)))
+                let asgs: Vec<(Syntax, Syntax)> = asgs
+                    .into_iter()
+                    .map(|(lhs, rhs)| (lhs, rhs.replace_args(key, value)))
                     .collect();
-                let expr_true = expr_true.clone().replace_args(key, value);
-                let expr_false = expr_false.clone().replace_args(key, value);
-                Self::IfLet(asgs, Box::new(expr_true), Box::new(expr_false))
+
+                if asgs
+                    .iter()
+                    .map(|(_, rhs)| rhs.get_args())
+                    .flatten()
+                    .collect::<HashSet<String>>()
+                    .contains(key)
+                {
+                    Self::IfLet(asgs, expr_true, expr_false)
+                } else {
+                    let expr_true = expr_true.replace_args(key, value);
+                    let expr_false = expr_false.replace_args(key, value);
+                    Self::IfLet(asgs, Box::new(expr_true), Box::new(expr_false))
+                }
             }
             Self::UnexpectedArguments() => self,
             Self::ValAny() => self,
@@ -232,6 +249,58 @@ impl Syntax {
             Self::ValStr(_) => self,
             Self::ValAtom(_) => self,
         }
+    }
+
+    fn get_args(&self) -> HashSet<String> {
+        let mut result = HashSet::new();
+        match self {
+            Self::Id(id) => {
+                result.insert(id.clone());
+            }
+            Self::Lambda(_, expr) => {
+                result.extend(expr.get_args());
+            }
+            Self::Call(lhs, rhs)
+            | Self::Asg(lhs, rhs)
+            | Self::Tuple(lhs, rhs)
+            | Self::BiOp(_, lhs, rhs) => {
+                result.extend(lhs.get_args());
+                result.extend(rhs.get_args());
+            }
+            Self::Let((lhs, rhs), expr) => {
+                result.extend(lhs.get_args());
+                result.extend(rhs.get_args());
+                result.extend(expr.get_args());
+            }
+            Self::If(cond, expr_true, expr_false) => {
+                result.extend(cond.get_args());
+                result.extend(expr_true.get_args());
+                result.extend(expr_false.get_args());
+            }
+            Self::IfLet(asgs, expr_true, expr_false) => {
+                result.extend(
+                    asgs.iter()
+                        .map(|(lhs, rhs)| {
+                            let mut result = lhs.get_args();
+                            result.extend(rhs.get_args());
+
+                            result
+                        })
+                        .flatten(),
+                );
+
+                result.extend(expr_true.get_args());
+                result.extend(expr_false.get_args());
+            }
+            Self::UnexpectedArguments()
+            | Self::ValAny()
+            | Self::ValInt(_)
+            | Self::ValFlt(_)
+            | Self::ValStr(_)
+            | Self::ValAtom(_) => {}
+        }
+
+        result
     }
 
     fn execute_once(self, first: bool, context: &mut Context) -> Result<Syntax, anyhow::Error> {
@@ -499,7 +568,7 @@ impl std::fmt::Display for Syntax {
             match self {
                 Self::Lambda(id, expr) => format!("(\\{} {})", id, expr.to_string()),
                 Self::Call(lhs, rhs) => format!("{} {}", lhs, rhs),
-                Self::Asg(lhs, rhs) => format!("({} == {})", lhs.to_string(), rhs.to_string()),
+                Self::Asg(lhs, rhs) => format!("({} = {})", lhs.to_string(), rhs.to_string()),
                 Self::Tuple(lhs, rhs) => format!("({}, {})", lhs.to_string(), rhs.to_string()),
                 Self::Let((lhs, rhs), expr) => format!("(let {} = {} in {})", lhs, rhs, expr),
                 Self::BiOp(op, lhs, rhs) => format!("({} {} {})", lhs, op, rhs),
