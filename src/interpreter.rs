@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use rowan::GreenNodeBuilder;
 
 use crate::{
+    errors::InterpreterError,
     execute::{Context, Syntax},
     lexer::Token,
     parser::{print_ast, Parser, SyntaxElement, SyntaxKind},
@@ -54,7 +55,7 @@ fn parse(mut ev: EventReader<LexerEvent>, _args: Res<Args>, mut state: Local<Con
         println!("{:?}", errors);
         print_ast(0, ast.clone());
 
-        let typed: anyhow::Result<Syntax> = ast.try_into();
+        let typed: Result<Syntax, InterpreterError> = ast.try_into();
         println!("{:?}", typed);
         if let Ok(typed) = typed {
             let reduced = typed.reduce();

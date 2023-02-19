@@ -1,10 +1,14 @@
 #![feature(box_patterns)]
 
+mod errors;
 mod execute;
 mod interpreter;
 mod lexer;
 mod parser;
 mod reader;
+
+#[cfg(test)]
+mod tests;
 
 use bevy::{
     log::{Level, LogPlugin},

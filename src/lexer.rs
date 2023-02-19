@@ -1,7 +1,7 @@
 use logos::Logos;
 use num::{BigRational, Num};
 
-use crate::parser::SyntaxKind;
+use crate::{errors::InterpreterError, parser::SyntaxKind};
 
 /// PGCL tokens
 #[derive(Logos, Clone, Debug, PartialEq)]
@@ -67,8 +67,8 @@ pub enum Token {
     #[token(";")]
     Semicolon,
 
-    #[regex(r"[0-9]*\.[0-9]+", |lex| flt_to_big_rational(lex.slice()))]
-    Flt(num::BigRational),
+    #[regex(r"[0-9]*\.[0-9]+", |lex| lex.slice().to_string())]
+    Flt(String),
 
     #[regex(r"[0-9]+", |lex| dec_to_big_rational(lex.slice()))]
     #[regex(r"0x[0-9A-Fa-f]+", |lex| hex_to_big_rational(lex.slice()))]
@@ -141,8 +141,8 @@ impl Token {
 }
 
 impl TryInto<SyntaxKind> for Token {
-    type Error = Token;
-    fn try_into(self) -> Result<SyntaxKind, Token> {
+    type Error = InterpreterError;
+    fn try_into(self) -> Result<SyntaxKind, InterpreterError> {
         match self {
             Token::Lambda => Ok(SyntaxKind::Lambda),
             Token::ParenLeft => Ok(SyntaxKind::ParenLeft),
@@ -175,8 +175,8 @@ impl TryInto<SyntaxKind> for Token {
             Token::Id(_) => Ok(SyntaxKind::Id),
             Token::Atom(_) => Ok(SyntaxKind::Atom),
             Token::Str(_) => Ok(SyntaxKind::Str),
-            Token::Error => Err(Token::Error),
-            tok @ _ => Err(tok),
+            Token::Error => Err(InterpreterError::UnknownError()),
+            tok @ _ => Err(InterpreterError::UnexpectedToken(tok)),
         }
     }
 }
@@ -229,80 +229,4 @@ fn parse_string(mystr: &str) -> Option<String> {
     }
 
     Some(result)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Token;
-    use logos::Logos;
-    use num::FromPrimitive;
-
-    #[test]
-    fn test_str() {
-        assert_eq!(
-            Some(Token::Str(format!("test"))),
-            Token::lexer("\"test\"").into_iter().next()
-        );
-    }
-
-    #[test]
-    fn test_str_with_escape() {
-        assert_eq!(
-            Some(Token::Str(format!("\n"))),
-            Token::lexer("\"\\n\"").into_iter().next()
-        );
-
-        assert_eq!(
-            Some(Token::Str(format!("\\n"))),
-            Token::lexer("\"\\\\n\"").into_iter().next()
-        );
-    }
-
-    #[test]
-    fn test_int() {
-        assert_eq!(
-            Some(Token::Int(num::BigRational::from_integer(
-                num::BigInt::from_u64(42).unwrap()
-            ))),
-            Token::lexer("42").into_iter().next()
-        );
-        assert_eq!(
-            Some(Token::Int(num::BigRational::from_integer(
-                num::BigInt::from_u64(142).unwrap()
-            ))),
-            Token::lexer("142").into_iter().next()
-        );
-    }
-
-    #[test]
-    fn test_flt() {
-        assert_eq!(
-            Some(Token::Flt(num::BigRational::from_f64(42.5).unwrap())),
-            Token::lexer("42.5").into_iter().next()
-        );
-    }
-
-    #[test]
-    fn test_id() {
-        assert_eq!(
-            Some(Token::Id(format!("test"))),
-            Token::lexer("test").into_iter().next()
-        );
-        assert_eq!(
-            Some(Token::Id(format!("x"))),
-            Token::lexer("x").into_iter().next()
-        );
-    }
-
-    #[test]
-    fn test_atom() {
-        assert_eq!(
-            Some(Token::Atom(format!("test"))),
-            Token::lexer("'test").into_iter().next()
-        );
-        assert_eq!(
-            Some(Token::Atom(format!("x"))),
-            Token::lexer("'x").into_iter().next()
-        );
-    }
 }

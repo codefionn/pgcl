@@ -1,8 +1,11 @@
 use bevy::{prelude::*, utils::HashSet};
 
+use bigdecimal::BigDecimal;
 use num::FromPrimitive;
 use std::collections::HashMap;
 use tailcall::tailcall;
+
+use crate::errors::InterpreterError;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BiOpType {
@@ -54,7 +57,7 @@ pub enum Syntax {
     UnexpectedArguments(),
     ValAny(),
     ValInt(/* num: */ num::BigInt),
-    ValFlt(/* num: */ num::BigRational),
+    ValFlt(/* num: */ BigDecimal),
     ValStr(/* str: */ String),
     ValAtom(/* atom: */ String),
 }
@@ -65,6 +68,10 @@ pub struct Context {
     values: HashMap<String, Vec<Syntax>>,
     fns: HashMap<String, Vec<(Vec<Syntax>, Syntax)>>,
     errors: Vec<String>,
+}
+
+fn int_to_flt(x: num::BigInt) -> BigDecimal {
+    x.to_string().parse().unwrap()
 }
 
 impl Syntax {
@@ -111,7 +118,7 @@ impl Syntax {
                 Self::ValInt(x * y)
             }
             Self::BiOp(BiOpType::OpDiv, box Self::ValInt(x), box Self::ValInt(y)) => {
-                Self::ValFlt(num::BigRational::new(x, y))
+                Self::ValFlt(int_to_flt(x) / int_to_flt(y))
             }
             Self::BiOp(BiOpType::OpAdd, box Self::ValFlt(x), box Self::ValFlt(y)) => {
                 Self::ValFlt(x + y)
@@ -126,28 +133,28 @@ impl Syntax {
                 Self::ValFlt(x / y)
             }
             Self::BiOp(BiOpType::OpAdd, box Self::ValFlt(x), box Self::ValInt(y)) => {
-                Self::ValFlt(x + y)
+                Self::ValFlt(x + int_to_flt(y))
             }
             Self::BiOp(BiOpType::OpSub, box Self::ValFlt(x), box Self::ValInt(y)) => {
-                Self::ValFlt(x - y)
+                Self::ValFlt(x - int_to_flt(y))
             }
             Self::BiOp(BiOpType::OpMul, box Self::ValFlt(x), box Self::ValInt(y)) => {
-                Self::ValFlt(x * y)
+                Self::ValFlt(x * int_to_flt(y))
             }
             Self::BiOp(BiOpType::OpDiv, box Self::ValFlt(x), box Self::ValInt(y)) => {
-                Self::ValFlt(x / y)
+                Self::ValFlt(x / int_to_flt(y))
             }
             Self::BiOp(BiOpType::OpAdd, box Self::ValInt(x), box Self::ValFlt(y)) => {
-                Self::ValFlt(num::BigRational::from_integer(x) + y)
+                Self::ValFlt(int_to_flt(x) + y)
             }
             Self::BiOp(BiOpType::OpSub, box Self::ValInt(x), box Self::ValFlt(y)) => {
-                Self::ValFlt(num::BigRational::from_integer(x) - y)
+                Self::ValFlt(int_to_flt(x) - y)
             }
             Self::BiOp(BiOpType::OpMul, box Self::ValInt(x), box Self::ValFlt(y)) => {
-                Self::ValFlt(num::BigRational::from_integer(x) * y)
+                Self::ValFlt(int_to_flt(x) * y)
             }
             Self::BiOp(BiOpType::OpDiv, box Self::ValInt(x), box Self::ValFlt(y)) => {
-                Self::ValFlt(num::BigRational::from_integer(x) / y)
+                Self::ValFlt(int_to_flt(x) / y)
             }
             Self::BiOp(BiOpType::OpAdd, box Self::ValStr(x), box Self::ValStr(y)) => {
                 Self::ValStr(x + y.as_str())
@@ -303,7 +310,7 @@ impl Syntax {
         result
     }
 
-    fn execute_once(self, first: bool, context: &mut Context) -> Result<Syntax, anyhow::Error> {
+    fn execute_once(self, first: bool, context: &mut Context) -> Result<Syntax, InterpreterError> {
         let mut values_defined_here = Vec::new();
         match self.clone().reduce() {
             Self::Id(id) => Ok(if let Some(obj) = get_from_values(&id, context) {
@@ -383,7 +390,7 @@ impl Syntax {
                     fn extract_id(
                         syntax: Syntax,
                         mut unpacked: Vec<Syntax>,
-                    ) -> Result<(String, Syntax), anyhow::Error> {
+                    ) -> Result<(String, Syntax), InterpreterError> {
                         match syntax {
                             Syntax::Call(box Syntax::Id(id), rhs) => {
                                 unpacked.push(*rhs);
@@ -414,14 +421,14 @@ impl Syntax {
                                 unpacked.push(*rhs.clone());
                                 extract_id(*lhs.clone(), unpacked)
                             }
-                            _ => Err(anyhow::anyhow!("Expected call")),
+                            _ => Err(InterpreterError::ExpectedCall()),
                         }
                     }
 
                     fn unpack_params(
                         syntax: Syntax,
                         mut result: Vec<Syntax>,
-                    ) -> Result<Vec<Syntax>, anyhow::Error> {
+                    ) -> Result<Vec<Syntax>, InterpreterError> {
                         match syntax {
                             Syntax::Call(a, b) => {
                                 result.insert(0, *b);
@@ -510,7 +517,7 @@ impl Syntax {
         .map(|expr| expr.reduce())
     }
 
-    pub fn execute(self, first: bool, context: &mut Context) -> Result<Syntax, anyhow::Error> {
+    pub fn execute(self, first: bool, context: &mut Context) -> Result<Syntax, InterpreterError> {
         let mut this = self;
         let mut old = this.clone();
         loop {
@@ -535,12 +542,8 @@ impl Syntax {
             (Syntax::ValAtom(a), Syntax::ValAtom(b)) => a == b,
             (Syntax::ValInt(a), Syntax::ValInt(b)) => a == b,
             (Syntax::ValFlt(a), Syntax::ValFlt(b)) => a == b,
-            (Syntax::ValFlt(a), Syntax::ValInt(b)) => {
-                *a == num::BigRational::new(b.clone(), num::BigInt::from_u32(1).unwrap())
-            }
-            (Syntax::ValInt(b), Syntax::ValFlt(a)) => {
-                *a == num::BigRational::new(b.clone(), num::BigInt::from_u32(1).unwrap())
-            }
+            (Syntax::ValFlt(a), Syntax::ValInt(b)) => *a == b.to_string().parse().unwrap(),
+            (Syntax::ValInt(b), Syntax::ValFlt(a)) => *a == b.to_string().parse().unwrap(),
             (Syntax::ValStr(a), Syntax::ValStr(b)) => a == b,
             _ => false,
         }
@@ -589,7 +592,9 @@ impl std::fmt::Display for Syntax {
                 Self::UnexpectedArguments() => format!("UnexpectedArguments"),
                 Self::ValAny() => format!("_"),
                 Self::ValInt(x) => x.to_string(),
-                Self::ValFlt(x) => x.to_string(),
+                Self::ValFlt(x) => format!("{}", x)
+                    .trim_end_matches(|c| c == '0' || c == '.')
+                    .to_string(),
                 Self::ValStr(x) => format!("{}", x),
                 Self::ValAtom(x) => format!(":{}", x),
             }

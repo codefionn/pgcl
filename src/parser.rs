@@ -1,9 +1,10 @@
 use std::iter::Peekable;
 
-use num::Num;
+use bigdecimal::BigDecimal;
+use num::{FromPrimitive, Num};
 use rowan::{GreenNodeBuilder, NodeOrToken};
 
-use crate::execute::Syntax;
+use crate::{errors::InterpreterError, execute::Syntax};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u16)]
@@ -358,7 +359,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
 }
 
 impl TryInto<Syntax> for SyntaxElement {
-    type Error = anyhow::Error;
+    type Error = InterpreterError;
 
     fn try_into(self) -> Result<Syntax, Self::Error> {
         let kind: SyntaxKind = self.kind().into();
@@ -366,14 +367,15 @@ impl TryInto<Syntax> for SyntaxElement {
             NodeOrToken::Node(node) => {
                 let mut children = node.children_with_tokens();
 
-                let expected_expr = || anyhow::anyhow!("Expected expression");
-                let expected_tok = || anyhow::anyhow!("Expected token");
+                let expected_expr = || InterpreterError::ExpectedExpression();
 
                 match kind {
                     SyntaxKind::Root => {
                         let children: Vec<SyntaxElement> = children.collect();
                         if children.len() != 1 {
-                            Err(anyhow::anyhow!("Root must only have one child"))
+                            Err(InterpreterError::InternalError(format!(
+                                "Root must only have one child"
+                            )))
                         } else {
                             children.into_iter().next().unwrap().try_into()
                         }
@@ -389,7 +391,7 @@ impl TryInto<Syntax> for SyntaxElement {
                                 }
                             })
                             .flatten()
-                            .ok_or(anyhow::anyhow!("Expected identifier"))?;
+                            .ok_or(InterpreterError::ExpectedIdentifier())?;
 
                         let expr = children.next().ok_or(expected_expr())?;
 
@@ -429,7 +431,7 @@ impl TryInto<Syntax> for SyntaxElement {
                         fn build_let(
                             asgs: &[(SyntaxElement, SyntaxElement)],
                             expr: SyntaxElement,
-                        ) -> Result<Syntax, anyhow::Error> {
+                        ) -> Result<Syntax, InterpreterError> {
                             if asgs.len() == 0 {
                                 expr.try_into()
                             } else {
@@ -458,7 +460,7 @@ impl TryInto<Syntax> for SyntaxElement {
                                 }
                             })
                             .flatten()
-                            .ok_or(anyhow::anyhow!("Expected operator"))?;
+                            .ok_or(InterpreterError::ExpectedOperator())?;
                         let rhs = children.next().ok_or(expected_expr())?;
 
                         if op.kind() == SyntaxKind::OpAsg {
@@ -484,7 +486,7 @@ impl TryInto<Syntax> for SyntaxElement {
                                     SyntaxKind::OpSub => Ok(OpSub),
                                     SyntaxKind::OpMul => Ok(OpMul),
                                     SyntaxKind::OpDiv => Ok(OpDiv),
-                                    _ => Err(anyhow::anyhow!("Invalid operator")),
+                                    _ => Err(InterpreterError::InvalidOperator()),
                                 })?,
                                 Box::new(lhs.try_into()?),
                                 Box::new(rhs.try_into()?),
@@ -495,14 +497,16 @@ impl TryInto<Syntax> for SyntaxElement {
                         let children: Vec<SyntaxElement> = children.collect();
                         let asgs: Vec<(Syntax, Syntax)> = children.clone()[..children.len() - 2]
                             .iter()
-                            .map(|child| -> Result<(Syntax, Syntax), anyhow::Error> {
+                            .map(|child| -> Result<(Syntax, Syntax), InterpreterError> {
                                 if let NodeOrToken::Node(node) = child {
                                     let mut children = node.children_with_tokens();
-                                    let lhs =
-                                        children.next().ok_or(anyhow::anyhow!("Expected LHS"))?;
+                                    let lhs = children
+                                        .next()
+                                        .ok_or(InterpreterError::ExpectedLHSExpression())?;
                                     children.next();
-                                    let rhs =
-                                        children.next().ok_or(anyhow::anyhow!("Expected RHS"))?;
+                                    let rhs = children
+                                        .next()
+                                        .ok_or(InterpreterError::ExpectedRHSExpression())?;
 
                                     Ok((lhs.try_into()?, rhs.try_into()?))
                                 } else {
@@ -511,7 +515,7 @@ impl TryInto<Syntax> for SyntaxElement {
                             })
                             .fold(
                                 Ok(Vec::<(Syntax, Syntax)>::new()),
-                                |lhs, rhs| -> Result<Vec<(Syntax, Syntax)>, anyhow::Error> {
+                                |lhs, rhs| -> Result<Vec<(Syntax, Syntax)>, InterpreterError> {
                                     if let Ok(mut lhs) = lhs {
                                         lhs.push(rhs?);
                                         Ok(lhs)
@@ -541,20 +545,27 @@ impl TryInto<Syntax> for SyntaxElement {
                             Box::new(false_expr.try_into()?),
                         ))
                     }
-                    _ => Err(anyhow::anyhow!("Unexpected expression: {:?}", node)),
+                    _ => Err(InterpreterError::UnexpectedExpressionEmpty()),
                 }
             }
             NodeOrToken::Token(tok) => match kind {
                 SyntaxKind::Id => Ok(Syntax::Id(tok.text().to_string())),
-                SyntaxKind::Int => Ok(Syntax::ValInt(num::BigInt::from_str_radix(tok.text(), 10)?)),
-                SyntaxKind::Flt => Ok(Syntax::ValFlt(num::BigRational::from_str_radix(
-                    tok.text(),
-                    10,
-                )?)),
+                SyntaxKind::Int => Ok(Syntax::ValInt(
+                    num::BigInt::from_str_radix(tok.text(), 10)
+                        .map_err(|_| InterpreterError::ExpectedInteger())?,
+                )),
+                SyntaxKind::Flt => Ok(Syntax::ValFlt(
+                    BigDecimal::from_f64(
+                        tok.text()
+                            .parse()
+                            .map_err(|_| InterpreterError::ExpectedFloat())?,
+                    )
+                    .ok_or(InterpreterError::ExpectedFloat())?,
+                )),
                 SyntaxKind::Str => Ok(Syntax::ValStr(tok.text().to_string())),
                 SyntaxKind::Atom => Ok(Syntax::ValAtom(tok.text().to_string())),
                 SyntaxKind::Any => Ok(Syntax::ValAny()),
-                _ => Err(anyhow::anyhow!("Unexpected token: {:?}", tok)),
+                _ => Err(InterpreterError::UnexpectedTokenEmpty()),
             },
         }
     }
