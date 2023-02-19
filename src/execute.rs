@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use bevy::prelude::*;
 
-use bevy::prelude::debug;
 use num::FromPrimitive;
+use std::collections::HashMap;
 use tailcall::tailcall;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -79,8 +79,23 @@ impl Syntax {
             Self::ValFlt(_) => self,
             Self::ValStr(_) => self,
             Self::ValAtom(_) => self,
-            Self::Lambda(_, _) => self,
-            Self::IfLet(_, _, _) => self,
+            Self::Lambda(id, expr) => Self::Lambda(id, Box::new(expr.reduce())),
+            Self::IfLet(asgs, expr_true, expr_false) if asgs.len() == 1 => {
+                if let Some((Self::Id(lhs), Self::Id(rhs))) = asgs.get(0) {
+                    expr_true.replace_args(lhs, &Self::Id(rhs.clone())).reduce()
+                } else {
+                    Self::IfLet(
+                        asgs,
+                        Box::new(expr_true.reduce()),
+                        Box::new(expr_false.reduce()),
+                    )
+                }
+            }
+            Self::IfLet(asgs, expr_true, expr_false) => Self::IfLet(
+                asgs,
+                Box::new(expr_true.reduce()),
+                Box::new(expr_false.reduce()),
+            ),
             Self::BiOp(BiOpType::OpAdd, box Self::ValInt(x), box Self::ValInt(y)) => {
                 Self::ValInt(x + y)
             }
@@ -122,217 +137,287 @@ impl Syntax {
                 *expr
             }
             Self::Tuple(a, b) => Self::Tuple(Box::new(a.reduce()), Box::new(b.reduce())),
-            Self::Call(_, _) => self,
+            Self::Call(lhs, rhs) => Self::Call(Box::new(lhs.reduce()), Box::new(rhs.reduce())),
+            Self::Let((box Self::Id(id), rhs), expr) => expr.replace_args(&id, &rhs),
             Self::Let(_, _) => self,
-            Self::Asg(_, _) => self,
-            Self::If(_, _, _) => self,
+            Self::Asg(lhs, rhs) => Self::Asg(Box::new(lhs.reduce()), Box::new(rhs.reduce())),
+            Self::If(cond, lhs, rhs) => Self::If(
+                Box::new(cond.reduce()),
+                Box::new(lhs.reduce()),
+                Box::new(rhs.reduce()),
+            ),
             Self::BiOp(op, a, b) => Self::BiOp(op, Box::new(a.reduce()), Box::new(b.reduce())),
             Self::UnexpectedArguments() => self,
         }
     }
 
-    pub fn execute(self, first: bool, context: &mut Context) -> Result<Syntax, anyhow::Error> {
+    fn replace_args(self, key: &String, value: &Syntax) -> Syntax {
+        match &self {
+            Self::Id(id) if *id == *key => value.clone(),
+            Self::Id(_) => self,
+            Self::Lambda(_, _) => self,
+            Self::Call(lhs, rhs) => {
+                let lhs = lhs.clone().replace_args(key, value);
+                let rhs = rhs.clone().replace_args(key, value);
+                Self::Call(Box::new(lhs), Box::new(rhs))
+            }
+            Self::Asg(lhs, rhs) => {
+                let lhs = lhs.clone().replace_args(key, value);
+                let rhs = rhs.clone().replace_args(key, value);
+                Self::Asg(Box::new(lhs), Box::new(rhs))
+            }
+            Self::Tuple(lhs, rhs) => {
+                let lhs = lhs.clone().replace_args(key, value);
+                let rhs = rhs.clone().replace_args(key, value);
+                Self::Tuple(Box::new(lhs), Box::new(rhs))
+            }
+            Self::Let((lhs, rhs), expr) => {
+                let rhs = rhs.clone().replace_args(key, value);
+                let expr = expr.clone().replace_args(key, value);
+                Self::Let((lhs.clone(), Box::new(rhs)), Box::new(expr))
+            }
+            Self::BiOp(op, lhs, rhs) => {
+                let lhs = lhs.clone().replace_args(key, value);
+                let rhs = rhs.clone().replace_args(key, value);
+                Self::BiOp(op.clone(), Box::new(lhs), Box::new(rhs))
+            }
+            Self::If(cond, expr_true, expr_false) => {
+                let cond = cond.clone().replace_args(key, value);
+                let expr_true = expr_true.clone().replace_args(key, value);
+                let expr_false = expr_false.clone().replace_args(key, value);
+                Self::If(Box::new(cond), Box::new(expr_true), Box::new(expr_false))
+            }
+            Self::IfLet(asgs, expr_true, expr_false) => {
+                let asgs = asgs
+                    .iter()
+                    .map(|(lhs, rhs)| (lhs.clone(), rhs.clone().replace_args(key, value)))
+                    .collect();
+                let expr_true = expr_true.clone().replace_args(key, value);
+                let expr_false = expr_false.clone().replace_args(key, value);
+                Self::IfLet(asgs, Box::new(expr_true), Box::new(expr_false))
+            }
+            Self::UnexpectedArguments() => self,
+            Self::ValAny() => self,
+            Self::ValInt(_) => self,
+            Self::ValFlt(_) => self,
+            Self::ValStr(_) => self,
+            Self::ValAtom(_) => self,
+        }
+    }
+
+    fn execute_once(self, first: bool, context: &mut Context) -> Result<Syntax, anyhow::Error> {
         let mut values_defined_here = Vec::new();
+        match self.clone().reduce() {
+            Self::Id(id) => Ok(if let Some(obj) = get_from_values(&id, context) {
+                obj.clone()
+            } else {
+                self
+            }),
+            Self::ValAny() => Ok(self),
+            Self::ValInt(_) => Ok(self),
+            Self::ValFlt(_) => Ok(self),
+            Self::ValStr(_) => Ok(self),
+            Self::ValAtom(_) => Ok(self),
+            Self::Lambda(_, _) => Ok(self),
+            Self::IfLet(asgs, expr_true, expr_false) => {
+                let mut cond_result = true;
+                for (lhs, rhs) in asgs {
+                    if !set_values_in_context(
+                        &lhs,
+                        &rhs.clone().execute(false, context)?,
+                        &mut values_defined_here,
+                        context,
+                    ) {
+                        cond_result = false;
+                        remove_values(context, &values_defined_here);
+                        break;
+                    }
+                }
+
+                if cond_result {
+                    let mut result = expr_true.clone();
+                    for (key, value) in remove_values(context, &values_defined_here).into_iter() {
+                        result = Box::new(result.replace_args(&key, &value));
+                    }
+
+                    Ok(*result)
+                } else {
+                    expr_false.execute(false, context)
+                }
+            }
+            Self::Call(box Syntax::Id(id), body) => {
+                if let Some(value) = get_from_values(&id, context) {
+                    Self::Call(Box::new(value), body).execute(false, context)
+                } else {
+                    Ok(self)
+                }
+            }
+            Self::Call(box Syntax::Lambda(id, fn_expr), expr) => {
+                /*insert_into_values(&id, expr.execute(false, context)?, context);
+
+                let result = fn_expr.execute(false, context);
+                remove_values(context, &values_defined_here);
+
+                result*/
+                Ok(fn_expr.replace_args(&id, &expr))
+            }
+            Self::Call(lhs, rhs) => {
+                let new_lhs = lhs.clone().execute(false, context)?;
+                if new_lhs == *lhs {
+                    Ok(self)
+                } else {
+                    Self::Call(Box::new(new_lhs), rhs).execute(false, context)
+                }
+            }
+            Self::Asg(box Self::Id(id), rhs) => {
+                if !first {
+                    Ok(self)
+                } else {
+                    insert_into_values(&id, *rhs, context);
+                    Ok(Self::ValAny())
+                }
+            }
+            Self::Asg(lhs, rhs) => {
+                if !first {
+                    Ok(self)
+                } else {
+                    #[tailcall]
+                    fn extract_id(
+                        syntax: Syntax,
+                        mut unpacked: Vec<Syntax>,
+                    ) -> Result<(String, Syntax), anyhow::Error> {
+                        match syntax {
+                            Syntax::Call(box Syntax::Id(id), rhs) => {
+                                unpacked.push(*rhs);
+
+                                fn rebuild(syntax: Syntax, unpacked: &[Syntax]) -> Syntax {
+                                    if unpacked.is_empty() {
+                                        syntax
+                                    } else {
+                                        Syntax::Call(
+                                            Box::new(rebuild(
+                                                unpacked[unpacked.len() - 1].clone(),
+                                                &unpacked[..unpacked.len() - 1],
+                                            )),
+                                            Box::new(syntax),
+                                        )
+                                    }
+                                }
+
+                                Ok((
+                                    id,
+                                    rebuild(
+                                        unpacked[unpacked.len() - 1].clone(),
+                                        &unpacked[..unpacked.len() - 1],
+                                    ),
+                                ))
+                            }
+                            Syntax::Call(lhs, rhs) => {
+                                unpacked.push(*rhs.clone());
+                                extract_id(*lhs.clone(), unpacked)
+                            }
+                            _ => Err(anyhow::anyhow!("Expected call")),
+                        }
+                    }
+
+                    fn unpack_params(
+                        syntax: Syntax,
+                        mut result: Vec<Syntax>,
+                    ) -> Result<Vec<Syntax>, anyhow::Error> {
+                        match syntax {
+                            Syntax::Call(a, b) => {
+                                result.insert(0, *b);
+                                unpack_params(*a, result)
+                            }
+                            _ => {
+                                result.insert(0, syntax);
+                                Ok(result)
+                            }
+                        }
+                    }
+
+                    let (id, syntax) = extract_id(*lhs, Vec::new())?;
+                    insert_fns(
+                        id,
+                        (unpack_params(syntax, Default::default())?, rhs.reduce()),
+                        context,
+                        &mut values_defined_here,
+                    );
+
+                    Ok(Syntax::ValAny())
+                }
+            }
+            Self::Let((lhs, rhs), expr) => {
+                set_values_in_context(&lhs, &rhs, &mut values_defined_here, context);
+
+                let mut result = (*expr).clone();
+                for (key, value) in remove_values(context, &values_defined_here).into_iter() {
+                    result = result.replace_args(&key, &value);
+                }
+
+                Ok(result)
+            }
+            Self::BiOp(BiOpType::OpEq, lhs, rhs) => {
+                let lhs = lhs.execute(false, context)?;
+                let rhs = rhs.execute(false, context)?;
+
+                Ok(if lhs.eval_equal(&rhs) {
+                    Self::ValAtom("true".to_string())
+                } else {
+                    Self::ValAtom("false".to_string())
+                })
+            }
+            Self::BiOp(BiOpType::OpNeq, lhs, rhs) => {
+                let lhs = lhs.execute(false, context)?;
+                let rhs = rhs.execute(false, context)?;
+
+                Ok(if !lhs.eval_equal(&rhs) {
+                    Self::ValAtom("true".to_string())
+                } else {
+                    Self::ValAtom("false".to_string())
+                })
+            }
+            Self::BiOp(op, lhs, rhs) => {
+                let lhs = lhs.execute_once(false, context)?;
+                let rhs = rhs.execute_once(false, context)?;
+
+                Ok(Self::BiOp(op, Box::new(lhs), Box::new(rhs)))
+            }
+            Self::If(cond, expr_true, expr_false) => {
+                let cond = cond.execute(false, context)?;
+                Ok(match cond {
+                    Self::ValAtom(id) if id == "true" => expr_true.execute_once(false, context)?,
+                    Self::ValAtom(id) if id == "false" => {
+                        expr_false.execute_once(false, context)?
+                    }
+                    _ => {
+                        context
+                            .errors
+                            .push(format!("Expected :true or :false in if-condition"));
+                        self
+                    }
+                })
+            }
+            Self::Tuple(lhs, rhs) => {
+                let lhs = lhs.execute_once(false, context)?;
+                let rhs = rhs.execute_once(false, context)?;
+
+                Ok(Self::Tuple(Box::new(lhs), Box::new(rhs)))
+            }
+            Self::UnexpectedArguments() => {
+                context.errors.push(format!("Unexpected arguments"));
+                Ok(self)
+            }
+        }
+        .map(|expr| expr.reduce())
+    }
+
+    pub fn execute(self, first: bool, context: &mut Context) -> Result<Syntax, anyhow::Error> {
         let mut this = self;
         let mut old = this.clone();
         loop {
-            this = this.reduce();
-            debug!("{:?}", this);
-            this = match this.clone() {
-                Self::Id(id) => Ok(if let Some(obj) = get_from_values(&id, context) {
-                    obj.clone()
-                } else {
-                    this
-                }),
-                Self::ValAny() => Ok(this),
-                Self::ValInt(_) => Ok(this),
-                Self::ValFlt(_) => Ok(this),
-                Self::ValStr(_) => Ok(this),
-                Self::ValAtom(_) => Ok(this),
-                Self::Lambda(_, _) => Ok(this),
-                Self::IfLet(asgs, expr_true, expr_false) => {
-                    let mut cond_result = true;
-                    for (lhs, rhs) in asgs {
-                        if !set_values_in_context(
-                            &lhs,
-                            &rhs.clone().execute(false, context)?,
-                            &mut values_defined_here,
-                            context,
-                        ) {
-                            cond_result = false;
-                            remove_values(context, &values_defined_here);
-                        }
-                    }
+            this = this.execute_once(first, context)?;
 
-                    Ok(if cond_result {
-                        let result = expr_true.execute(false, context)?;
-                        remove_values(context, &values_defined_here);
-                        result
-                    } else {
-                        expr_false.execute(false, context)?
-                    })
-                }
-                Self::Call(box Syntax::Id(id), body) => {
-                    if let Some(value) = get_from_values(&id, context) {
-                        Self::Call(Box::new(value), body).execute(false, context)
-                    } else {
-                        Ok(this)
-                    }
-                }
-                Self::Call(box Syntax::Lambda(id, fn_expr), expr) => {
-                    insert_into_values(&id, expr.execute(false, context)?, context);
-
-                    let result = fn_expr.execute(false, context);
-                    remove_values(context, &values_defined_here);
-
-                    result
-                }
-                Self::Call(lhs, rhs) => {
-                    let new_lhs = lhs.clone().execute(false, context)?;
-                    if new_lhs == *lhs {
-                        Ok(this)
-                    } else {
-                        Self::Call(Box::new(new_lhs), rhs).execute(false, context)
-                    }
-                }
-                Self::Asg(box Self::Id(id), rhs) => {
-                    if !first {
-                        Ok(this)
-                    } else {
-                        insert_into_values(&id, *rhs, context);
-                        Ok(Self::ValAny())
-                    }
-                }
-                Self::Asg(lhs, rhs) => {
-                    if !first {
-                        Ok(this)
-                    } else {
-                        #[tailcall]
-                        fn extract_id(
-                            syntax: Syntax,
-                            mut unpacked: Vec<Syntax>,
-                        ) -> Result<(String, Syntax), anyhow::Error> {
-                            match syntax {
-                                Syntax::Call(box Syntax::Id(id), rhs) => {
-                                    unpacked.push(*rhs);
-
-                                    fn rebuild(syntax: Syntax, unpacked: &[Syntax]) -> Syntax {
-                                        if unpacked.is_empty() {
-                                            syntax
-                                        } else {
-                                            Syntax::Call(
-                                                Box::new(rebuild(
-                                                    unpacked[unpacked.len() - 1].clone(),
-                                                    &unpacked[..unpacked.len() - 1],
-                                                )),
-                                                Box::new(syntax),
-                                            )
-                                        }
-                                    }
-
-                                    Ok((
-                                        id,
-                                        rebuild(
-                                            unpacked[unpacked.len() - 1].clone(),
-                                            &unpacked[..unpacked.len() - 1],
-                                        ),
-                                    ))
-                                }
-                                Syntax::Call(lhs, rhs) => {
-                                    unpacked.push(*rhs.clone());
-                                    extract_id(*lhs.clone(), unpacked)
-                                }
-                                _ => Err(anyhow::anyhow!("Expected call")),
-                            }
-                        }
-
-                        fn unpack_params(
-                            syntax: Syntax,
-                            mut result: Vec<Syntax>,
-                        ) -> Result<Vec<Syntax>, anyhow::Error> {
-                            match syntax {
-                                Syntax::Call(a, b) => {
-                                    result.insert(0, *b);
-                                    unpack_params(*a, result)
-                                }
-                                _ => {
-                                    result.insert(0, syntax);
-                                    Ok(result)
-                                }
-                            }
-                        }
-
-                        let (id, syntax) = extract_id(*lhs, Vec::new())?;
-                        insert_fns(
-                            id,
-                            (unpack_params(syntax, Default::default())?, rhs.reduce()),
-                            context,
-                            &mut values_defined_here,
-                        );
-
-                        Ok(Syntax::ValAny())
-                    }
-                }
-                Self::Let((lhs, rhs), expr) => {
-                    set_values_in_context(&lhs, &rhs, &mut values_defined_here, context);
-
-                    let result = expr.execute(false, context);
-                    remove_values(context, &values_defined_here);
-
-                    result
-                }
-                Self::BiOp(BiOpType::OpEq, lhs, rhs) => {
-                    let lhs = lhs.execute(false, context)?;
-                    let rhs = rhs.execute(false, context)?;
-
-                    Ok(if lhs.eval_equal(&rhs) {
-                        Self::ValAtom("true".to_string())
-                    } else {
-                        Self::ValAtom("false".to_string())
-                    })
-                }
-                Self::BiOp(BiOpType::OpNeq, lhs, rhs) => {
-                    let lhs = lhs.execute(false, context)?;
-                    let rhs = rhs.execute(false, context)?;
-
-                    Ok(if !lhs.eval_equal(&rhs) {
-                        Self::ValAtom("true".to_string())
-                    } else {
-                        Self::ValAtom("false".to_string())
-                    })
-                }
-                Self::BiOp(op, lhs, rhs) => {
-                    let lhs = lhs.execute(false, context)?;
-                    let rhs = rhs.execute(false, context)?;
-
-                    Ok(Self::BiOp(op, Box::new(lhs), Box::new(rhs)))
-                }
-                Self::If(cond, expr_true, expr_false) => {
-                    let cond = cond.execute(false, context)?;
-                    Ok(match cond {
-                        Self::ValAtom(id) if id == "true" => expr_true.execute(false, context)?,
-                        Self::ValAtom(id) if id == "false" => expr_false.execute(false, context)?,
-                        _ => {
-                            context
-                                .errors
-                                .push(format!("Expected :true or :false in if-condition"));
-                            this
-                        }
-                    })
-                }
-                Self::Tuple(lhs, rhs) => {
-                    let lhs = lhs.execute(false, context)?;
-                    let rhs = rhs.execute(false, context)?;
-
-                    Ok(Self::Tuple(Box::new(lhs), Box::new(rhs)))
-                }
-                Self::UnexpectedArguments() => {
-                    context.errors.push(format!("Unexpected arguments"));
-                    Ok(this)
-                }
-            }?;
-
-            debug!("{:?} == {:?}", this, old);
             if this == old {
                 break;
             }
@@ -440,12 +525,20 @@ fn insert_fns(
     }
 }
 
-fn remove_values(ctx: &mut Context, values_defined_here: &Vec<String>) {
+fn remove_values(ctx: &mut Context, values_defined_here: &Vec<String>) -> HashMap<String, Syntax> {
+    let mut result = HashMap::with_capacity(values_defined_here.len());
+
     for id in values_defined_here {
         if let Some(stack) = ctx.values.get_mut(id) {
-            stack.pop();
+            if let Some(value) = stack.pop() {
+                if result.contains_key(id) {
+                    result.insert(id.clone(), value);
+                }
+            }
         }
     }
+
+    result
 }
 
 fn build_fn(name: &String, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
@@ -493,7 +586,10 @@ fn build_fn(name: &String, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
 
     let params: Vec<String> = (0..fns[0].0.len()).map(|i| arg_name(i)).collect();
 
-    build_fn_with_args(&params, &params, fns)
+    let mut fns: Vec<(Vec<Syntax>, Syntax)> = fns.iter().map(|x| x.clone()).collect();
+    fns.reverse();
+
+    build_fn_with_args(&params, &params, &fns).reduce()
 }
 
 fn get_from_values(id: &String, ctx: &mut Context) -> Option<Syntax> {
@@ -541,6 +637,6 @@ fn set_values_in_context(
                 a && b
             }
         }
-        (expr0, expr1) => expr0 == expr1,
+        (expr0, expr1) => expr0.eval_equal(expr1),
     }
 }
