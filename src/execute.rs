@@ -24,6 +24,14 @@ pub enum BiOpType {
     OpStrictEq,
     /// Operator not strict equals
     OpStrictNeq,
+    /// Operator greater or equals
+    OpGeq,
+    /// Operator less or equals
+    OpLeq,
+    /// Operator greater than
+    OpGt,
+    /// Operator less than
+    OpLt,
 }
 
 /// Representing a typed syntax tree
@@ -59,6 +67,15 @@ pub enum Syntax {
     ValFlt(/* num: */ BigDecimal),
     ValStr(/* str: */ String),
     ValAtom(/* atom: */ String),
+}
+
+impl From<bool> for Syntax {
+    fn from(value: bool) -> Self {
+        match value {
+            true => Self::ValAtom(format!("true")),
+            false => Self::ValAtom(format!("false")),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -462,6 +479,63 @@ impl Syntax {
 
                 Ok(result)
             }
+            Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValInt(y)) => {
+                Ok((x >= y).into())
+            }
+            Self::BiOp(BiOpType::OpLeq, box Self::ValInt(x), box Self::ValInt(y)) => {
+                Ok((x <= y).into())
+            }
+            Self::BiOp(BiOpType::OpGt, box Self::ValInt(x), box Self::ValInt(y)) => {
+                Ok((x > y).into())
+            }
+            Self::BiOp(BiOpType::OpLt, box Self::ValInt(x), box Self::ValInt(y)) => {
+                Ok((x < y).into())
+            }
+            Self::BiOp(BiOpType::OpGeq, box Self::ValFlt(x), box Self::ValFlt(y)) => {
+                Ok((x >= y).into())
+            }
+            Self::BiOp(BiOpType::OpLeq, box Self::ValFlt(x), box Self::ValFlt(y)) => {
+                Ok((x <= y).into())
+            }
+            Self::BiOp(BiOpType::OpGt, box Self::ValFlt(x), box Self::ValFlt(y)) => {
+                Ok((x > y).into())
+            }
+            Self::BiOp(BiOpType::OpLt, box Self::ValFlt(x), box Self::ValFlt(y)) => {
+                Ok((x < y).into())
+            }
+            Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                Ok((int_to_flt(x) >= y).into())
+            }
+            Self::BiOp(BiOpType::OpLeq, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                Ok((int_to_flt(x) <= y).into())
+            }
+            Self::BiOp(BiOpType::OpGt, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                Ok((int_to_flt(x) > y).into())
+            }
+            Self::BiOp(BiOpType::OpLt, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                Ok((int_to_flt(x) < y).into())
+            }
+            Self::BiOp(BiOpType::OpGeq, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                Ok((x >= int_to_flt(y)).into())
+            }
+            Self::BiOp(BiOpType::OpLeq, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                Ok((x <= int_to_flt(y)).into())
+            }
+            Self::BiOp(BiOpType::OpGt, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                Ok((x > int_to_flt(y)).into())
+            }
+            Self::BiOp(BiOpType::OpLt, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                Ok((x < int_to_flt(y)).into())
+            }
+            Self::BiOp(op @ BiOpType::OpGeq, lhs, rhs)
+            | Self::BiOp(op @ BiOpType::OpLeq, lhs, rhs)
+            | Self::BiOp(op @ BiOpType::OpGt, lhs, rhs)
+            | Self::BiOp(op @ BiOpType::OpLt, lhs, rhs) => {
+                let lhs = lhs.execute_once(false, context)?;
+                let rhs = rhs.execute_once(false, context)?;
+
+                Ok(Self::BiOp(op, Box::new(lhs), Box::new(rhs)))
+            }
             Self::BiOp(BiOpType::OpEq, lhs, rhs) => {
                 let lhs = lhs.execute(false, context)?;
                 let rhs = rhs.execute(false, context)?;
@@ -565,6 +639,10 @@ impl std::fmt::Display for BiOpType {
             Self::OpNeq => "!=",
             Self::OpStrictEq => "===",
             Self::OpStrictNeq => "!==",
+            Self::OpGeq => ">=",
+            Self::OpLeq => "<=",
+            Self::OpGt => ">",
+            Self::OpLt => "<",
         })
     }
 }

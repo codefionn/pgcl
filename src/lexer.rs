@@ -50,14 +50,26 @@ pub enum Token {
     #[token(",")]
     OpComma,
 
-    #[token("=")]
-    OpAsg,
+    #[token(">=")]
+    OpGeq,
+
+    #[token("<=")]
+    OpLeq,
+
+    #[token(">")]
+    OpGt,
+
+    #[token("<")]
+    OpLt,
 
     #[token("==")]
     OpEq,
 
     #[token("===")]
     OpStrictEq,
+
+    #[token("=")]
+    OpAsg,
 
     #[token("!=")]
     OpNeq,
@@ -126,7 +138,9 @@ impl Token {
                 Lambda | ParenLeft | ParenRight | LstLeft | LstRight | MapLeft | MapRight
                 | OpAdd | OpSub | OpMul | OpDiv | Unpack | OpPeriod | OpComma | OpAsg | OpEq
                 | OpStrictEq | OpNeq | OpStrictNeq | KwIn | KwLet | NewLine | Semicolon | Any
-                | KwIf | KwElse | KwThen | Error => lex.slice().to_string(),
+                | OpLeq | OpGeq | OpGt | OpLt | KwIf | KwElse | KwThen | Error => {
+                    lex.slice().to_string()
+                }
 
                 Flt(x) => x.to_string(),
                 Int(x) => x.to_string(),
@@ -164,6 +178,10 @@ impl TryInto<SyntaxKind> for Token {
             Token::OpStrictEq => Ok(SyntaxKind::OpStrictEq),
             Token::OpNeq => Ok(SyntaxKind::OpNeq),
             Token::OpStrictNeq => Ok(SyntaxKind::OpStrictNeq),
+            Token::OpGeq => Ok(SyntaxKind::OpGeq),
+            Token::OpLeq => Ok(SyntaxKind::OpLeq),
+            Token::OpGt => Ok(SyntaxKind::OpGt),
+            Token::OpLt => Ok(SyntaxKind::OpLt),
             Token::Semicolon => Ok(SyntaxKind::Semicolon),
             Token::KwIf => Ok(SyntaxKind::If),
             Token::KwThen => Ok(SyntaxKind::KwThen),
