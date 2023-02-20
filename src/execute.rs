@@ -599,7 +599,21 @@ impl std::fmt::Display for Syntax {
                 Self::ValFlt(x) => format!("{}", x)
                     .trim_end_matches(|c| c == '0' || c == '.')
                     .to_string(),
-                Self::ValStr(x) => format!("{}", x),
+                Self::ValStr(x) => format!(
+                    "\"{}\"",
+                    x.chars()
+                        .into_iter()
+                        .map(|c| match c {
+                            '\\' => format!("\\"),
+                            '\n' => format!("\\n"),
+                            '\r' => format!("\\r"),
+                            '\t' => format!("\\t"),
+                            '\0' => format!("\\0"),
+                            '\"' => format!("\\\""),
+                            c => format!("{}", c),
+                        })
+                        .collect::<String>()
+                ),
                 Self::ValAtom(x) => format!(":{}", x),
             }
             .as_str(),

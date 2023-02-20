@@ -6,6 +6,7 @@ use crate::{
     lexer::Token,
     parser::{Parser, SyntaxElement, SyntaxKind},
 };
+
 fn parse(line: &str, ctx: &mut Context) -> Result<Syntax, InterpreterError> {
     let toks = Token::lex_for_rowan(line);
     let toks: Vec<(SyntaxKind, String)> = toks
@@ -65,7 +66,55 @@ fn eq() {
 }
 
 #[test]
-fn recursion() {
+fn add_str() {
+    assert_eq!(
+        Ok(format!("\"helloworld\"")),
+        parse_to_str("\"hello\" + \"world\"", &mut Default::default())
+    );
+}
+
+#[test]
+fn neq() {
+    assert_eq!(
+        Ok(format!(":false")),
+        parse_to_str("2 != 2", &mut Default::default())
+    );
+    assert_eq!(
+        Ok(format!(":true")),
+        parse_to_str("3 != 2", &mut Default::default())
+    );
+}
+
+#[test]
+fn fn_add_lambda() {
+    assert_eq!(
+        Ok(format!("12")),
+        parse_to_str(r"(\x = \y = x + y) 2 10", &mut Default::default())
+    );
+    assert_eq!(
+        Ok(format!("12")),
+        parse_to_str(r"(\x = \y = x + y) 10 2", &mut Default::default())
+    );
+}
+
+#[test]
+fn fn_add_fn_and_lambda() {
+    let mut ctx = Context::default();
+    assert!(parse_to_str(r"add x = \y = x + y", &mut ctx).is_ok());
+    assert_eq!(Ok(format!("12")), parse_to_str(r"add 10 2", &mut ctx));
+    assert_eq!(Ok(format!("12")), parse_to_str(r"add 2 10", &mut ctx));
+}
+
+#[test]
+fn fn_add_fn() {
+    let mut ctx = Context::default();
+    assert!(parse_to_str(r"add x y = x + y", &mut ctx).is_ok());
+    assert_eq!(Ok(format!("12")), parse_to_str(r"add 10 2", &mut ctx));
+    assert_eq!(Ok(format!("12")), parse_to_str(r"add 2 10", &mut ctx));
+}
+
+#[test]
+fn recursion_fib() {
     let mut ctx = Context::default();
     assert!(parse_to_str("fib 1 = 1", &mut ctx).is_ok());
     assert!(parse_to_str("fib 2 = 1", &mut ctx).is_ok());
