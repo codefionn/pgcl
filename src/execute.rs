@@ -1,7 +1,6 @@
 use bevy::{prelude::*, utils::HashSet};
 
 use bigdecimal::BigDecimal;
-use num::FromPrimitive;
 use std::collections::HashMap;
 use tailcall::tailcall;
 
@@ -220,8 +219,9 @@ impl Syntax {
                 }
             }
             Self::BiOp(op, lhs, rhs) => {
+                let lhs = lhs.replace_args(key, value);
                 let rhs = rhs.replace_args(key, value);
-                Self::BiOp(op, lhs, Box::new(rhs))
+                Self::BiOp(op, Box::new(lhs), Box::new(rhs))
             }
             Self::If(cond, expr_true, expr_false) => {
                 let cond = cond.replace_args(key, value);
@@ -235,6 +235,7 @@ impl Syntax {
                     .map(|(lhs, rhs)| (lhs, rhs.replace_args(key, value)))
                     .collect();
 
+                let expr_false = expr_false.replace_args(key, value);
                 if asgs
                     .iter()
                     .map(|(_, rhs)| rhs.get_args())
@@ -242,10 +243,9 @@ impl Syntax {
                     .collect::<HashSet<String>>()
                     .contains(key)
                 {
-                    Self::IfLet(asgs, expr_true, expr_false)
+                    Self::IfLet(asgs, expr_true, Box::new(expr_false))
                 } else {
                     let expr_true = expr_true.replace_args(key, value);
-                    let expr_false = expr_false.replace_args(key, value);
                     Self::IfLet(asgs, Box::new(expr_true), Box::new(expr_false))
                 }
             }
@@ -446,7 +446,6 @@ impl Syntax {
                         id,
                         (unpack_params(syntax, Default::default())?, rhs.reduce()),
                         context,
-                        &mut values_defined_here,
                     );
 
                     Ok(Syntax::ValAny())
@@ -525,6 +524,10 @@ impl Syntax {
 
             if this == old {
                 break;
+            }
+
+            if first {
+                debug!("{}", this);
             }
 
             old = this.clone();
@@ -613,12 +616,7 @@ fn insert_into_values(id: &String, syntax: Syntax, ctx: &mut Context) {
     }
 }
 
-fn insert_fns(
-    id: String,
-    syntax: (Vec<Syntax>, Syntax),
-    ctx: &mut Context,
-    values_defined_here: &mut Vec<String>,
-) {
+fn insert_fns(id: String, syntax: (Vec<Syntax>, Syntax), ctx: &mut Context) {
     if let Some(stack) = ctx.fns.get_mut(&id) {
         stack.push(syntax);
     } else {

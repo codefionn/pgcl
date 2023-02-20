@@ -182,11 +182,6 @@ impl TryInto<SyntaxKind> for Token {
 }
 
 #[inline]
-fn flt_to_big_rational(num: &str) -> num::BigRational {
-    BigRational::from_float(num.parse::<f64>().unwrap()).unwrap()
-}
-
-#[inline]
 fn dec_to_big_rational(num: &str) -> num::BigRational {
     num.parse().unwrap()
 }
