@@ -5,7 +5,8 @@ Designed for (*my*) rapid success doing calculations.
 
 It is a functional programming language and also a project for fun using the
 game engine [*bevy*](https://bevyengine.org) for things that are not games
-(like this CLI tool). It uses *logos* for lexing and *rowan* for parsing.
+(like this CLI tool). It uses [logos](https://github.com/maciejhirsz/logos) for
+lexing and [rowan](https://github.com/rust-analyzer/rowan) for parsing.
 
 ## Structures
 
@@ -20,8 +21,8 @@ game engine [*bevy*](https://bevyengine.org) for things that are not games
 - Pipes: Take the left side or previous result as *first* function argument: `1 | add 2`
 - Functions with pattern matching:
   ```
-  add 'zero y = y
-  add ('succ x) y = add x ('succ y)
+  add :zero y = y
+  add (:succ x) y = add x (:succ y)
   ```
 - Values:
   - Strings: `:something"`
