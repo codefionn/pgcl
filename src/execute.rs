@@ -125,6 +125,30 @@ impl Syntax {
                     )
                 }
             }
+            Self::BiOp(
+                BiOpType::OpAdd,
+                box Self::ValInt(x),
+                box Self::BiOp(BiOpType::OpAdd, box Self::ValInt(y), expr),
+            ) => Self::BiOp(BiOpType::OpAdd, Box::new(Self::ValInt(x + y)), expr),
+            Self::BiOp(
+                BiOpType::OpSub,
+                box Self::ValInt(x),
+                box Self::BiOp(BiOpType::OpSub, box Self::ValInt(y), expr),
+            ) => Self::BiOp(BiOpType::OpAdd, Box::new(Self::ValInt(x - y)), expr),
+            Self::BiOp(
+                BiOpType::OpMul,
+                box Self::ValInt(x),
+                box Self::BiOp(BiOpType::OpMul, box Self::ValInt(y), expr),
+            ) => Self::BiOp(BiOpType::OpMul, Box::new(Self::ValInt(x * y)), expr),
+            Self::BiOp(
+                BiOpType::OpDiv,
+                box Self::ValInt(x),
+                box Self::BiOp(BiOpType::OpDiv, box Self::ValInt(y), expr),
+            ) => Self::BiOp(
+                BiOpType::OpMul,
+                Box::new(Self::ValFlt(int_to_flt(x) / int_to_flt(y))),
+                expr,
+            ),
             Self::BiOp(BiOpType::OpAdd, box Self::ValInt(x), box Self::ValInt(y)) => {
                 Self::ValInt(x + y)
             }
