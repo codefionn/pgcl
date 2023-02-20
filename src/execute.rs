@@ -365,12 +365,12 @@ impl Syntax {
 
                     Ok(*result)
                 } else {
-                    expr_false.execute(false, context)
+                    expr_false.execute_once(false, context)
                 }
             }
             Self::Call(box Syntax::Id(id), body) => {
                 if let Some(value) = get_from_values(&id, context) {
-                    Self::Call(Box::new(value), body).execute(false, context)
+                    Ok(Self::Call(Box::new(value), body))
                 } else {
                     Ok(self)
                 }
@@ -389,7 +389,7 @@ impl Syntax {
                 if new_lhs == *lhs {
                     Ok(self)
                 } else {
-                    Self::Call(Box::new(new_lhs), rhs).execute(false, context)
+                    Self::Call(Box::new(new_lhs), rhs).execute_once(false, context)
                 }
             }
             Self::Asg(box Self::Id(id), rhs) => {
