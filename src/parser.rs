@@ -1,3 +1,4 @@
+///! This module is for creating an untyped AST and creating an typed AST from it
 use std::{iter::Peekable, str::FromStr};
 
 use bevy::app::AppLabel;
@@ -7,6 +8,7 @@ use rowan::{GreenNodeBuilder, NodeOrToken};
 
 use crate::{errors::InterpreterError, execute::Syntax};
 
+/// SyntaxKinds for the untyped syntax tree created with *rowan*
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u16)]
 pub enum SyntaxKind {
@@ -78,6 +80,7 @@ pub type SyntaxNode = rowan::SyntaxNode<Lang>;
 pub type SyntaxToken = rowan::SyntaxToken<Lang>;
 pub type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 
+/// The parser responsible for parsing the tokens into an untyped syntax tree
 pub struct Parser<I: Iterator<Item = (SyntaxKind, String)>> {
     builder: GreenNodeBuilder<'static>,
     errors: Vec<String>,
@@ -99,12 +102,14 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         self.iter.peek().map(|&(t, _)| t)
     }
 
+    /// Bump the current token to rowan
     fn bump(&mut self) {
         if let Some((token, string)) = self.iter.next() {
             self.builder.token(token.into(), string.as_str());
         }
     }
 
+    /// Parse value or statement
     fn parse_val(&mut self, allow_empty: bool) -> bool {
         match self.peek() {
             Some(SyntaxKind::Int) => {
@@ -155,10 +160,12 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     .map(|tok| tok == SyntaxKind::KwLet)
                     .unwrap_or(false)
                 {
+                    // parse an if-let statement
                     self.iter.next(); // skip
                     self.builder.start_node(SyntaxKind::IfLet.into());
                     self.parse_let_args(SyntaxKind::KwThen);
                 } else {
+                    // parse a normal if condition
                     self.builder.start_node(SyntaxKind::If.into());
                     self.parse_expr();
 
@@ -173,6 +180,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     }
                 }
 
+                // parse the true case
                 self.parse_expr();
 
                 if self
@@ -185,6 +193,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     self.errors.push(format!("Expected 'else'"));
                 }
 
+                // parse the else case
                 self.parse_expr();
 
                 self.builder.finish_node();
@@ -214,7 +223,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                         .push(format!("Expected identifier after lambda"));
                 }
 
-                self.bump(); // Parse Id
+                self.bump(); // parse Id
 
                 if self
                     .peek()
@@ -224,6 +233,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     self.iter.next(); // ignore
                 }
 
+                // parse the lambda expression
                 self.parse_expr();
                 self.builder.finish_node();
 
@@ -241,6 +251,11 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         }
     }
 
+    /// Parses the let assignments in an let or if-let statement
+    ///
+    /// ## Arguments
+    ///
+    /// - end: the terminating symbol of the assignments
     fn parse_let_args(&mut self, end: SyntaxKind) {
         loop {
             self.builder.start_node(SyntaxKind::BiOp.into());
@@ -282,6 +297,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         }
     }
 
+    /// Handle a binary operator expression (or just next)
     fn handle_operation(&mut self, tokens: &[SyntaxKind], next: fn(&mut Self) -> bool) -> bool {
         let checkpoint = self.builder.checkpoint();
         if !next(self) {
@@ -303,6 +319,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         self.handle_operation(&[SyntaxKind::OpPeriod], next)
     }
 
+    /// Parse a lambda/function call expression
     fn parse_call(&mut self) -> bool {
         let maybe_call = self.builder.checkpoint();
         if !self.parse_period(|this| this.parse_val(false)) {

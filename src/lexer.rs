@@ -1,3 +1,4 @@
+///! This module is for transforming a PGCL code/line into tokens
 use logos::Logos;
 use num::{BigRational, Num};
 
