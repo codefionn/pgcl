@@ -69,6 +69,7 @@ pub struct Context {
     errors: Vec<String>,
 }
 
+#[inline]
 fn int_to_flt(x: num::BigInt) -> BigDecimal {
     x.to_string().parse().unwrap()
 }

@@ -1,7 +1,8 @@
-use std::iter::Peekable;
+use std::{iter::Peekable, str::FromStr};
 
+use bevy::app::AppLabel;
 use bigdecimal::BigDecimal;
-use num::{FromPrimitive, Num};
+use num::Num;
 use rowan::{GreenNodeBuilder, NodeOrToken};
 
 use crate::{errors::InterpreterError, execute::Syntax};
@@ -555,12 +556,8 @@ impl TryInto<Syntax> for SyntaxElement {
                         .map_err(|_| InterpreterError::ExpectedInteger())?,
                 )),
                 SyntaxKind::Flt => Ok(Syntax::ValFlt(
-                    BigDecimal::from_f64(
-                        tok.text()
-                            .parse()
-                            .map_err(|_| InterpreterError::ExpectedFloat())?,
-                    )
-                    .ok_or(InterpreterError::ExpectedFloat())?,
+                    BigDecimal::from_str(tok.text())
+                        .map_err(|_| InterpreterError::ExpectedFloat())?,
                 )),
                 SyntaxKind::Str => Ok(Syntax::ValStr(tok.text().to_string())),
                 SyntaxKind::Atom => Ok(Syntax::ValAtom(tok.text().to_string())),
