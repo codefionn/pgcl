@@ -114,6 +114,14 @@ fn fn_add_fn() {
 }
 
 #[test]
+fn fn_add_fn_tuple() {
+    let mut ctx = Context::default();
+    assert!(parse_to_str(r"add (x, y) = x + y", &mut ctx).is_ok());
+    assert_eq!(Ok(format!("12")), parse_to_str(r"add (10, 2)", &mut ctx));
+    assert_eq!(Ok(format!("12")), parse_to_str(r"add (2, 10)", &mut ctx));
+}
+
+#[test]
 fn op_geq() {
     let mut ctx = Context::default();
     assert!(parse_to_str(r"add x y = x + y", &mut ctx).is_ok());
