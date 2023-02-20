@@ -1,6 +1,6 @@
 # PGCL
 
-PGCL - *pretty good calculator language* - is a language to basic calculations.
+PGCL - *pretty good calculator language* - is a language for basic calculations.
 Designed for (*my*) rapid success doing calculations.
 
 It is a functional programming language and also a project for fun using the
