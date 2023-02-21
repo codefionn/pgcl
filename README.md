@@ -8,6 +8,13 @@ game engine [*bevy*](https://bevyengine.org) for things that are not games
 (like this CLI tool). It uses [logos](https://github.com/maciejhirsz/logos) for
 lexing and [rowan](https://github.com/rust-analyzer/rowan) for parsing.
 
+## TODO
+
+[ ] Arrays
+[ ] JSON support
+[ ] Pipes
+[ ] Optimizations for groups with floating point numbers
+
 ## Structures
 
 - Lamdas: `\x = body` or just `\x body` (the `=` is optional)
