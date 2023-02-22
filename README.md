@@ -10,10 +10,10 @@ lexing and [rowan](https://github.com/rust-analyzer/rowan) for parsing.
 
 ## TODO
 
-[ ] Arrays
-[ ] JSON support
-[ ] Pipes
-[ ] Optimizations for groups with floating point numbers
+* [x] List
+* [ ] JSON support
+* [ ] Pipes
+* [ ] Optimizations for groups with floating point numbers
 
 ## Structures
 
