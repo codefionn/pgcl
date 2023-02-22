@@ -305,3 +305,14 @@ fn recursion_fib() {
     assert!(parse_to_str("fib x = fib (x-2) + fib (x-1)", &mut ctx).is_ok());
     assert_eq!(Ok(format!("55")), parse_to_str("fib 10", &mut ctx));
 }
+
+#[test]
+fn pattern_match_list() {
+    let mut ctx = Context::default();
+    assert!(parse_to_str("len [] = 0", &mut ctx).is_ok());
+    assert!(parse_to_str("len [x;xs] = 1 + len xs", &mut ctx).is_ok());
+    assert_eq!(Ok(format!("0")), parse_to_str("len []", &mut ctx));
+    assert_eq!(Ok(format!("1")), parse_to_str("len [0]", &mut ctx));
+    assert_eq!(Ok(format!("2")), parse_to_str("len [0, 1]", &mut ctx));
+    assert_eq!(Ok(format!("3")), parse_to_str("len [0, 1, 2]", &mut ctx));
+}

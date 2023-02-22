@@ -41,6 +41,8 @@ pub enum Syntax {
     Call(/* rhs: */ Box<Syntax>, /* lhs: */ Box<Syntax>),
     Asg(/* rhs: */ Box<Syntax>, /* lhs: */ Box<Syntax>),
     Tuple(/* rhs: */ Box<Syntax>, /* lhs: */ Box<Syntax>),
+    Lst(Vec<Syntax>),
+    LstMatch(Vec<Syntax>),
     Let(
         /* asg: */ (/* rhs: */ Box<Syntax>, /* lhs: */ Box<Syntax>),
         /* expr: */ Box<Syntax>,
@@ -224,6 +226,10 @@ impl Syntax {
                 Box::new(rhs.reduce()),
             ),
             Self::BiOp(op, a, b) => Self::BiOp(op, Box::new(a.reduce()), Box::new(b.reduce())),
+            Self::Lst(lst) => Self::Lst(lst.into_iter().map(|expr| expr.reduce()).collect()),
+            Self::LstMatch(lst) => {
+                Self::LstMatch(lst.into_iter().map(|expr| expr.reduce()).collect())
+            }
             Self::UnexpectedArguments() => self,
         }
     }
@@ -297,6 +303,16 @@ impl Syntax {
             Self::ValFlt(_) => self,
             Self::ValStr(_) => self,
             Self::ValAtom(_) => self,
+            Self::Lst(lst) => Self::Lst(
+                lst.into_iter()
+                    .map(|expr| expr.replace_args(key, value))
+                    .collect(),
+            ),
+            Self::LstMatch(lst) => Self::LstMatch(
+                lst.into_iter()
+                    .map(|expr| expr.replace_args(key, value))
+                    .collect(),
+            ),
         }
     }
 
@@ -347,6 +363,12 @@ impl Syntax {
             | Self::ValFlt(_)
             | Self::ValStr(_)
             | Self::ValAtom(_) => {}
+            Self::Lst(lst) => {
+                result.extend(lst.into_iter().map(|expr| expr.get_args()).flatten());
+            }
+            Self::LstMatch(lst) => {
+                result.extend(lst.into_iter().map(|expr| expr.get_args()).flatten());
+            }
         }
 
         result
@@ -611,6 +633,22 @@ impl Syntax {
                 context.errors.push(format!("Unexpected arguments"));
                 Ok(self)
             }
+            Self::Lst(lst) => {
+                let mut result = Vec::new();
+                for e in lst {
+                    result.push(e.execute_once(false, context)?);
+                }
+
+                Ok(Self::Lst(result))
+            }
+            Self::LstMatch(lst) => {
+                let mut result = Vec::new();
+                for e in lst {
+                    result.push(e.execute_once(false, context)?);
+                }
+
+                Ok(Self::LstMatch(result))
+            }
         }
         .map(|expr| expr.reduce())
     }
@@ -717,6 +755,30 @@ impl std::fmt::Display for Syntax {
                         .collect::<String>()
                 ),
                 Self::ValAtom(x) => format!(":{}", x),
+                Self::Lst(lst) => format!(
+                    "[{}]",
+                    lst.iter()
+                        .map(|x| format!("{}", x))
+                        .fold(String::new(), |x, y| {
+                            if x.is_empty() {
+                                format!("{}", y)
+                            } else {
+                                format!("{}, {}", x, y)
+                            }
+                        })
+                ),
+                Self::LstMatch(lst) => format!(
+                    "[{}]",
+                    lst.iter()
+                        .map(|x| format!("{}", x))
+                        .fold(String::new(), |x, y| {
+                            if x.is_empty() {
+                                format!("{}", y)
+                            } else {
+                                format!("{};{}", x, y)
+                            }
+                        })
+                ),
             }
             .as_str(),
         )
@@ -843,6 +905,7 @@ fn set_values_in_context(
         }
         (Syntax::ValAny(), _) => true,
         (Syntax::Id(id), expr) => {
+            debug!("{} = {}", id, expr);
             insert_into_values(id, expr.clone(), ctx);
             true
         }
@@ -855,6 +918,60 @@ fn set_values_in_context(
                 a && b
             }
         }
+        (Syntax::Lst(lst0), Syntax::Lst(lst1)) if lst0.len() == lst1.len() => {
+            for i in 0..lst0.len() {
+                if set_values_in_context(&lst0[i], &lst1[i], values_defined_here, ctx) {
+                    return false;
+                }
+            }
+
+            true
+        }
+        (Syntax::LstMatch(lst0), Syntax::Lst(lst1))
+            if lst0.len() >= 2 && lst1.len() + 1 > lst0.len() =>
+        {
+            let mut lst1: &[Syntax] = &lst1;
+            for i in 0..lst0.len() {
+                debug!("{}", i);
+                debug!("{:?}", lst0[i]);
+                debug!("{:?}", lst1);
+                if i == lst0.len() - 1 {
+                    let lst1 = Syntax::Lst(lst1.into());
+                    if !set_values_in_context(&lst0[i], &lst1, values_defined_here, ctx) {
+                        return false;
+                    }
+
+                    break;
+                } else {
+                    let lst1_val = &lst1[0];
+                    lst1 = &lst1[1..];
+                    if !set_values_in_context(&lst0[i], &lst1_val, values_defined_here, ctx) {
+                        return false;
+                    }
+                }
+            }
+
+            true
+        }
+        (Syntax::LstMatch(lst0), Syntax::Lst(lst1))
+            if lst0.len() >= 2 && lst1.len() + 1 == lst0.len() =>
+        {
+            let mut lst1 = lst1.clone();
+            for i in (0..lst0.len() - 1).rev() {
+                if !set_values_in_context(&lst0[i], &lst1.pop().unwrap(), values_defined_here, ctx)
+                {
+                    return false;
+                }
+            }
+
+            set_values_in_context(
+                &lst0.last().unwrap(),
+                &Syntax::Lst(Vec::default()),
+                values_defined_here,
+                ctx,
+            )
+        }
+
         (expr0, expr1) => expr0.eval_equal(expr1),
     }
 }

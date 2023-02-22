@@ -1,7 +1,7 @@
 ///! This module is for creating an untyped AST and creating an typed AST from it
 use std::{iter::Peekable, str::FromStr};
 
-use bevy::app::AppLabel;
+use bevy::{app::AppLabel, prelude::debug};
 use bigdecimal::BigDecimal;
 use num::Num;
 use rowan::{GreenNodeBuilder, NodeOrToken};
@@ -52,6 +52,8 @@ pub enum SyntaxKind {
     Id,
     Atom,
     Str,
+    Lst,
+    LstMatch,
 
     Error,
 
@@ -89,6 +91,7 @@ pub struct Parser<I: Iterator<Item = (SyntaxKind, String)>> {
     builder: GreenNodeBuilder<'static>,
     errors: Vec<String>,
     iter: Peekable<I>,
+    tuple: Vec<bool>,
 }
 
 impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
@@ -97,11 +100,20 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             builder,
             iter,
             errors: Default::default(),
+            tuple: Vec::new(),
         }
     }
 }
 
 impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
+    fn is_tuple(&mut self) -> bool {
+        if let Some(result) = self.tuple.last() {
+            *result
+        } else {
+            false
+        }
+    }
+
     fn peek(&mut self) -> Option<SyntaxKind> {
         self.iter.peek().map(|&(t, _)| t)
     }
@@ -140,7 +152,55 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 self.bump();
                 true
             }
+            Some(SyntaxKind::LstLeft) => {
+                self.tuple.push(false);
+
+                self.iter.next(); // skip [
+                let checkpoint = self.builder.checkpoint();
+
+                debug!("{:?}", self.peek());
+                if Some(SyntaxKind::LstRight) != self.peek() {
+                    self.parse_expr();
+                    debug!("{:?}", self.peek());
+                    if Some(SyntaxKind::OpComma) == self.peek() {
+                        self.builder
+                            .start_node_at(checkpoint, SyntaxKind::Lst.into());
+                        while Some(SyntaxKind::OpComma) == self.peek() {
+                            self.iter.next();
+                            self.parse_expr();
+                        }
+                    } else if Some(SyntaxKind::Semicolon) == self.peek() {
+                        self.builder
+                            .start_node_at(checkpoint, SyntaxKind::LstMatch.into());
+                        while Some(SyntaxKind::Semicolon) == self.peek() {
+                            self.iter.next();
+                            self.parse_expr();
+                        }
+                    } else {
+                        self.builder
+                            .start_node_at(checkpoint, SyntaxKind::Lst.into());
+                    }
+
+                    if Some(SyntaxKind::LstRight) != self.peek() {
+                        self.errors.push(format!("Expected ]"));
+                    }
+                } else {
+                    self.builder
+                        .start_node_at(checkpoint, SyntaxKind::Lst.into());
+                }
+
+                if Some(SyntaxKind::LstRight) == self.peek() {
+                    self.iter.next(); // skip maybe ]
+                }
+
+                self.builder.finish_node();
+                self.tuple.pop().unwrap();
+
+                true
+            }
             Some(SyntaxKind::ParenLeft) => {
+                self.tuple.push(true);
+
                 self.iter.next(); // skip
                 self.parse_expr();
                 if self
@@ -154,6 +214,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     self.builder.start_node(SyntaxKind::Error.into());
                     self.builder.finish_node();
                 }
+
+                self.tuple.pop().unwrap();
 
                 true
             }
@@ -364,7 +426,11 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     }
 
     fn parse_tuple(&mut self) -> bool {
-        self.handle_operation(&[SyntaxKind::OpComma], Self::parse_add)
+        if self.is_tuple() {
+            self.handle_operation(&[SyntaxKind::OpComma], Self::parse_add)
+        } else {
+            self.parse_add()
+        }
     }
 
     fn parse_asg(&mut self) -> bool {
@@ -574,6 +640,22 @@ impl TryInto<Syntax> for SyntaxElement {
                             Box::new(true_expr.try_into()?),
                             Box::new(false_expr.try_into()?),
                         ))
+                    }
+                    SyntaxKind::Lst => {
+                        let mut lst = Vec::new();
+                        for child in children {
+                            lst.push(child.try_into()?);
+                        }
+
+                        Ok(Syntax::Lst(lst))
+                    }
+                    SyntaxKind::LstMatch => {
+                        let mut lst = Vec::new();
+                        for child in children {
+                            lst.push(child.try_into()?);
+                        }
+
+                        Ok(Syntax::LstMatch(lst))
                     }
                     _ => Err(InterpreterError::UnexpectedExpressionEmpty()),
                 }

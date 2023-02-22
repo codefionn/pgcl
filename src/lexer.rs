@@ -206,8 +206,8 @@ fn dec_to_big_rational(num: &str) -> num::BigRational {
 }
 
 #[inline]
-fn hex_to_big_rational(num: &str) -> num::BigRational {
-    num::BigRational::from_str_radix(&num[2..], 16).unwrap()
+fn hex_to_big_rational(num: &str) -> Result<num::BigRational, num::rational::ParseRatioError> {
+    num::BigRational::from_str_radix(&num[2..], 16)
 }
 
 #[inline]
