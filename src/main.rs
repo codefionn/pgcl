@@ -1,4 +1,5 @@
 #![feature(box_patterns)]
+#![feature(iterator_try_collect)]
 
 mod errors;
 mod execute;

@@ -1,7 +1,6 @@
 ///! This module is for creating an untyped AST and creating an typed AST from it
 use std::{iter::Peekable, str::FromStr};
 
-use bevy::{app::AppLabel, prelude::debug};
 use bigdecimal::BigDecimal;
 use num::Num;
 use rowan::{GreenNodeBuilder, NodeOrToken};
@@ -55,6 +54,9 @@ pub enum SyntaxKind {
     Str,
     Lst,
     LstMatch,
+    Map,
+    MapMatch,
+    MapElement,
 
     Error,
 
@@ -159,10 +161,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 self.iter.next(); // skip [
                 let checkpoint = self.builder.checkpoint();
 
-                debug!("{:?}", self.peek());
                 if Some(SyntaxKind::LstRight) != self.peek() {
                     self.parse_expr();
-                    debug!("{:?}", self.peek());
                     if Some(SyntaxKind::OpComma) == self.peek() {
                         self.builder
                             .start_node_at(checkpoint, SyntaxKind::Lst.into());
@@ -196,6 +196,70 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
 
                 self.builder.finish_node();
                 self.tuple.pop().unwrap();
+
+                true
+            }
+            Some(SyntaxKind::MapLeft) => {
+                self.iter.next();
+
+                let checkpoint = self.builder.checkpoint();
+
+                if Some(SyntaxKind::MapRight) != self.peek() {
+                    self.tuple.push(false);
+
+                    let mut has_errors = false;
+                    let mut is_match = false;
+
+                    while [SyntaxKind::Id, SyntaxKind::Str]
+                        .iter()
+                        .any(|x| Some(*x) == self.peek())
+                    {
+                        self.builder.start_node(SyntaxKind::MapElement.into());
+                        if Some(SyntaxKind::Str) == self.peek() {
+                            self.bump();
+
+                            if Some(SyntaxKind::Id) == self.peek() {
+                                self.bump();
+                                is_match = true;
+                            }
+                        } else {
+                            self.bump();
+                        }
+
+                        if Some(SyntaxKind::OpMap) == self.peek() {
+                            self.iter.next(); // skip :
+
+                            self.parse_expr();
+                        } else {
+                            is_match = true;
+                        }
+
+                        self.builder.finish_node();
+
+                        if Some(SyntaxKind::OpComma) == self.peek() {
+                            self.iter.next();
+                        }
+                    }
+
+                    if has_errors {
+                        self.builder
+                            .start_node_at(checkpoint, SyntaxKind::Error.into());
+                    } else if is_match {
+                        self.builder
+                            .start_node_at(checkpoint, SyntaxKind::MapMatch.into());
+                    } else {
+                        self.builder
+                            .start_node_at(checkpoint, SyntaxKind::Map.into());
+                    }
+
+                    self.builder.finish_node();
+
+                    self.tuple.pop().unwrap();
+                }
+
+                if Some(SyntaxKind::MapRight) == self.peek() {
+                    self.iter.next(); // skip
+                }
 
                 true
             }
@@ -657,6 +721,66 @@ impl TryInto<Syntax> for SyntaxElement {
                         }
 
                         Ok(Syntax::LstMatch(lst))
+                    }
+                    SyntaxKind::Map => {
+                        let mut map = Vec::new();
+                        let mut children = children.into_iter();
+                        while let Some(NodeOrToken::Node(map_element)) = children.next() {
+                            let mut children = map_element.children_with_tokens().into_iter();
+                            let id = children.next().unwrap().into_token().unwrap();
+                            let val: SyntaxElement = children.next().unwrap().into();
+
+                            map.push((
+                                id.text().to_string(),
+                                (val.try_into()?, {
+                                    let id: SyntaxKind = id.kind().into();
+                                    id == SyntaxKind::Id
+                                }),
+                            ));
+                        }
+
+                        Ok(Syntax::Map(map.into_iter().collect()))
+                    }
+                    SyntaxKind::MapMatch => {
+                        let mut map = Vec::new();
+                        let mut children = children.into_iter();
+                        while let Some(NodeOrToken::Node(map_element)) = children.next() {
+                            let mut children = map_element.children_with_tokens().peekable();
+                            let key = children.next().unwrap().into_token().unwrap();
+                            let key_into = if key.kind() == SyntaxKind::Id {
+                                None
+                            } else if children
+                                .peek()
+                                .map(|x| x.kind() == SyntaxKind::Id)
+                                .unwrap_or(false)
+                            {
+                                Some(
+                                    children
+                                        .next()
+                                        .unwrap()
+                                        .into_token()
+                                        .unwrap()
+                                        .text()
+                                        .to_string(),
+                                )
+                            } else {
+                                None
+                            };
+
+                            let val = children
+                                .next()
+                                .map(|x| -> SyntaxElement { x.into() })
+                                .map(|x| x.try_into())
+                                .transpose()?;
+                            map.push((
+                                key.text().to_string(),
+                                key_into,
+                                val,
+                                key.kind() == SyntaxKind::Id,
+                            ));
+                        }
+
+                        Ok(Syntax::MapMatch(map))
                     }
                     _ => Err(InterpreterError::UnexpectedExpressionEmpty()),
                 }

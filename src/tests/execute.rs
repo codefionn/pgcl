@@ -316,3 +316,49 @@ fn pattern_match_list() {
     assert_eq!(Ok(format!("2")), parse_to_str("len [0, 1]", &mut ctx));
     assert_eq!(Ok(format!("3")), parse_to_str("len [0, 1, 2]", &mut ctx));
 }
+
+#[test]
+fn test_map() {
+    assert_eq!(
+        Ok("\"Hello, world\"".to_string()),
+        parse_to_str(
+            "let {x} = {x: \"Hello, world\"} in x",
+            &mut Context::default()
+        )
+    );
+    assert_eq!(
+        Ok("\"Hello, world\"".to_string()),
+        parse_to_str(
+            "let {x} = {x: \"Hello, world\", y: 0} in x",
+            &mut Context::default()
+        )
+    );
+    assert_eq!(
+        Ok("\"Hello, world\"".to_string()),
+        parse_to_str(
+            "let {x} = {y: 0, x: \"Hello, world\"} in x",
+            &mut Context::default()
+        )
+    );
+    assert_eq!(
+        Ok("\"Hello, world\"".to_string()),
+        parse_to_str(
+            "let {\"x\" a} = {y: 0, x: \"Hello, world\"} in a",
+            &mut Context::default()
+        )
+    );
+    assert_eq!(
+        Ok("\"Hello, world\"".to_string()),
+        parse_to_str(
+            "let {\"x\": y} = {y: 0, x: \"Hello, world\"} in y",
+            &mut Context::default()
+        )
+    );
+    assert_eq!(
+        Ok("10".to_string()),
+        parse_to_str(
+            "if let {\"z\"} = {y: 0, x: \"Hello, world\"} then z else 10",
+            &mut Context::default()
+        )
+    );
+}

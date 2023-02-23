@@ -1,3 +1,3 @@
+mod execute;
 mod lexer;
 mod parser;
-mod execute;

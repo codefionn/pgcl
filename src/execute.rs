@@ -1,7 +1,7 @@
 use bevy::{prelude::*, utils::HashSet};
 
 use bigdecimal::BigDecimal;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use tailcall::tailcall;
 
 use crate::errors::InterpreterError;
@@ -63,6 +63,17 @@ pub enum Syntax {
         /* expr_false: */ Box<Syntax>,
     ),
     Id(/* id: */ String),
+    Map(
+        /* map: */ BTreeMap<String, (Syntax, /* is_id: */ bool)>,
+    ),
+    MapMatch(
+        Vec<(
+            String,
+            Option<String>,
+            Option<Syntax>,
+            /* is_id: */ bool,
+        )>,
+    ),
     UnexpectedArguments(),
     ValAny(),
     ValInt(/* num: */ num::BigInt),
@@ -230,6 +241,22 @@ impl Syntax {
             Self::LstMatch(lst) => {
                 Self::LstMatch(lst.into_iter().map(|expr| expr.reduce()).collect())
             }
+            Self::Map(map) => {
+                let map = map
+                    .into_iter()
+                    .map(|(key, (val, is_id))| (key, (val.reduce(), is_id)))
+                    .collect();
+                Self::Map(map)
+            }
+            Self::MapMatch(map) => {
+                let map = map
+                    .into_iter()
+                    .map(|(key, into_key, val, is_id)| {
+                        (key, into_key, val.map(|expr| expr.reduce()), is_id)
+                    })
+                    .collect();
+                Self::MapMatch(map)
+            }
             Self::UnexpectedArguments() => self,
         }
     }
@@ -313,6 +340,29 @@ impl Syntax {
                     .map(|expr| expr.replace_args(key, value))
                     .collect(),
             ),
+            Self::Map(map) => {
+                let map = map
+                    .into_iter()
+                    .map(|(map_key, (map_val, is_id))| {
+                        (map_key, (map_val.replace_args(&key, value), is_id))
+                    })
+                    .collect();
+                Self::Map(map)
+            }
+            Self::MapMatch(map) => {
+                let map = map
+                    .into_iter()
+                    .map(|(map_key, map_into_key, map_val, is_id)| {
+                        (
+                            map_key,
+                            map_into_key,
+                            map_val.map(|x| x.replace_args(&key, value)),
+                            is_id,
+                        )
+                    })
+                    .collect();
+                Self::MapMatch(map)
+            }
         }
     }
 
@@ -368,6 +418,22 @@ impl Syntax {
             }
             Self::LstMatch(lst) => {
                 result.extend(lst.into_iter().map(|expr| expr.get_args()).flatten());
+            }
+            Self::Map(map) => {
+                result.extend(
+                    map.iter()
+                        .filter(|(_, (_, is_id))| *is_id)
+                        .map(|(id, _)| id.clone()),
+                );
+            }
+            Self::MapMatch(map) => {
+                result.extend(map.iter().map(|(key, into_key, _, _)| {
+                    if let Some(into_key) = into_key {
+                        into_key.clone()
+                    } else {
+                        key.clone()
+                    }
+                }));
             }
         }
 
@@ -516,14 +582,16 @@ impl Syntax {
                 }
             }
             Self::Let((lhs, rhs), expr) => {
-                set_values_in_context(&lhs, &rhs, &mut values_defined_here, context);
+                if !set_values_in_context(&lhs, &rhs, &mut values_defined_here, context) {
+                    Ok(*expr)
+                } else {
+                    let mut result = (*expr).clone();
+                    for (key, value) in remove_values(context, &values_defined_here).into_iter() {
+                        result = result.replace_args(&key, &value);
+                    }
 
-                let mut result = (*expr).clone();
-                for (key, value) in remove_values(context, &values_defined_here).into_iter() {
-                    result = result.replace_args(&key, &value);
+                    Ok(result)
                 }
-
-                Ok(result)
             }
             Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValInt(y)) => {
                 Ok((x >= y).into())
@@ -649,6 +717,19 @@ impl Syntax {
 
                 Ok(Self::LstMatch(result))
             }
+            Self::Map(map) => {
+                let map = map
+                    .into_iter()
+                    .map(
+                        |(key, (val, is_id))| -> Result<(String, (Syntax, bool)), InterpreterError> {
+                            Ok((key, (val.execute_once(false, context)?, is_id)))
+                        },
+                    )
+                    .try_collect()?;
+
+                Ok(Self::Map(map))
+            }
+            Self::MapMatch(_) => Ok(self),
         }
         .map(|expr| expr.reduce())
     }
@@ -711,6 +792,24 @@ impl std::fmt::Display for BiOpType {
 
 impl std::fmt::Display for Syntax {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn val_str(x: &String) -> String {
+            format!(
+                "\"{}\"",
+                x.chars()
+                    .into_iter()
+                    .map(|c| match c {
+                        '\\' => format!("\\"),
+                        '\n' => format!("\\n"),
+                        '\r' => format!("\\r"),
+                        '\t' => format!("\\t"),
+                        '\0' => format!("\\0"),
+                        '\"' => format!("\\\""),
+                        c => format!("{}", c),
+                    })
+                    .collect::<String>()
+            )
+        }
+
         f.write_str(
             match self {
                 Self::Lambda(id, expr) => format!("(\\{} {})", id, expr.to_string()),
@@ -739,21 +838,7 @@ impl std::fmt::Display for Syntax {
                 Self::ValFlt(x) => format!("{}", x)
                     .trim_end_matches(|c| c == '0' || c == '.')
                     .to_string(),
-                Self::ValStr(x) => format!(
-                    "\"{}\"",
-                    x.chars()
-                        .into_iter()
-                        .map(|c| match c {
-                            '\\' => format!("\\"),
-                            '\n' => format!("\\n"),
-                            '\r' => format!("\\r"),
-                            '\t' => format!("\\t"),
-                            '\0' => format!("\\0"),
-                            '\"' => format!("\\\""),
-                            c => format!("{}", c),
-                        })
-                        .collect::<String>()
-                ),
+                Self::ValStr(x) => val_str(x),
                 Self::ValAtom(x) => format!("@{}", x),
                 Self::Lst(lst) => format!(
                     "[{}]",
@@ -776,6 +861,46 @@ impl std::fmt::Display for Syntax {
                                 format!("{}", y)
                             } else {
                                 format!("{};{}", x, y)
+                            }
+                        })
+                ),
+                Self::Map(map) => format!(
+                    "{{{}}}",
+                    map.iter()
+                        .map(|(key, (val, is_id))| format!(
+                            "{}: {}",
+                            if *is_id { key.clone() } else { val_str(key) },
+                            val
+                        ))
+                        .fold(String::new(), |x, y| {
+                            if x.is_empty() {
+                                y
+                            } else {
+                                format!("{}, {}", x, y)
+                            }
+                        })
+                ),
+                Self::MapMatch(map) => format!(
+                    "{{{}}}",
+                    map.iter()
+                        .map(|(key, key_into, val, is_id)| {
+                            let key = if let Some(key_into) = key_into {
+                                format!("{} {}", val_str(key), key_into)
+                            } else {
+                                format!("{}", if *is_id { key.clone() } else { val_str(key) })
+                            };
+
+                            if let Some(val) = val {
+                                format!("{}: {}", key, val)
+                            } else {
+                                key
+                            }
+                        })
+                        .fold(String::new(), |x, y| {
+                            if x.is_empty() {
+                                y
+                            } else {
+                                format!("{}, {}", x, y)
                             }
                         })
                 ),
@@ -905,7 +1030,6 @@ fn set_values_in_context(
         }
         (Syntax::ValAny(), _) => true,
         (Syntax::Id(id), expr) => {
-            debug!("{} = {}", id, expr);
             insert_into_values(id, expr.clone(), ctx);
             true
         }
@@ -932,9 +1056,6 @@ fn set_values_in_context(
         {
             let mut lst1: &[Syntax] = &lst1;
             for i in 0..lst0.len() {
-                debug!("{}", i);
-                debug!("{:?}", lst0[i]);
-                debug!("{:?}", lst1);
                 if i == lst0.len() - 1 {
                     let lst1 = Syntax::Lst(lst1.into());
                     if !set_values_in_context(&lst0[i], &lst1, values_defined_here, ctx) {
@@ -970,6 +1091,59 @@ fn set_values_in_context(
                 values_defined_here,
                 ctx,
             )
+        }
+        (Syntax::Map(lhs), Syntax::Map(rhs)) => {
+            for (key, (val, is_id)) in lhs.iter() {
+                if let Some((rhs, _)) = rhs.get(key) {
+                    if *is_id {
+                        set_values_in_context(
+                            &Syntax::Id(key.clone()),
+                            rhs,
+                            values_defined_here,
+                            ctx,
+                        );
+                    }
+
+                    if !set_values_in_context(&val, &rhs, values_defined_here, ctx) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+
+            true
+        }
+        (Syntax::MapMatch(lhs), Syntax::Map(rhs)) => {
+            for (key, key_into, val, is_id) in lhs.iter() {
+                if let Some((rhs, _)) = rhs.get(key) {
+                    if *is_id {
+                        set_values_in_context(
+                            &Syntax::Id(key.clone()),
+                            rhs,
+                            values_defined_here,
+                            ctx,
+                        );
+                    } else if let Some(key) = key_into {
+                        set_values_in_context(
+                            &Syntax::Id(key.clone()),
+                            rhs,
+                            values_defined_here,
+                            ctx,
+                        );
+                    }
+
+                    if let Some(val) = val {
+                        if !set_values_in_context(&val, &rhs, values_defined_here, ctx) {
+                            return false;
+                        }
+                    }
+                } else {
+                    return false;
+                }
+            }
+
+            true
         }
 
         (expr0, expr1) => expr0.eval_equal(expr1),

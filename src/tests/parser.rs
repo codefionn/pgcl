@@ -45,3 +45,12 @@ fn parse_let() {
         parse_to_str("let x = 0; y = 1 in x")
     );
 }
+
+#[test]
+fn parse_map() {
+    assert_eq!(Ok(r"{x}".to_string()), parse_to_str("{x}"));
+    assert_eq!(
+        Ok("(let {x} = {x: \"Hello, world\"} in x)".to_string()),
+        parse_to_str("let {x} = {x: \"Hello, world\"} in x")
+    );
+}
