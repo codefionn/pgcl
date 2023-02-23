@@ -63,10 +63,10 @@ fn test_id() {
 fn test_atom() {
     assert_eq!(
         Some(Token::Atom(format!("test"))),
-        Token::lexer(":test").into_iter().next()
+        Token::lexer("@test").into_iter().next()
     );
     assert_eq!(
         Some(Token::Atom(format!("x"))),
-        Token::lexer(":x").into_iter().next()
+        Token::lexer("@x").into_iter().next()
     );
 }

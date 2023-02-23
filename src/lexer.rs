@@ -77,6 +77,9 @@ pub enum Token {
     #[token("!==")]
     OpStrictNeq,
 
+    #[token(":")]
+    OpMap,
+
     #[token(";")]
     Semicolon,
 
@@ -108,7 +111,7 @@ pub enum Token {
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Id(String),
 
-    #[regex(r":[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice()[1..].to_string())]
+    #[regex(r"@[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice()[1..].to_string())]
     Atom(String),
 
     // Yeah, understanding this regex in the future will be kinda hard
@@ -137,8 +140,8 @@ impl Token {
             let slice = match tok.clone() {
                 Lambda | ParenLeft | ParenRight | LstLeft | LstRight | MapLeft | MapRight
                 | OpAdd | OpSub | OpMul | OpDiv | Unpack | OpPeriod | OpComma | OpAsg | OpEq
-                | OpStrictEq | OpNeq | OpStrictNeq | KwIn | KwLet | NewLine | Semicolon | Any
-                | OpLeq | OpGeq | OpGt | OpLt | KwIf | KwElse | KwThen | Error => {
+                | OpStrictEq | OpNeq | OpStrictNeq | OpMap | KwIn | KwLet | NewLine | Semicolon
+                | Any | OpLeq | OpGeq | OpGt | OpLt | KwIf | KwElse | KwThen | Error => {
                     lex.slice().to_string()
                 }
 
@@ -182,6 +185,7 @@ impl TryInto<SyntaxKind> for Token {
             Token::OpLeq => Ok(SyntaxKind::OpLeq),
             Token::OpGt => Ok(SyntaxKind::OpGt),
             Token::OpLt => Ok(SyntaxKind::OpLt),
+            Token::OpMap => Ok(SyntaxKind::OpMap),
             Token::Semicolon => Ok(SyntaxKind::Semicolon),
             Token::KwIf => Ok(SyntaxKind::If),
             Token::KwThen => Ok(SyntaxKind::KwThen),

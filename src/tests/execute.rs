@@ -56,11 +56,11 @@ fn add_floats() {
 #[test]
 fn eq() {
     assert_eq!(
-        Ok(format!(":true")),
+        Ok(format!("@true")),
         parse_to_str("2 == 2", &mut Default::default())
     );
     assert_eq!(
-        Ok(format!(":false")),
+        Ok(format!("@false")),
         parse_to_str("3 == 2", &mut Default::default())
     );
 }
@@ -76,11 +76,11 @@ fn add_str() {
 #[test]
 fn neq() {
     assert_eq!(
-        Ok(format!(":false")),
+        Ok(format!("@false")),
         parse_to_str("2 != 2", &mut Default::default())
     );
     assert_eq!(
-        Ok(format!(":true")),
+        Ok(format!("@true")),
         parse_to_str("3 != 2", &mut Default::default())
     );
 }
@@ -125,42 +125,42 @@ fn fn_add_fn_tuple() {
 fn op_geq() {
     let mut ctx = Context::default();
     assert!(parse_to_str(r"add x y = x + y", &mut ctx).is_ok());
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 >= 2", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 >= 3", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 >= 0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 >= 1", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 >= 5", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"1 >= 5", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"2 >= 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 >= 2", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 >= 3", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 >= 0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 >= 1", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 >= 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"1 >= 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"2 >= 5", &mut ctx));
 
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 >= 2.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 >= 3.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 >= 0.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 >= 1.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 >= 5.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"1 >= 5.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"2 >= 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 >= 2.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 >= 3.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 >= 0.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 >= 1.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 >= 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"1 >= 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"2 >= 5.0", &mut ctx));
 
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5.0 >= 2", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5.0 >= 3", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5.0 >= 0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5.0 >= 1", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5.0 >= 5", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"1.0 >= 5", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"2.0 >= 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5.0 >= 2", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5.0 >= 3", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5.0 >= 0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5.0 >= 1", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5.0 >= 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"1.0 >= 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"2.0 >= 5", &mut ctx));
 
     assert_eq!(
-        Ok(format!(":true")),
+        Ok(format!("@true")),
         parse_to_str(r"(add 2 4) >= 5", &mut ctx)
     );
 
     assert_eq!(
-        Ok(format!(":true")),
+        Ok(format!("@true")),
         parse_to_str(r"(add 2 3) >= 5", &mut ctx)
     );
 
     assert_eq!(
-        Ok(format!(":false")),
+        Ok(format!("@false")),
         parse_to_str(r"(add 2 2) >= 5", &mut ctx)
     );
 }
@@ -169,42 +169,42 @@ fn op_geq() {
 fn op_gt() {
     let mut ctx = Context::default();
     assert!(parse_to_str(r"add x y = x + y", &mut ctx).is_ok());
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 > 2", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 > 3", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 > 0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 > 1", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 > 5", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"1 > 5", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"2 > 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 > 2", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 > 3", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 > 0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 > 1", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 > 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"1 > 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"2 > 5", &mut ctx));
 
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 > 2.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 > 3.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 > 0.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 > 1.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 > 5.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"1 > 5.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"2 > 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 > 2.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 > 3.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 > 0.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 > 1.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 > 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"1 > 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"2 > 5.0", &mut ctx));
 
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5.0 > 2", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5.0 > 3", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5.0 > 0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5.0 > 1", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5.0 > 5", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"1.0 > 5", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"2.0 > 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5.0 > 2", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5.0 > 3", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5.0 > 0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5.0 > 1", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5.0 > 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"1.0 > 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"2.0 > 5", &mut ctx));
 
     assert_eq!(
-        Ok(format!(":true")),
+        Ok(format!("@true")),
         parse_to_str(r"(add 2 4) > 5", &mut ctx)
     );
 
     assert_eq!(
-        Ok(format!(":false")),
+        Ok(format!("@false")),
         parse_to_str(r"(add 2 3) > 5", &mut ctx)
     );
 
     assert_eq!(
-        Ok(format!(":false")),
+        Ok(format!("@false")),
         parse_to_str(r"(add 2 2) > 5", &mut ctx)
     );
 }
@@ -213,42 +213,42 @@ fn op_gt() {
 fn op_leq() {
     let mut ctx = Context::default();
     assert!(parse_to_str(r"add x y = x + y", &mut ctx).is_ok());
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 <= 2", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 <= 3", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 <= 0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 <= 1", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 <= 5", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"1 <= 5", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"2 <= 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 <= 2", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 <= 3", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 <= 0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 <= 1", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 <= 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"1 <= 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"2 <= 5", &mut ctx));
 
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 <= 2.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 <= 3.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 <= 0.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 <= 1.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5 <= 5.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"1 <= 5.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"2 <= 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 <= 2.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 <= 3.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 <= 0.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 <= 1.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5 <= 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"1 <= 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"2 <= 5.0", &mut ctx));
 
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5.0 <= 2", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5.0 <= 3", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5.0 <= 0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5.0 <= 1", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"5.0 <= 5", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"1.0 <= 5", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"2.0 <= 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5.0 <= 2", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5.0 <= 3", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5.0 <= 0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5.0 <= 1", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"5.0 <= 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"1.0 <= 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"2.0 <= 5", &mut ctx));
 
     assert_eq!(
-        Ok(format!(":false")),
+        Ok(format!("@false")),
         parse_to_str(r"(add 2 4) <= 5", &mut ctx)
     );
 
     assert_eq!(
-        Ok(format!(":true")),
+        Ok(format!("@true")),
         parse_to_str(r"(add 2 3) <= 5", &mut ctx)
     );
 
     assert_eq!(
-        Ok(format!(":true")),
+        Ok(format!("@true")),
         parse_to_str(r"(add 2 2) <= 5", &mut ctx)
     );
 }
@@ -257,42 +257,42 @@ fn op_leq() {
 fn op_lt() {
     let mut ctx = Context::default();
     assert!(parse_to_str(r"add x y = x + y", &mut ctx).is_ok());
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 < 2", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 < 3", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 < 0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 < 1", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 < 5", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"1 < 5", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"2 < 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 < 2", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 < 3", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 < 0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 < 1", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 < 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"1 < 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"2 < 5", &mut ctx));
 
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 < 2.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 < 3.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 < 0.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 < 1.0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5 < 5.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"1 < 5.0", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"2 < 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 < 2.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 < 3.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 < 0.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 < 1.0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5 < 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"1 < 5.0", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"2 < 5.0", &mut ctx));
 
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5.0 < 2", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5.0 < 3", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5.0 < 0", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5.0 < 1", &mut ctx));
-    assert_eq!(Ok(format!(":false")), parse_to_str(r"5.0 < 5", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"1.0 < 5", &mut ctx));
-    assert_eq!(Ok(format!(":true")), parse_to_str(r"2.0 < 5", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5.0 < 2", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5.0 < 3", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5.0 < 0", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5.0 < 1", &mut ctx));
+    assert_eq!(Ok(format!("@false")), parse_to_str(r"5.0 < 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"1.0 < 5", &mut ctx));
+    assert_eq!(Ok(format!("@true")), parse_to_str(r"2.0 < 5", &mut ctx));
 
     assert_eq!(
-        Ok(format!(":false")),
+        Ok(format!("@false")),
         parse_to_str(r"(add 2 4) < 5", &mut ctx)
     );
 
     assert_eq!(
-        Ok(format!(":false")),
+        Ok(format!("@false")),
         parse_to_str(r"(add 2 3) < 5", &mut ctx)
     );
 
     assert_eq!(
-        Ok(format!(":true")),
+        Ok(format!("@true")),
         parse_to_str(r"(add 2 2) < 5", &mut ctx)
     );
 }

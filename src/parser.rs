@@ -35,6 +35,7 @@ pub enum SyntaxKind {
     OpGt,
     OpLt,
     OpStrictNeq,
+    OpMap,
 
     Semicolon,
 

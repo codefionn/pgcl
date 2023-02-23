@@ -754,7 +754,7 @@ impl std::fmt::Display for Syntax {
                         })
                         .collect::<String>()
                 ),
-                Self::ValAtom(x) => format!(":{}", x),
+                Self::ValAtom(x) => format!("@{}", x),
                 Self::Lst(lst) => format!(
                     "[{}]",
                     lst.iter()
