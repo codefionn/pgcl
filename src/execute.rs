@@ -813,7 +813,7 @@ impl std::fmt::Display for Syntax {
         f.write_str(
             match self {
                 Self::Lambda(id, expr) => format!("(\\{} {})", id, expr.to_string()),
-                Self::Call(lhs, rhs) => format!("{} {}", lhs, rhs),
+                Self::Call(lhs, rhs) => format!("({} {})", lhs, rhs),
                 Self::Asg(lhs, rhs) => format!("({} = {})", lhs.to_string(), rhs.to_string()),
                 Self::Tuple(lhs, rhs) => format!("({}, {})", lhs.to_string(), rhs.to_string()),
                 Self::Let((lhs, rhs), expr) => format!("(let {} = {} in {})", lhs, rhs, expr),

@@ -122,6 +122,36 @@ fn fn_add_fn_tuple() {
 }
 
 #[test]
+fn test_fn_atom() {
+    let mut ctx = Context::default();
+    assert!(parse_to_str("add @zero y = y", &mut ctx).is_ok());
+    assert!(parse_to_str("add (@succ x) y = add x (@succ y)", &mut ctx).is_ok());
+    assert_eq!(
+        Ok(format!(r"@zero")),
+        parse_to_str(r"add @zero @zero", &mut ctx)
+    );
+    assert_eq!(
+        Ok(format!(r"(@succ @zero)")),
+        parse_to_str(r"add @zero (@succ @zero)", &mut ctx)
+    );
+    assert_eq!(
+        Ok(format!(r"(@succ (@succ @zero))")),
+        parse_to_str(r"add @zero (@succ (@succ @zero))", &mut ctx)
+    );
+    assert_eq!(
+        Ok(format!(r"(@succ (@succ (@succ @zero)))")),
+        parse_to_str(r"add (@succ @zero) (@succ (@succ @zero))", &mut ctx)
+    );
+    assert_eq!(
+        Ok(format!(r"(@succ (@succ (@succ (@succ (@succ @zero)))))")),
+        parse_to_str(
+            r"add (@succ (@succ (@succ @zero))) (@succ (@succ @zero))",
+            &mut ctx
+        )
+    );
+}
+
+#[test]
 fn op_geq() {
     let mut ctx = Context::default();
     assert!(parse_to_str(r"add x y = x + y", &mut ctx).is_ok());
@@ -358,6 +388,13 @@ fn test_map() {
         Ok("10".to_string()),
         parse_to_str(
             "if let {\"z\"} = {y: 0, x: \"Hello, world\"} then z else 10",
+            &mut Context::default()
+        )
+    );
+    assert_eq!(
+        Ok("\"Hello, world\"".to_string()),
+        parse_to_str(
+            "let {\"x\": (@succ y)} = {y: 0, x: (@succ \"Hello, world\")} in y",
             &mut Context::default()
         )
     );
