@@ -57,6 +57,7 @@ pub enum SyntaxKind {
     Map,
     MapMatch,
     MapElement,
+    ExplicitExpr,
 
     Error,
 
@@ -267,6 +268,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 self.tuple.push(true);
 
                 self.iter.next(); // skip
+
+                self.builder.start_node(SyntaxKind::ExplicitExpr.into());
                 self.parse_expr();
                 if self
                     .peek()
@@ -276,9 +279,9 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     self.iter.next(); // skip
                 } else {
                     self.errors.push(format!("Expected )"));
-                    self.builder.start_node(SyntaxKind::Error.into());
-                    self.builder.finish_node();
                 }
+
+                self.builder.finish_node();
 
                 self.tuple.pop().unwrap();
 
@@ -536,6 +539,13 @@ impl TryInto<Syntax> for SyntaxElement {
                         } else {
                             children.into_iter().next().unwrap().try_into()
                         }
+                    }
+                    SyntaxKind::ExplicitExpr => {
+                        let child = children
+                            .next()
+                            .ok_or(InterpreterError::ExpectedExpression())?;
+
+                        Ok(Syntax::ExplicitExpr(Box::new(child.try_into()?)))
                     }
                     SyntaxKind::Lambda => {
                         let id = children

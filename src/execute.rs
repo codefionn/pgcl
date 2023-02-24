@@ -74,6 +74,7 @@ pub enum Syntax {
             /* is_id: */ bool,
         )>,
     ),
+    ExplicitExpr(Box<Syntax>),
     UnexpectedArguments(),
     ValAny(),
     ValInt(/* num: */ num::BigInt),
@@ -230,7 +231,7 @@ impl Syntax {
             Self::Call(lhs, rhs) => Self::Call(Box::new(lhs.reduce()), Box::new(rhs.reduce())),
             Self::Let((box Self::Id(id), rhs), expr) => expr.replace_args(&id, &rhs),
             Self::Let(_, _) => self,
-            Self::Asg(lhs, rhs) => Self::Asg(Box::new(lhs.reduce()), Box::new(rhs.reduce())),
+            Self::Asg(lhs, rhs) => Self::Asg(lhs, Box::new(rhs.reduce())),
             Self::If(cond, lhs, rhs) => Self::If(
                 Box::new(cond.reduce()),
                 Box::new(lhs.reduce()),
@@ -257,6 +258,7 @@ impl Syntax {
                     .collect();
                 Self::MapMatch(map)
             }
+            Self::ExplicitExpr(expr) => expr.reduce(),
             Self::UnexpectedArguments() => self,
         }
     }
@@ -363,6 +365,7 @@ impl Syntax {
                     .collect();
                 Self::MapMatch(map)
             }
+            Self::ExplicitExpr(expr) => Self::ExplicitExpr(Box::new(expr.replace_args(key, value))),
         }
     }
 
@@ -435,6 +438,9 @@ impl Syntax {
                     }
                 }));
             }
+            Self::ExplicitExpr(expr) => {
+                result.extend(expr.get_args());
+            }
         }
 
         result
@@ -443,7 +449,7 @@ impl Syntax {
     fn execute_once(self, first: bool, context: &mut Context) -> Result<Syntax, InterpreterError> {
         let mut values_defined_here = Vec::new();
         match self.clone().reduce() {
-            Self::Id(id) => Ok(if let Some(obj) = get_from_values(&id, context) {
+            Self::Id(id) => Ok(if let Some(obj) = get_from_values(&id, context, &mut values_defined_here) {
                 obj.clone()
             } else {
                 self
@@ -455,7 +461,6 @@ impl Syntax {
             Self::ValAtom(_) => Ok(self),
             Self::Lambda(_, _) => Ok(self),
             Self::IfLet(asgs, expr_true, expr_false) => {
-                let mut cond_result = true;
                 for (lhs, rhs) in asgs {
                     if !set_values_in_context(
                         &lhs,
@@ -463,25 +468,20 @@ impl Syntax {
                         &mut values_defined_here,
                         context,
                     ) {
-                        cond_result = false;
-                        remove_values(context, &values_defined_here);
-                        break;
+                        remove_values(context, &mut values_defined_here);
+                        return expr_false.execute_once(false, context)
                     }
                 }
 
-                if cond_result {
-                    let mut result = expr_true.clone();
-                    for (key, value) in remove_values(context, &values_defined_here).into_iter() {
-                        result = Box::new(result.replace_args(&key, &value));
-                    }
-
-                    Ok(*result)
-                } else {
-                    expr_false.execute_once(false, context)
+                let mut result = expr_true.clone();
+                for (key, value) in remove_values(context, &mut values_defined_here).into_iter() {
+                    result = Box::new(result.replace_args(&key, &value));
                 }
+
+                Ok(*result)
             }
             Self::Call(box Syntax::Id(id), body) => {
-                if let Some(value) = get_from_values(&id, context) {
+                if let Some(value) = get_from_values(&id, context, &mut values_defined_here) {
                     Ok(Self::Call(Box::new(value), body))
                 } else {
                     Ok(self)
@@ -508,7 +508,7 @@ impl Syntax {
                 if !first {
                     Ok(self)
                 } else {
-                    insert_into_values(&id, *rhs, context);
+                    insert_into_values(&id, *rhs, context, &mut values_defined_here);
                     Ok(Self::ValAny())
                 }
             }
@@ -586,7 +586,7 @@ impl Syntax {
                     Ok(*expr)
                 } else {
                     let mut result = (*expr).clone();
-                    for (key, value) in remove_values(context, &values_defined_here).into_iter() {
+                    for (key, value) in remove_values(context, &mut values_defined_here).into_iter() {
                         result = result.replace_args(&key, &value);
                     }
 
@@ -730,6 +730,7 @@ impl Syntax {
                 Ok(Self::Map(map))
             }
             Self::MapMatch(_) => Ok(self),
+            Self::ExplicitExpr(box expr) => Ok(expr),
         }
         .map(|expr| expr.reduce())
     }
@@ -904,20 +905,28 @@ impl std::fmt::Display for Syntax {
                             }
                         })
                 ),
+                Self::ExplicitExpr(expr) => format!("{}", expr),
             }
             .as_str(),
         )
     }
 }
 
-fn insert_into_values(id: &String, syntax: Syntax, ctx: &mut Context) {
-    if let Some(stack) = ctx.values.get_mut(id) {
-        stack.push(syntax);
+fn insert_into_values(
+    id: &String,
+    syntax: Syntax,
+    ctx: &mut Context,
+    values_defined_here: &mut Vec<String>,
+) {
+    let stack = if let Some(stack) = ctx.values.get_mut(id) {
+        stack
     } else {
         ctx.values.insert(id.clone(), Default::default());
-        let stack = ctx.values.get_mut(id).unwrap();
-        stack.push(syntax);
-    }
+        ctx.values.get_mut(id).unwrap()
+    };
+
+    stack.push(syntax);
+    values_defined_here.push(id.clone());
 }
 
 fn insert_fns(id: String, syntax: (Vec<Syntax>, Syntax), ctx: &mut Context) {
@@ -930,18 +939,23 @@ fn insert_fns(id: String, syntax: (Vec<Syntax>, Syntax), ctx: &mut Context) {
     }
 }
 
-fn remove_values(ctx: &mut Context, values_defined_here: &Vec<String>) -> HashMap<String, Syntax> {
+fn remove_values(
+    ctx: &mut Context,
+    values_defined_here: &mut Vec<String>,
+) -> HashMap<String, Syntax> {
     let mut result = HashMap::with_capacity(values_defined_here.len());
 
-    for id in values_defined_here {
+    for id in values_defined_here.iter() {
         if let Some(stack) = ctx.values.get_mut(id) {
             if let Some(value) = stack.pop() {
-                if result.contains_key(id) {
+                if !result.contains_key(id) {
                     result.insert(id.clone(), value);
                 }
             }
         }
     }
+
+    values_defined_here.clear();
 
     result
 }
@@ -997,13 +1011,17 @@ fn build_fn(name: &String, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
     build_fn_with_args(&params, &params, &fns).reduce()
 }
 
-fn get_from_values(id: &String, ctx: &mut Context) -> Option<Syntax> {
+fn get_from_values(
+    id: &String,
+    ctx: &mut Context,
+    values_defined_here: &mut Vec<String>,
+) -> Option<Syntax> {
     if let Some(stack) = ctx.values.get(id) {
         stack.last().map(|syntax| syntax.clone())
     } else {
         if let Some(fns) = ctx.fns.get(id) {
             let compiled_fn = build_fn(id, fns);
-            insert_into_values(id, compiled_fn.clone(), ctx);
+            insert_into_values(id, compiled_fn.clone(), ctx, values_defined_here);
             Some(compiled_fn)
         } else {
             None
@@ -1030,7 +1048,7 @@ fn set_values_in_context(
         }
         (Syntax::ValAny(), _) => true,
         (Syntax::Id(id), expr) => {
-            insert_into_values(id, expr.clone(), ctx);
+            insert_into_values(id, expr.clone(), ctx, values_defined_here);
             true
         }
         (Syntax::BiOp(op0, a0, b0), Syntax::BiOp(op1, a1, b1)) => {
@@ -1145,7 +1163,12 @@ fn set_values_in_context(
 
             true
         }
-
+        (Syntax::ExplicitExpr(lhs), rhs) => {
+            set_values_in_context(lhs, rhs, values_defined_here, ctx)
+        }
+        (lhs, Syntax::ExplicitExpr(rhs)) => {
+            set_values_in_context(lhs, rhs, values_defined_here, ctx)
+        }
         (expr0, expr1) => expr0.eval_equal(expr1),
     }
 }
