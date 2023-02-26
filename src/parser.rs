@@ -35,6 +35,8 @@ pub enum SyntaxKind {
     OpLt,
     OpStrictNeq,
     OpMap,
+    OpPipe,
+    Pipe,
 
     Semicolon,
 
@@ -130,7 +132,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     }
 
     /// Parse value or statement
-    fn parse_val(&mut self, allow_empty: bool) -> bool {
+    fn parse_val(&mut self, first: bool, allow_empty: bool) -> bool {
         match self.peek() {
             Some(SyntaxKind::Int) => {
                 self.bump();
@@ -156,6 +158,20 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 self.bump();
                 true
             }
+            Some(SyntaxKind::OpPipe) if first => {
+                self.iter.next(); // skip |
+
+                let checkpoint = self.builder.checkpoint();
+                if self.parse_expr(first) {
+                    self.builder
+                        .start_node_at(checkpoint, SyntaxKind::Pipe.into());
+                    self.builder.finish_node();
+
+                    true
+                } else {
+                    false
+                }
+            }
             Some(SyntaxKind::LstLeft) => {
                 self.tuple.push(false);
 
@@ -163,20 +179,20 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 let checkpoint = self.builder.checkpoint();
 
                 if Some(SyntaxKind::LstRight) != self.peek() {
-                    self.parse_expr();
+                    self.parse_expr(false);
                     if Some(SyntaxKind::OpComma) == self.peek() {
                         self.builder
                             .start_node_at(checkpoint, SyntaxKind::Lst.into());
                         while Some(SyntaxKind::OpComma) == self.peek() {
                             self.iter.next();
-                            self.parse_expr();
+                            self.parse_expr(false);
                         }
                     } else if Some(SyntaxKind::Semicolon) == self.peek() {
                         self.builder
                             .start_node_at(checkpoint, SyntaxKind::LstMatch.into());
                         while Some(SyntaxKind::Semicolon) == self.peek() {
                             self.iter.next();
-                            self.parse_expr();
+                            self.parse_expr(false);
                         }
                     } else {
                         self.builder
@@ -230,7 +246,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                         if Some(SyntaxKind::OpMap) == self.peek() {
                             self.iter.next(); // skip :
 
-                            self.parse_expr();
+                            self.parse_expr(false);
                         } else {
                             is_match = true;
                         }
@@ -270,7 +286,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 self.iter.next(); // skip
 
                 self.builder.start_node(SyntaxKind::ExplicitExpr.into());
-                self.parse_expr();
+                self.parse_expr(false);
                 if self
                     .peek()
                     .map(|tok| tok == SyntaxKind::ParenRight)
@@ -301,7 +317,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 } else {
                     // parse a normal if condition
                     self.builder.start_node(SyntaxKind::If.into());
-                    self.parse_expr();
+                    self.parse_expr(false);
 
                     if self
                         .peek()
@@ -315,7 +331,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 }
 
                 // parse the true case
-                self.parse_expr();
+                self.parse_expr(false);
 
                 if self
                     .peek()
@@ -328,7 +344,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 }
 
                 // parse the else case
-                self.parse_expr();
+                self.parse_expr(false);
 
                 self.builder.finish_node();
 
@@ -339,7 +355,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
 
                 self.builder.start_node(SyntaxKind::KwLet.into());
                 self.parse_let_args(SyntaxKind::KwIn);
-                self.parse_expr();
+                self.parse_expr(false);
                 self.builder.finish_node();
 
                 true
@@ -368,7 +384,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 }
 
                 // parse the lambda expression
-                self.parse_expr();
+                self.parse_expr(false);
                 self.builder.finish_node();
 
                 true
@@ -393,7 +409,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     fn parse_let_args(&mut self, end: SyntaxKind) {
         loop {
             self.builder.start_node(SyntaxKind::BiOp.into());
-            self.parse_call();
+            self.parse_call(false);
 
             if self
                 .peek()
@@ -405,7 +421,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 self.errors.push(format!("Expected = in let expression"));
             }
 
-            self.parse_expr();
+            self.parse_expr(false);
 
             self.builder.finish_node();
 
@@ -432,9 +448,14 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     }
 
     /// Handle a binary operator expression (or just next)
-    fn handle_operation(&mut self, tokens: &[SyntaxKind], next: fn(&mut Self) -> bool) -> bool {
+    fn handle_operation(
+        &mut self,
+        first: bool,
+        tokens: &[SyntaxKind],
+        next: fn(&mut Self, bool) -> bool,
+    ) -> bool {
         let checkpoint = self.builder.checkpoint();
-        if !next(self) {
+        if !next(self, first) {
             return false;
         }
 
@@ -442,25 +463,25 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             self.builder
                 .start_node_at(checkpoint, SyntaxKind::BiOp.into());
             self.bump();
-            next(self);
+            next(self, false);
             self.builder.finish_node();
         }
 
         true
     }
 
-    fn parse_period(&mut self, next: fn(&mut Self) -> bool) -> bool {
-        self.handle_operation(&[SyntaxKind::OpPeriod], next)
+    fn parse_period(&mut self, first: bool, next: fn(&mut Self, bool) -> bool) -> bool {
+        self.handle_operation(first, &[SyntaxKind::OpPeriod], next)
     }
 
     /// Parse a lambda/function call expression
-    fn parse_call(&mut self) -> bool {
+    fn parse_call(&mut self, first: bool) -> bool {
         let maybe_call = self.builder.checkpoint();
-        if !self.parse_period(|this| this.parse_val(false)) {
+        if !self.parse_period(first, |this, first| this.parse_val(first, false)) {
             return false;
         }
 
-        while self.parse_period(|this| this.parse_val(true)) {
+        while self.parse_period(false, |this, first| this.parse_val(first, true)) {
             self.builder
                 .start_node_at(maybe_call, SyntaxKind::Call.into());
             self.builder.finish_node();
@@ -469,8 +490,9 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         true
     }
 
-    fn parse_cmp(&mut self) -> bool {
+    fn parse_cmp(&mut self, first: bool) -> bool {
         self.handle_operation(
+            first,
             &[
                 SyntaxKind::OpEq,
                 SyntaxKind::OpNeq,
@@ -485,33 +507,45 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         )
     }
 
-    fn parse_mul(&mut self) -> bool {
-        self.handle_operation(&[SyntaxKind::OpMul, SyntaxKind::OpDiv], Self::parse_cmp)
+    fn parse_mul(&mut self, first: bool) -> bool {
+        self.handle_operation(
+            first,
+            &[SyntaxKind::OpMul, SyntaxKind::OpDiv],
+            Self::parse_cmp,
+        )
     }
 
-    fn parse_add(&mut self) -> bool {
-        self.handle_operation(&[SyntaxKind::OpAdd, SyntaxKind::OpSub], Self::parse_mul)
+    fn parse_add(&mut self, first: bool) -> bool {
+        self.handle_operation(
+            first,
+            &[SyntaxKind::OpAdd, SyntaxKind::OpSub],
+            Self::parse_mul,
+        )
     }
 
-    fn parse_tuple(&mut self) -> bool {
+    fn parse_pipe(&mut self, first: bool) -> bool {
+        self.handle_operation(first, &[SyntaxKind::OpPipe], Self::parse_add)
+    }
+
+    fn parse_tuple(&mut self, first: bool) -> bool {
         if self.is_tuple() {
-            self.handle_operation(&[SyntaxKind::OpComma], Self::parse_add)
+            self.handle_operation(first, &[SyntaxKind::OpComma], Self::parse_pipe)
         } else {
-            self.parse_add()
+            self.parse_pipe(first)
         }
     }
 
-    fn parse_asg(&mut self) -> bool {
-        self.handle_operation(&[SyntaxKind::OpAsg], Self::parse_tuple)
+    fn parse_asg(&mut self, first: bool) -> bool {
+        self.handle_operation(first, &[SyntaxKind::OpAsg], Self::parse_tuple)
     }
 
-    fn parse_expr(&mut self) {
-        self.parse_asg();
+    fn parse_expr(&mut self, first: bool) -> bool {
+        self.parse_asg(first)
     }
 
     pub fn parse(mut self) -> (SyntaxNode, Vec<String>) {
         self.builder.start_node(SyntaxKind::Root.into());
-        self.parse_expr();
+        self.parse_expr(true);
         self.builder.finish_node();
 
         (SyntaxNode::new_root(self.builder.finish()), self.errors)
@@ -657,6 +691,7 @@ impl TryInto<Syntax> for SyntaxElement {
                                     SyntaxKind::OpLeq => Ok(OpLeq),
                                     SyntaxKind::OpGt => Ok(OpGt),
                                     SyntaxKind::OpLt => Ok(OpLt),
+                                    SyntaxKind::OpPipe => Ok(OpPipe),
                                     _ => Err(InterpreterError::InvalidOperator()),
                                 })?,
                                 Box::new(lhs.try_into()?),
@@ -791,6 +826,13 @@ impl TryInto<Syntax> for SyntaxElement {
                         }
 
                         Ok(Syntax::MapMatch(map))
+                    }
+                    SyntaxKind::Pipe => {
+                        let child = children
+                            .next()
+                            .ok_or(InterpreterError::ExpectedExpression())?;
+
+                        Ok(Syntax::Pipe(Box::new(child.try_into()?)))
                     }
                     _ => Err(InterpreterError::UnexpectedExpressionEmpty()),
                 }

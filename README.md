@@ -12,7 +12,7 @@ lexing and [rowan](https://github.com/rust-analyzer/rowan) for parsing.
 
 * [x] List
 * [x] JSON support
-* [ ] Pipes
+* [x] Pipes
 * [ ] Optimizations for groups with floating point numbers
 
 ## Structures

@@ -11,8 +11,12 @@ fn parse(line: &str, ctx: &mut Context) -> Result<Syntax, InterpreterError> {
     let toks = Token::lex_for_rowan(line);
     let toks: Vec<(SyntaxKind, String)> = toks
         .into_iter()
-        .map(|(tok, slice)| (tok.clone().try_into().unwrap(), slice.clone()))
-        .collect();
+        .map(
+            |(tok, slice)| -> Result<(SyntaxKind, String), InterpreterError> {
+                Ok((tok.clone().try_into()?, slice.clone()))
+            },
+        )
+        .try_collect()?;
 
     let (ast, errors) = Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse();
     if !errors.is_empty() {
@@ -38,6 +42,14 @@ fn add_integers() {
     assert_eq!(
         Ok(format!("11")),
         parse_to_str("2 + 3 * 3", &mut Default::default())
+    );
+}
+
+#[test]
+fn add_with_pipe() {
+    assert_eq!(
+        Ok(r"3".to_string()),
+        parse_to_str(r"1 | \x x + 2", &mut Context::default())
     );
 }
 

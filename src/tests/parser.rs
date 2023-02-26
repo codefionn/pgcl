@@ -54,3 +54,11 @@ fn parse_map() {
         parse_to_str("let {x} = {x: \"Hello, world\"} in x")
     );
 }
+
+#[test]
+fn parse_pipe_op() {
+    assert_eq!(
+        Ok(r"(1 | (\x (x + 2)))".to_string()),
+        parse_to_str(r"1 | \x x + 2")
+    );
+}

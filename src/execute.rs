@@ -32,6 +32,8 @@ pub enum BiOpType {
     OpGt,
     /// Operator less than
     OpLt,
+    /// Operator pipe
+    OpPipe,
 }
 
 /// Representing a typed syntax tree
@@ -47,6 +49,7 @@ pub enum Syntax {
         /* asg: */ (/* rhs: */ Box<Syntax>, /* lhs: */ Box<Syntax>),
         /* expr: */ Box<Syntax>,
     ),
+    Pipe(Box<Syntax>),
     BiOp(
         /* op: */ BiOpType,
         /* rhs: */ Box<Syntax>,
@@ -117,6 +120,7 @@ impl Syntax {
             Self::ValFlt(_) => self,
             Self::ValStr(_) => self,
             Self::ValAtom(_) => self,
+            Self::Pipe(_) => self,
             Self::Lambda(id, expr) => Self::Lambda(id, Box::new(expr.reduce())),
             Self::IfLet(asgs, expr_true, expr_false) => {
                 let mut expr_true = expr_true;
@@ -139,6 +143,7 @@ impl Syntax {
                     )
                 }
             }
+            Self::BiOp(BiOpType::OpPipe, lhs, rhs) => Self::Call(rhs, lhs),
             Self::BiOp(
                 BiOpType::OpAdd,
                 box Self::ValInt(x),
@@ -366,6 +371,7 @@ impl Syntax {
                 Self::MapMatch(map)
             }
             Self::ExplicitExpr(expr) => Self::ExplicitExpr(Box::new(expr.replace_args(key, value))),
+            Self::Pipe(expr) => Self::Pipe(Box::new(expr.replace_args(key, value))),
         }
     }
 
@@ -441,6 +447,7 @@ impl Syntax {
             Self::ExplicitExpr(expr) => {
                 result.extend(expr.get_args());
             }
+            Self::Pipe(expr) => result.extend(expr.get_args()),
         }
 
         result
@@ -460,6 +467,7 @@ impl Syntax {
             Self::ValStr(_) => Ok(self),
             Self::ValAtom(_) => Ok(self),
             Self::Lambda(_, _) => Ok(self),
+            Self::Pipe(_) => Ok(self),
             Self::IfLet(asgs, expr_true, expr_false) => {
                 for (lhs, rhs) in asgs {
                     if !set_values_in_context(
@@ -759,6 +767,11 @@ impl Syntax {
         match (self, other) {
             (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => a0 == a1 && b0 == b1,
             (Syntax::Call(a0, b0), Syntax::Call(a1, b1)) => a0 == a1 && b0 == b1,
+            (Syntax::BiOp(BiOpType::OpPipe, a0, b0), Syntax::BiOp(BiOpType::OpPipe, a1, b1)) => {
+                a0 == a1 && b0 == b1
+            }
+            (Syntax::BiOp(BiOpType::OpPipe, b0, a0), Syntax::Call(a1, b1)) => a0 == a1 && b0 == b1,
+            (Syntax::Call(a0, b0), Syntax::BiOp(BiOpType::OpPipe, b1, a1)) => a0 == a1 && b0 == b1,
             (Syntax::ValAny(), _) => true,
             (_, Syntax::ValAny()) => true,
             (Syntax::ValAtom(a), Syntax::ValAtom(b)) => a == b,
@@ -787,6 +800,7 @@ impl std::fmt::Display for BiOpType {
             Self::OpLeq => "<=",
             Self::OpGt => ">",
             Self::OpLt => "<",
+            Self::OpPipe => "|",
         })
     }
 }
@@ -818,6 +832,7 @@ impl std::fmt::Display for Syntax {
                 Self::Asg(lhs, rhs) => format!("({} = {})", lhs.to_string(), rhs.to_string()),
                 Self::Tuple(lhs, rhs) => format!("({}, {})", lhs.to_string(), rhs.to_string()),
                 Self::Let((lhs, rhs), expr) => format!("(let {} = {} in {})", lhs, rhs, expr),
+                Self::Pipe(expr) => format!("| {}", expr),
                 Self::BiOp(op, lhs, rhs) => format!("({} {} {})", lhs, op, rhs),
                 Self::IfLet(asgs, expr_true, expr_false) => format!(
                     "if let {} then {} else {}",
