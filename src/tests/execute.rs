@@ -415,10 +415,15 @@ fn test_map() {
 #[test]
 fn test_fn_right() {
     let mut ctx = Context::default();
-    assert!(parse_to_str("right ((x y) z) = (right x) (y z)", &mut ctx).is_ok());
+    assert!(parse_to_str("right ((x y) z) = right (x (y z))", &mut ctx).is_ok());
     assert!(parse_to_str("right x = x", &mut ctx).is_ok());
     assert_eq!(
         Ok("(@succ (@succ @zero))".to_string()),
         parse_to_str("right (@succ @succ @zero)", &mut ctx)
+    );
+    assert!(parse_to_str("right x = x", &mut ctx).is_ok());
+    assert_eq!(
+        Ok("(@succ (@succ (@succ @zero)))".to_string()),
+        parse_to_str("right (@succ @succ @succ @zero)", &mut ctx)
     );
 }
