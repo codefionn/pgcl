@@ -421,9 +421,73 @@ fn test_fn_right() {
         Ok("(@succ (@succ @zero))".to_string()),
         parse_to_str("right (@succ @succ @zero)", &mut ctx)
     );
-    assert!(parse_to_str("right x = x", &mut ctx).is_ok());
     assert_eq!(
         Ok("(@succ (@succ (@succ @zero)))".to_string()),
         parse_to_str("right (@succ @succ @succ @zero)", &mut ctx)
+    );
+    assert_eq!(
+        Ok("(@succ (@succ (@succ (@succ (@succ (@succ @zero))))))".to_string()),
+        parse_to_str(
+            "right (@succ @succ @succ @succ @succ @succ @zero)",
+            &mut ctx
+        )
+    );
+    assert_eq!(
+        Ok("(@succ (@succ (@succ (@succ (@succ (@succ (@succ @zero)))))))".to_string()),
+        parse_to_str(
+            "right (@succ @succ @succ @succ @succ @succ @succ @zero)",
+            &mut ctx
+        )
+    );
+    assert_eq!(
+        Ok("(@succ (@succ (@succ (@succ (@succ (@succ (@succ (@succ @zero))))))))".to_string()),
+        parse_to_str(
+            "right (@succ @succ @succ @succ @succ @succ @succ @succ @zero)",
+            &mut ctx
+        )
+    );
+}
+
+#[test]
+fn test_fn_right_add() {
+    let mut ctx = Context::default();
+    assert!(parse_to_str("right ((x y) z) = right (x (y z))", &mut ctx).is_ok());
+    assert!(parse_to_str("right x = x", &mut ctx).is_ok());
+    assert!(parse_to_str("add @zero y = y", &mut ctx).is_ok());
+    assert!(parse_to_str("add (@succ x) y = add x (@succ y)", &mut ctx).is_ok());
+    assert_eq!(
+        Ok("@zero".to_string()),
+        parse_to_str("add @zero @zero", &mut ctx)
+    );
+    assert_eq!(
+        Ok("(@succ @zero)".to_string()),
+        parse_to_str("add (@succ @zero) @zero", &mut ctx)
+    );
+    assert_eq!(
+        Ok("(@succ @zero)".to_string()),
+        parse_to_str("add @zero (@succ @zero)", &mut ctx)
+    );
+    assert_eq!(
+        Ok("(@succ (@succ @zero))".to_string()),
+        parse_to_str("add (@succ (@succ @zero)) @zero", &mut ctx)
+    );
+    assert_eq!(
+        Ok("(@succ (@succ @zero))".to_string()),
+        parse_to_str("add @zero (@succ (@succ @zero))", &mut ctx)
+    );
+    assert_eq!(
+        Ok("(@succ (@succ @zero))".to_string()),
+        parse_to_str("add (@succ @zero) (@succ @zero)", &mut ctx)
+    );
+    assert_eq!(
+        Ok("(@succ (@succ (@succ @zero)))".to_string()),
+        parse_to_str("add (@succ @zero) (@succ (@succ @zero))", &mut ctx)
+    );
+    assert_eq!(
+        Ok("(@succ (@succ (@succ @zero)))".to_string()),
+        parse_to_str(
+            "add (right (@succ @zero)) (right (@succ @succ @zero))",
+            &mut ctx
+        )
     );
 }

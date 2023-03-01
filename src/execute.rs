@@ -507,7 +507,7 @@ impl Syntax {
             Self::Call(lhs, rhs) => {
                 let new_lhs = lhs.clone().execute(false, context)?;
                 if new_lhs == *lhs {
-                    Ok(self)
+                    Ok(Self::Call(lhs, Box::new(rhs.execute_once(false, context)?)))
                 } else {
                     Self::Call(Box::new(new_lhs), rhs).execute_once(false, context)
                 }
