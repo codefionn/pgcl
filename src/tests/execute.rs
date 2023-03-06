@@ -107,6 +107,10 @@ fn fn_add_lambda() {
         Ok(format!("12")),
         parse_to_str(r"(\x = \y = x + y) 10 2", &mut Default::default())
     );
+    assert_eq!(
+        Ok(format!("12")),
+        parse_to_str(r"(\x = (\y x + y)) 10 2", &mut Default::default())
+    );
 }
 
 #[test]
