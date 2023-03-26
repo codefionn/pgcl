@@ -46,6 +46,7 @@ pub enum SyntaxKind {
 
     KwLet,
     KwIn,
+    KwExport,
     If,
     IfLet,
     KwThen,
