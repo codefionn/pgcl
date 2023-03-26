@@ -394,6 +394,23 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
 
                 true
             }
+            Some(SyntaxKind::OpSub) => {
+                if allow_empty {
+                    false
+                } else {
+                    self.iter.next(); // Skip -
+
+                    self.builder.start_node(SyntaxKind::BiOp.into());
+                    self.builder.token(SyntaxKind::Int.into(), "0");
+                    self.builder.token(SyntaxKind::OpSub.into(), "-");
+
+                    let result = self.parse_expr(false);
+
+                    self.builder.finish_node();
+
+                    result
+                }
+            }
             _ => {
                 if !allow_empty {
                     self.builder.start_node(SyntaxKind::Error.into());

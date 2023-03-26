@@ -62,3 +62,8 @@ fn parse_pipe_op() {
         parse_to_str(r"1 | \x x + 2")
     );
 }
+
+#[test]
+fn parse_negative() {
+    assert_eq!(Ok(r"(0 - 1)".to_string()), parse_to_str("-1"));
+}

@@ -495,3 +495,11 @@ fn test_fn_right_add() {
         )
     );
 }
+
+#[test]
+fn test_minus_1() {
+    assert_eq!(
+        Ok(r"-1".to_string()),
+        parse_to_str("-1", &mut Context::default())
+    );
+}
