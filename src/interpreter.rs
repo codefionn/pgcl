@@ -55,6 +55,14 @@ impl InterpreterLexerActor {
         while let Some(msg) = self.rx.recv().await {
             match msg {
                 LineMessage::Line(line, tx_confirm) => {
+                    if line.trim().is_empty() {
+                        tx_confirm
+                            .send(())
+                            .map_err(|err| anyhow::anyhow!("{:?}", err))?;
+
+                        continue;
+                    }
+
                     self.tx
                         .send(LexerMessage::Line(
                             Token::lex_for_rowan(line.as_str()),
