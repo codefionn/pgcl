@@ -18,3 +18,7 @@ rustyline = { version = "10.1.1", features = [ "case_insensitive_history_search"
 serde = { version = "1.0.152", features = [ "derive", "alloc" ] }
 tailcall = "0.1.6"
 tokio = { version = "1.26.0", features = [ "full" ] }
+
+[dev-dependencies]
+assert_cmd = "2.0.10"
+predicates = "3.0.2"

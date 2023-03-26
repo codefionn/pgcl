@@ -38,12 +38,14 @@ impl CLIActor {
                 }
             };
 
-            let is_exit = LineMessage::Exit() == msg;
-            self.tx.send(msg).await?;
-            self.tx.reserve().await?;
+            if LineMessage::Exit() == msg {
+                self.tx.send(msg).await.ok();
+                self.tx.reserve().await.ok();
 
-            if is_exit {
                 break;
+            } else {
+                self.tx.send(msg).await?;
+                self.tx.reserve().await?;
             }
         }
 

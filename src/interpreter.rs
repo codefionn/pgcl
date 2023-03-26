@@ -61,8 +61,8 @@ impl InterpreterLexerActor {
                     self.tx.reserve().await?;
                 }
                 _ => {
-                    self.tx.send(LexerMessage::Exit()).await?;
-                    self.tx.reserve().await?;
+                    self.tx.send(LexerMessage::Exit()).await.ok();
+                    self.tx.reserve().await.ok();
 
                     break;
                 }
