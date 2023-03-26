@@ -1,6 +1,7 @@
 #![feature(box_patterns)]
 #![feature(iterator_try_collect)]
 
+mod context;
 mod errors;
 mod execute;
 mod interpreter;

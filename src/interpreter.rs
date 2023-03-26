@@ -3,8 +3,9 @@ use rowan::GreenNodeBuilder;
 use tokio::sync::mpsc;
 
 use crate::{
+    context::Context,
     errors::InterpreterError,
-    execute::{BiOpType, Context, Syntax},
+    execute::{BiOpType, Syntax},
     lexer::Token,
     parser::{print_ast, Parser, SyntaxElement, SyntaxKind},
     reader::LineMessage,

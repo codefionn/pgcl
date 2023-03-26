@@ -1,8 +1,9 @@
 use rowan::GreenNodeBuilder;
 
 use crate::{
+    context::Context,
     errors::InterpreterError,
-    execute::{Context, Syntax},
+    execute::Syntax,
     lexer::Token,
     parser::{Parser, SyntaxElement, SyntaxKind},
 };
