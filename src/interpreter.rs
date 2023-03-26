@@ -56,13 +56,12 @@ impl InterpreterLexerActor {
             match msg {
                 LineMessage::Line(line, tx_confirm) => {
                     self.tx
-                        .send(LexerMessage::Line(Token::lex_for_rowan(line.as_str())))
+                        .send(LexerMessage::Line(
+                            Token::lex_for_rowan(line.as_str()),
+                            tx_confirm,
+                        ))
                         .await?;
                     self.tx.reserve().await?;
-
-                    tx_confirm
-                        .send(())
-                        .map_err(|err| anyhow::anyhow!("{:?}", err))?;
                 }
                 _ => {
                     self.tx.send(LexerMessage::Exit()).await.ok();
@@ -77,9 +76,9 @@ impl InterpreterLexerActor {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum LexerMessage {
-    Line(Vec<(Token, String)>),
+    Line(Vec<(Token, String)>, tokio::sync::oneshot::Sender<()>),
     Exit(),
 }
 
@@ -106,7 +105,7 @@ impl InterpreterExecuteActor {
 
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                LexerMessage::Line(lexer_result) => {
+                LexerMessage::Line(lexer_result, tx_confirm) => {
                     debug!("{:?}", lexer_result);
 
                     let toks: Vec<(SyntaxKind, String)> = lexer_result
@@ -149,6 +148,10 @@ impl InterpreterExecuteActor {
                             self.last_result = Some(executed);
                         }
                     }
+
+                    tx_confirm
+                        .send(())
+                        .map_err(|err| anyhow::anyhow!("{:?}", err))?;
                 }
                 _ => break,
             }
