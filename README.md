@@ -3,10 +3,11 @@
 PGCL - *pretty good calculator language* - is a language for basic calculations.
 Designed for (*my*) rapid success doing calculations.
 
-It is a functional programming language and also a project for fun using the
-game engine [*bevy*](https://bevyengine.org) for things that are not games
-(like this CLI tool). It uses [logos](https://github.com/maciejhirsz/logos) for
-lexing and [rowan](https://github.com/rust-analyzer/rowan) for parsing.
+It is a functional programming language.
+
+The interpreter uses
+[logos](https://github.com/maciejhirsz/logos) for lexing and
+[rowan](https://github.com/rust-analyzer/rowan) for parsing.
 
 ## TODO
 

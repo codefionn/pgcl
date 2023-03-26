@@ -11,36 +11,40 @@ mod reader;
 #[cfg(test)]
 mod tests;
 
-use bevy::{
-    log::{Level, LogPlugin},
-    prelude::*,
-};
 use clap::Parser;
+use log::LevelFilter;
+use tokio::sync::mpsc;
 
-#[derive(Parser, Clone, Debug, Resource)]
+#[derive(Parser, Clone, Debug)]
 pub struct Args {
     #[arg(short, long, default_value_t = false)]
     verbose: bool,
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    App::new()
-        .insert_resource(args.clone())
-        //.add_plugin(CorePlugin::default())
-        .add_plugin(HierarchyPlugin::default())
-        .add_plugin(LogPlugin {
-            filter: "rustyline=error".to_string(),
-            level: if args.verbose {
-                Level::DEBUG
-            } else {
-                Level::INFO
-            },
+    env_logger::builder()
+        .filter_level(if args.verbose {
+            LevelFilter::Debug
+        } else {
+            LevelFilter::Info
         })
-        .add_plugin(reader::ReaderPlugin)
-        .add_plugin(interpreter::InterpreterPlugin)
-        .run();
+        .filter_module("rustyline", LevelFilter::Warn)
+        .init();
+
+    let (tx_cli, rx_cli) = mpsc::channel(1);
+    let cli_actor = reader::CLIActor::new(tx_cli);
+    let interpreter_actor = interpreter::InterpreterActor::new(args, rx_cli);
+
+    let (h0, h1) = tokio::join!(
+        tokio::spawn(cli_actor.run()),
+        tokio::spawn(interpreter_actor.run())
+    );
+
+    h0??;
+    h1??;
 
     Ok(())
 }

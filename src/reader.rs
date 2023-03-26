@@ -1,52 +1,52 @@
-use bevy::prelude::*;
-
+use log::debug;
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-
-pub struct ReaderPlugin;
-
-#[derive(Resource, Clone, Debug, PartialEq)]
-struct State {}
-
-impl Plugin for ReaderPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_startup_system(setup)
-            .add_event::<Message>()
-            .set_runner(|mut app| {
-                let mut rl = Editor::<()>::new().unwrap();
-                rl.set_auto_add_history(true);
-
-                app.update();
-                loop {
-                    let readline = rl.readline("> ");
-
-                    let msg = match readline {
-                        Ok(line) => Message::Line(line),
-                        Err(ReadlineError::Interrupted) => Message::Exit(),
-                        Err(ReadlineError::Eof) => Message::Exit(),
-                        Err(err) => {
-                            println!("Error: {:?}", err);
-                            Message::Exit()
-                        }
-                    };
-
-                    if Message::Exit() == msg {
-                        break;
-                    }
-
-                    app.world.send_event(msg);
-                    app.update();
-                    app.update();
-                }
-            });
-    }
-}
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Message {
+pub enum LineMessage {
     Line(String),
     Exit(),
 }
 
-fn setup() {}
+pub struct CLIActor {
+    tx: mpsc::Sender<LineMessage>,
+}
+
+impl CLIActor {
+    pub fn new(tx: mpsc::Sender<LineMessage>) -> Self {
+        Self { tx }
+    }
+
+    pub async fn run(mut self) -> anyhow::Result<()> {
+        debug!("Started {}", stringify!(CLIActor));
+
+        let mut rl = Editor::<()>::new()?;
+        rl.set_auto_add_history(true);
+
+        loop {
+            let readline = rl.readline("> ");
+
+            let msg = match readline {
+                Ok(line) => LineMessage::Line(line),
+                Err(ReadlineError::Interrupted) => LineMessage::Exit(),
+                Err(ReadlineError::Eof) => LineMessage::Exit(),
+                Err(err) => {
+                    println!("Error: {:?}", err);
+                    LineMessage::Exit()
+                }
+            };
+
+            let is_exit = LineMessage::Exit() == msg;
+            self.tx.send(msg).await?;
+            self.tx.reserve().await?;
+
+            if is_exit {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+}

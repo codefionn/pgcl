@@ -7,14 +7,14 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.69"
-bevy = { version = "0.9.1", default-features = false }
 bigdecimal = { version = "0.3.0", features = ["serde"] }
 clap = { version = "4.1.4", features = [ "derive" ] }
-crossbeam-channel = "0.5.6"
-iyes_loopless = { version = "0.9.1", default-features = false }
+env_logger = "0.10.0"
+log = "0.4.17"
 logos = "0.12.1"
 num = { version = "0.4.0", features = [ "libm", "serde", "alloc" ] }
 rowan = { version = "0.15.10", features = [ "serde" ] }
 rustyline = { version = "10.1.1", features = [ "case_insensitive_history_search" ] }
 serde = { version = "1.0.152", features = [ "derive", "alloc" ] }
 tailcall = "0.1.6"
+tokio = { version = "1.26.0", features = [ "full" ] }
