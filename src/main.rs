@@ -17,6 +17,7 @@ use tokio::sync::mpsc;
 
 #[derive(Parser, Clone, Debug)]
 pub struct Args {
+    /// Be verbose (more messages)
     #[arg(short, long, default_value_t = false)]
     verbose: bool,
 }
