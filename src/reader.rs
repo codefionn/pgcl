@@ -4,9 +4,9 @@ use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use tokio::sync::mpsc;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum LineMessage {
-    Line(String),
+    Line(String, tokio::sync::oneshot::Sender<()>),
     Exit(),
 }
 
@@ -28,25 +28,29 @@ impl CLIActor {
         loop {
             let readline = rl.readline("> ");
 
-            let msg = match readline {
-                Ok(line) => LineMessage::Line(line),
-                Err(ReadlineError::Interrupted) => LineMessage::Exit(),
-                Err(ReadlineError::Eof) => LineMessage::Exit(),
+            match readline {
+                Ok(line) => {
+                    let (tx_confirm, rx_confirm) = tokio::sync::oneshot::channel();
+
+                    self.tx.send(LineMessage::Line(line, tx_confirm)).await?;
+                    self.tx.reserve().await?;
+                    rx_confirm.await?;
+                }
+                Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+                    self.tx.send(LineMessage::Exit()).await.ok();
+                    self.tx.reserve().await.ok();
+
+                    break;
+                }
                 Err(err) => {
                     println!("Error: {:?}", err);
-                    LineMessage::Exit()
+
+                    self.tx.send(LineMessage::Exit()).await.ok();
+                    self.tx.reserve().await.ok();
+
+                    break;
                 }
             };
-
-            if LineMessage::Exit() == msg {
-                self.tx.send(msg).await.ok();
-                self.tx.reserve().await.ok();
-
-                break;
-            } else {
-                self.tx.send(msg).await?;
-                self.tx.reserve().await?;
-            }
         }
 
         Ok(())

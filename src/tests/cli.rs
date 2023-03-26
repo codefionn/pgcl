@@ -1,4 +1,4 @@
-use assert_cmd::{prelude::*, Command};
+use assert_cmd::Command;
 use predicates::prelude::*;
 
 #[test]

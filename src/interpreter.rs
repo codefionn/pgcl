@@ -54,11 +54,15 @@ impl InterpreterLexerActor {
 
         while let Some(msg) = self.rx.recv().await {
             match msg {
-                LineMessage::Line(line) => {
+                LineMessage::Line(line, tx_confirm) => {
                     self.tx
                         .send(LexerMessage::Line(Token::lex_for_rowan(line.as_str())))
                         .await?;
                     self.tx.reserve().await?;
+
+                    tx_confirm
+                        .send(())
+                        .map_err(|err| anyhow::anyhow!("{:?}", err))?;
                 }
                 _ => {
                     self.tx.send(LexerMessage::Exit()).await.ok();
