@@ -19,7 +19,7 @@ impl CLIActor {
         Self { tx }
     }
 
-    pub async fn run(mut self) -> anyhow::Result<()> {
+    pub async fn run(self) -> anyhow::Result<()> {
         debug!("Started {}", stringify!(CLIActor));
 
         let mut rl = Editor::<()>::new()?;

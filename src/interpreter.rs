@@ -3,11 +3,11 @@ use rowan::GreenNodeBuilder;
 use tokio::sync::mpsc;
 
 use crate::{
-    context::Context,
+    context::{ContextHandler, ContextHolder},
     errors::InterpreterError,
     execute::{BiOpType, Syntax},
     lexer::Token,
-    parser::{print_ast, Parser, SyntaxElement, SyntaxKind},
+    parser::{print_ast, Parser, SyntaxKind},
     reader::LineMessage,
     Args,
 };
@@ -23,14 +23,25 @@ impl InterpreterActor {
         Self { args, rx }
     }
 
-    pub async fn run(mut self) -> anyhow::Result<()> {
+    pub async fn run(self) -> anyhow::Result<()> {
         debug!("Started {}", stringify!(InterpreterActor));
 
         let (tx_lexer, rx_lexer) = mpsc::channel(1);
-        let lexer = InterpreterLexerActor::new(self.rx, tx_lexer);
-        let execute = InterpreterExecuteActor::new(self.args, rx_lexer);
 
-        let (h0, h1) = tokio::join!(tokio::spawn(lexer.run()), tokio::spawn(execute.run()));
+        let (h0, h1) = tokio::join!(
+            tokio::spawn(async move {
+                let lexer = InterpreterLexerActor::new(self.rx, tx_lexer);
+                lexer.run().await
+            }),
+            tokio::spawn({
+                let _args = self.args.clone();
+
+                async move {
+                    let execute = InterpreterExecuteActor::new(self.args, rx_lexer);
+                    execute.run().await
+                }
+            })
+        );
 
         h0??;
         h1??;
@@ -96,7 +107,7 @@ struct InterpreterExecuteActor {
     args: Args,
     rx: mpsc::Receiver<LexerMessage>,
     last_result: Option<Syntax>,
-    ctx: Context,
+    ctx: ContextHolder,
 }
 
 impl InterpreterExecuteActor {
@@ -105,12 +116,20 @@ impl InterpreterExecuteActor {
             args,
             rx,
             last_result: None,
-            ctx: Context::default(),
+            ctx: ContextHolder::default(),
         }
     }
 
     async fn run(mut self) -> anyhow::Result<()> {
         debug!("Started {}", stringify!(InterpreterExecuteActor));
+
+        let mut main_ctx: ContextHandler = ContextHandler::new(
+            self.ctx
+                .create_context("<stdin>".to_string())
+                .await
+                .get_id(),
+            self.ctx.clone(),
+        );
 
         while let Some(msg) = self.rx.recv().await {
             match msg {
@@ -127,18 +146,8 @@ impl InterpreterExecuteActor {
                         .try_collect()
                         .map_err(|err| anyhow::anyhow!("{:?}", err))?;
 
-                    let (ast, errors) =
-                        Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse();
-                    let ast: SyntaxElement = ast.into();
-                    if !errors.is_empty() {
-                        println!("{:?}", errors);
-                    }
+                    let typed = parse_to_typed(&self.args, toks);
 
-                    if self.args.verbose {
-                        print_ast(0, ast.clone());
-                    }
-
-                    let typed: Result<Syntax, InterpreterError> = ast.try_into();
                     debug!("{:?}", typed);
                     if let Ok(typed) = typed {
                         let typed = match typed {
@@ -150,9 +159,10 @@ impl InterpreterExecuteActor {
                             _ => typed,
                         };
 
-                        let reduced = typed.reduce();
+                        let reduced: Syntax = typed.reduce().await;
+
                         debug!("{}", reduced);
-                        if let Ok(executed) = reduced.execute(true, &mut self.ctx) {
+                        if let Ok(executed) = reduced.execute(true, &mut main_ctx).await {
                             println!("{}", executed);
                             self.last_result = Some(executed);
                         }
@@ -168,4 +178,20 @@ impl InterpreterExecuteActor {
 
         Ok(())
     }
+}
+
+fn parse_to_typed(
+    args: &Args,
+    toks: Vec<(SyntaxKind, String)>,
+) -> Result<Syntax, InterpreterError> {
+    let (ast, errors) = Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse();
+    if !errors.is_empty() {
+        println!("{:?}", errors);
+    }
+
+    if args.verbose {
+        print_ast(0, &ast);
+    }
+
+    return (*ast).try_into();
 }

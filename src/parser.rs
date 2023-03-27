@@ -229,7 +229,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 if Some(SyntaxKind::MapRight) != self.peek() {
                     self.tuple.push(false);
 
-                    let mut has_errors = false;
+                    let has_errors = false;
                     let mut is_match = false;
 
                     while [SyntaxKind::Id, SyntaxKind::Str]
@@ -565,12 +565,15 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         self.parse_asg(first)
     }
 
-    pub fn parse(mut self) -> (SyntaxNode, Vec<String>) {
+    pub fn parse(mut self) -> (Box<SyntaxElement>, Vec<String>) {
         self.builder.start_node(SyntaxKind::Root.into());
         self.parse_expr(true);
         self.builder.finish_node();
 
-        (SyntaxNode::new_root(self.builder.finish()), self.errors)
+        (
+            Box::new(SyntaxNode::new_root(self.builder.finish()).into()),
+            self.errors,
+        )
     }
 }
 
@@ -878,14 +881,14 @@ impl TryInto<Syntax> for SyntaxElement {
     }
 }
 
-pub fn print_ast(indent: usize, element: SyntaxElement) {
+pub fn print_ast(indent: usize, element: &SyntaxElement) {
     let kind: SyntaxKind = element.kind().into();
     print!("{:indent$}", "", indent = indent);
     match element {
         NodeOrToken::Node(node) => {
             println!("- {:?}", kind);
             for child in node.children_with_tokens() {
-                print_ast(indent + 2, child);
+                print_ast(indent + 2, &child);
             }
         }
 

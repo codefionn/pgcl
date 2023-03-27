@@ -1,9 +1,11 @@
+use async_recursion::async_recursion;
 use bigdecimal::BigDecimal;
+use futures::future::{join_all, OptionFuture};
 use log::debug;
 use std::collections::{BTreeMap, HashSet};
 use tailcall::tailcall;
 
-use crate::{context::Context, errors::InterpreterError};
+use crate::{context::ContextHandler, errors::InterpreterError};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BiOpType {
@@ -103,7 +105,8 @@ impl Syntax {
     /// This method reduces the function with very little outside information.
     ///
     /// Should be used for optimizing an expressing before evaluating it.
-    pub fn reduce(self) -> Self {
+    #[async_recursion]
+    pub async fn reduce(self) -> Self {
         match self {
             Self::Id(_) => self,
             Self::ValAny() => self,
@@ -112,25 +115,25 @@ impl Syntax {
             Self::ValStr(_) => self,
             Self::ValAtom(_) => self,
             Self::Pipe(_) => self,
-            Self::Lambda(id, expr) => Self::Lambda(id, Box::new(expr.reduce())),
+            Self::Lambda(id, expr) => Self::Lambda(id, Box::new(expr.reduce().await)),
             Self::IfLet(asgs, expr_true, expr_false) => {
                 let mut expr_true = expr_true;
                 let mut new_asgs = Vec::new();
                 for asg in asgs.into_iter() {
                     if let (Self::Id(lhs), Self::Id(rhs)) = asg {
-                        expr_true = Box::new(expr_true.replace_args(&lhs, &Self::Id(rhs)));
+                        expr_true = Box::new(expr_true.replace_args(&lhs, &Self::Id(rhs)).await);
                     } else {
                         new_asgs.push(asg);
                     }
                 }
 
                 if new_asgs.is_empty() {
-                    expr_true.reduce()
+                    expr_true.reduce().await
                 } else {
                     Self::IfLet(
                         new_asgs,
-                        Box::new(expr_true.reduce()),
-                        Box::new(expr_false.reduce()),
+                        Box::new(expr_true.reduce().await),
+                        Box::new(expr_false.reduce().await),
                     )
                 }
             }
@@ -223,95 +226,116 @@ impl Syntax {
             {
                 *expr
             }
-            Self::Tuple(a, b) => Self::Tuple(Box::new(a.reduce()), Box::new(b.reduce())),
-            Self::Call(lhs, rhs) => Self::Call(Box::new(lhs.reduce()), Box::new(rhs.reduce())),
-            Self::Let((box Self::Id(id), rhs), expr) => expr.replace_args(&id, &rhs),
+            Self::Tuple(a, b) => {
+                Self::Tuple(Box::new(a.reduce().await), Box::new(b.reduce().await))
+            }
+            Self::Call(lhs, rhs) => {
+                Self::Call(Box::new(lhs.reduce().await), Box::new(rhs.reduce().await))
+            }
+            Self::Let((box Self::Id(id), rhs), expr) => expr.replace_args(&id, &rhs).await,
             Self::Let(_, _) => self,
-            Self::Asg(lhs, rhs) => Self::Asg(lhs, Box::new(rhs.reduce())),
+            Self::Asg(lhs, rhs) => Self::Asg(lhs, Box::new(rhs.reduce().await)),
             Self::If(cond, lhs, rhs) => Self::If(
-                Box::new(cond.reduce()),
-                Box::new(lhs.reduce()),
-                Box::new(rhs.reduce()),
+                Box::new(cond.reduce().await),
+                Box::new(lhs.reduce().await),
+                Box::new(rhs.reduce().await),
             ),
-            Self::BiOp(op, a, b) => Self::BiOp(op, Box::new(a.reduce()), Box::new(b.reduce())),
-            Self::Lst(lst) => Self::Lst(lst.into_iter().map(|expr| expr.reduce()).collect()),
+            Self::BiOp(op, a, b) => {
+                Self::BiOp(op, Box::new(a.reduce().await), Box::new(b.reduce().await))
+            }
+            Self::Lst(lst) => {
+                Self::Lst(join_all(lst.into_iter().map(|expr| async { expr.reduce().await })).await)
+            }
             Self::LstMatch(lst) => {
-                Self::LstMatch(lst.into_iter().map(|expr| expr.reduce()).collect())
+                Self::LstMatch(join_all(lst.into_iter().map(|expr| expr.reduce())).await)
             }
             Self::Map(map) => {
-                let map = map
+                let map =
+                    join_all(map.into_iter().map(|(key, (val, is_id))| async move {
+                        (key, (val.reduce().await, is_id))
+                    }))
+                    .await
                     .into_iter()
-                    .map(|(key, (val, is_id))| (key, (val.reduce(), is_id)))
                     .collect();
+
                 Self::Map(map)
             }
             Self::MapMatch(map) => {
-                let map = map
-                    .into_iter()
-                    .map(|(key, into_key, val, is_id)| {
-                        (key, into_key, val.map(|expr| expr.reduce()), is_id)
-                    })
-                    .collect();
+                let map = join_all(
+                    map.into_iter()
+                        .map(|(key, into_key, val, is_id)| async move {
+                            let val: OptionFuture<_> =
+                                val.map(|expr| async { expr.reduce().await }).into();
+                            (key, into_key, val.await, is_id)
+                        }),
+                )
+                .await;
                 Self::MapMatch(map)
             }
-            Self::ExplicitExpr(expr) => expr.reduce(),
+            Self::ExplicitExpr(expr) => expr.reduce().await,
             Self::UnexpectedArguments() => self,
         }
     }
 
-    fn replace_args(self, key: &String, value: &Syntax) -> Syntax {
+    #[async_recursion]
+    async fn replace_args(self, key: &String, value: &Syntax) -> Syntax {
         match self {
             Self::Id(id) if *id == *key => value.clone(),
             Self::Id(_) => self,
             Self::Lambda(id, expr) if *id != *key => {
-                Self::Lambda(id, Box::new(expr.replace_args(key, value)))
+                Self::Lambda(id, Box::new(expr.replace_args(key, value).await))
             }
             Self::Lambda(_, _) => self,
             Self::Call(lhs, rhs) => {
-                let lhs = lhs.replace_args(key, value);
-                let rhs = rhs.replace_args(key, value);
+                let lhs = lhs.replace_args(key, value).await;
+                let rhs = rhs.replace_args(key, value).await;
                 Self::Call(Box::new(lhs), Box::new(rhs))
             }
             Self::Asg(lhs, rhs) => {
-                let lhs = lhs.replace_args(key, value);
-                let rhs = rhs.replace_args(key, value);
+                let lhs = lhs.replace_args(key, value).await;
+                let rhs = rhs.replace_args(key, value).await;
                 Self::Asg(Box::new(lhs), Box::new(rhs))
             }
             Self::Tuple(lhs, rhs) => {
-                let lhs = lhs.replace_args(key, value);
-                let rhs = rhs.replace_args(key, value);
+                let lhs = lhs.replace_args(key, value).await;
+                let rhs = rhs.replace_args(key, value).await;
                 Self::Tuple(Box::new(lhs), Box::new(rhs))
             }
             Self::Let((lhs, rhs), expr) => {
                 let rhs = rhs.replace_args(key, value);
-                if lhs.get_args().contains(key) {
-                    Self::Let((lhs, Box::new(rhs)), expr)
+                if lhs.get_args().await.contains(key) {
+                    Self::Let((lhs, Box::new(rhs.await)), expr)
                 } else {
                     let expr = expr.replace_args(key, value);
-                    Self::Let((lhs, Box::new(rhs)), Box::new(expr))
+                    Self::Let((lhs, Box::new(rhs.await)), Box::new(expr.await))
                 }
             }
             Self::BiOp(op, lhs, rhs) => {
                 let lhs = lhs.replace_args(key, value);
                 let rhs = rhs.replace_args(key, value);
-                Self::BiOp(op, Box::new(lhs), Box::new(rhs))
+                Self::BiOp(op, Box::new(lhs.await), Box::new(rhs.await))
             }
             Self::If(cond, expr_true, expr_false) => {
                 let cond = cond.replace_args(key, value);
                 let expr_true = expr_true.replace_args(key, value);
                 let expr_false = expr_false.replace_args(key, value);
-                Self::If(Box::new(cond), Box::new(expr_true), Box::new(expr_false))
+                Self::If(
+                    Box::new(cond.await),
+                    Box::new(expr_true.await),
+                    Box::new(expr_false.await),
+                )
             }
             Self::IfLet(asgs, expr_true, expr_false) => {
-                let asgs: Vec<(Syntax, Syntax)> = asgs
-                    .into_iter()
-                    .map(|(lhs, rhs)| (lhs, rhs.replace_args(key, value)))
-                    .collect();
+                let asgs: Vec<(Syntax, Syntax)> = join_all(
+                    asgs.into_iter()
+                        .map(|(lhs, rhs)| async { (lhs, rhs.replace_args(key, value).await) }),
+                )
+                .await;
 
-                let expr_false = expr_false.replace_args(key, value);
-                if asgs
-                    .iter()
-                    .map(|(_, rhs)| rhs.get_args())
+                let expr_false = expr_false.replace_args(key, value).await;
+                if join_all(asgs.iter().map(|(_, rhs)| rhs.get_args()))
+                    .await
+                    .into_iter()
                     .flatten()
                     .collect::<HashSet<String>>()
                     .contains(key)
@@ -319,7 +343,7 @@ impl Syntax {
                     Self::IfLet(asgs, expr_true, Box::new(expr_false))
                 } else {
                     let expr_true = expr_true.replace_args(key, value);
-                    Self::IfLet(asgs, Box::new(expr_true), Box::new(expr_false))
+                    Self::IfLet(asgs, Box::new(expr_true.await), Box::new(expr_false))
                 }
             }
             Self::UnexpectedArguments() => self,
@@ -329,83 +353,93 @@ impl Syntax {
             Self::ValStr(_) => self,
             Self::ValAtom(_) => self,
             Self::Lst(lst) => Self::Lst(
-                lst.into_iter()
-                    .map(|expr| expr.replace_args(key, value))
-                    .collect(),
+                join_all(
+                    lst.into_iter()
+                        .map(|expr| async { expr.replace_args(key, value).await }),
+                )
+                .await,
             ),
             Self::LstMatch(lst) => Self::LstMatch(
-                lst.into_iter()
-                    .map(|expr| expr.replace_args(key, value))
-                    .collect(),
+                join_all(
+                    lst.into_iter()
+                        .map(|expr| async { expr.replace_args(key, value).await }),
+                )
+                .await,
             ),
             Self::Map(map) => {
-                let map = map
-                    .into_iter()
-                    .map(|(map_key, (map_val, is_id))| {
-                        (map_key, (map_val.replace_args(&key, value), is_id))
-                    })
-                    .collect();
-                Self::Map(map)
+                let map = join_all(
+                    map.into_iter()
+                        .map(|(map_key, (map_val, is_id))| async move {
+                            (map_key, (map_val.replace_args(&key, value).await, is_id))
+                        }),
+                )
+                .await;
+
+                Self::Map(map.into_iter().collect())
             }
             Self::MapMatch(map) => {
-                let map = map
-                    .into_iter()
-                    .map(|(map_key, map_into_key, map_val, is_id)| {
-                        (
-                            map_key,
-                            map_into_key,
-                            map_val.map(|x| x.replace_args(&key, value)),
-                            is_id,
-                        )
-                    })
-                    .collect();
+                let map = join_all(map.into_iter().map(
+                    |(map_key, map_into_key, map_val, is_id)| async move {
+                        let map_val: OptionFuture<_> = map_val
+                            .map(|x| async { x.replace_args(&key, value).await })
+                            .into();
+
+                        (map_key, map_into_key, map_val.await, is_id)
+                    },
+                ))
+                .await;
+
                 Self::MapMatch(map)
             }
-            Self::ExplicitExpr(expr) => Self::ExplicitExpr(Box::new(expr.replace_args(key, value))),
-            Self::Pipe(expr) => Self::Pipe(Box::new(expr.replace_args(key, value))),
+            Self::ExplicitExpr(expr) => {
+                Self::ExplicitExpr(Box::new(expr.replace_args(key, value).await))
+            }
+            Self::Pipe(expr) => Self::Pipe(Box::new(expr.replace_args(key, value).await)),
         }
     }
 
-    fn get_args(&self) -> HashSet<String> {
+    #[async_recursion]
+    async fn get_args(&self) -> HashSet<String> {
         let mut result = HashSet::new();
         match self {
             Self::Id(id) => {
                 result.insert(id.clone());
             }
             Self::Lambda(_, expr) => {
-                result.extend(expr.get_args());
+                result.extend(expr.get_args().await);
             }
             Self::Call(lhs, rhs)
             | Self::Asg(lhs, rhs)
             | Self::Tuple(lhs, rhs)
             | Self::BiOp(_, lhs, rhs) => {
-                result.extend(lhs.get_args());
-                result.extend(rhs.get_args());
+                result.extend(lhs.get_args().await);
+                result.extend(rhs.get_args().await);
             }
             Self::Let((lhs, rhs), expr) => {
-                result.extend(lhs.get_args());
-                result.extend(rhs.get_args());
-                result.extend(expr.get_args());
+                result.extend(lhs.get_args().await);
+                result.extend(rhs.get_args().await);
+                result.extend(expr.get_args().await);
             }
             Self::If(cond, expr_true, expr_false) => {
-                result.extend(cond.get_args());
-                result.extend(expr_true.get_args());
-                result.extend(expr_false.get_args());
+                result.extend(cond.get_args().await);
+                result.extend(expr_true.get_args().await);
+                result.extend(expr_false.get_args().await);
             }
             Self::IfLet(asgs, expr_true, expr_false) => {
                 result.extend(
-                    asgs.iter()
-                        .map(|(lhs, rhs)| {
-                            let mut result = lhs.get_args();
-                            result.extend(rhs.get_args());
+                    join_all(asgs.into_iter().map(|(lhs, rhs)| async {
+                        let mut result = lhs.get_args().await;
+                        result.extend(rhs.get_args().await);
 
-                            result
-                        })
-                        .flatten(),
+                        result
+                    }))
+                    .await
+                    .into_iter()
+                    .flatten(),
                 );
 
-                result.extend(expr_true.get_args());
-                result.extend(expr_false.get_args());
+                result.extend(expr_true.get_args().await);
+                result.extend(expr_false.get_args().await);
             }
             Self::UnexpectedArguments()
             | Self::ValAny()
@@ -414,10 +448,20 @@ impl Syntax {
             | Self::ValStr(_)
             | Self::ValAtom(_) => {}
             Self::Lst(lst) => {
-                result.extend(lst.into_iter().map(|expr| expr.get_args()).flatten());
+                result.extend(
+                    join_all(lst.into_iter().map(|expr| async { expr.get_args().await }))
+                        .await
+                        .into_iter()
+                        .flatten(),
+                );
             }
             Self::LstMatch(lst) => {
-                result.extend(lst.into_iter().map(|expr| expr.get_args()).flatten());
+                result.extend(
+                    join_all(lst.into_iter().map(|expr| async { expr.get_args().await }))
+                        .await
+                        .into_iter()
+                        .flatten(),
+                );
             }
             Self::Map(map) => {
                 result.extend(
@@ -436,22 +480,29 @@ impl Syntax {
                 }));
             }
             Self::ExplicitExpr(expr) => {
-                result.extend(expr.get_args());
+                result.extend(expr.get_args().await);
             }
-            Self::Pipe(expr) => result.extend(expr.get_args()),
+            Self::Pipe(expr) => result.extend(expr.get_args().await),
         }
 
         result
     }
 
-    fn execute_once(self, first: bool, ctx: &mut Context) -> Result<Syntax, InterpreterError> {
+    #[async_recursion]
+    async fn execute_once(
+        self,
+        first: bool,
+        ctx: &mut ContextHandler,
+    ) -> Result<Syntax, InterpreterError> {
         let mut values_defined_here = Vec::new();
-        match self.clone().reduce() {
-            Self::Id(id) => Ok(if let Some(obj) = ctx.get_from_values(&id, &mut values_defined_here) {
-                obj.clone()
-            } else {
-                self
-            }),
+        let expr: Syntax = match self.clone().reduce().await {
+            Self::Id(id) => Ok(
+                if let Some(obj) = ctx.get_from_values(&id, &mut values_defined_here).await {
+                    obj.clone()
+                } else {
+                    self
+                },
+            ),
             Self::ValAny() => Ok(self),
             Self::ValInt(_) => Ok(self),
             Self::ValFlt(_) => Ok(self),
@@ -461,26 +512,29 @@ impl Syntax {
             Self::Pipe(_) => Ok(self),
             Self::IfLet(asgs, expr_true, expr_false) => {
                 for (lhs, rhs) in asgs {
-                    let rhs = rhs.clone().execute(false, ctx)?;
-                    if !ctx.set_values_in_context(
-                        &lhs,
-                        &rhs,
-                        &mut values_defined_here,
-                    ) {
-                        ctx.remove_values(&mut values_defined_here);
-                        return expr_false.execute_once(false, ctx)
+                    let rhs = rhs.clone().execute(false, ctx).await?;
+                    if !ctx
+                        .set_values_in_context(&lhs, &rhs, &mut values_defined_here)
+                        .await
+                    {
+                        ctx.remove_values(&mut values_defined_here).await;
+                        return expr_false.execute_once(false, ctx).await;
                     }
                 }
 
                 let mut result = expr_true.clone();
-                for (key, value) in ctx.remove_values(&mut values_defined_here).into_iter() {
-                    result = Box::new(result.replace_args(&key, &value));
+                for (key, value) in ctx
+                    .remove_values(&mut values_defined_here)
+                    .await
+                    .into_iter()
+                {
+                    result = Box::new(result.replace_args(&key, &value).await);
                 }
 
                 Ok(*result)
             }
             Self::Call(box Syntax::Id(id), body) => {
-                if let Some(value) = ctx.get_from_values(&id, &mut values_defined_here) {
+                if let Some(value) = ctx.get_from_values(&id, &mut values_defined_here).await {
                     Ok(Self::Call(Box::new(value), body))
                 } else {
                     Ok(self)
@@ -493,21 +547,27 @@ impl Syntax {
                 remove_values(context, &values_defined_here);
 
                 result*/
-                Ok(fn_expr.replace_args(&id, &expr))
+                Ok(fn_expr.replace_args(&id, &expr).await)
             }
             Self::Call(lhs, rhs) => {
-                let new_lhs = lhs.clone().execute(false, ctx)?;
+                let new_lhs = lhs.clone().execute(false, ctx).await?;
                 if new_lhs == *lhs {
-                    Ok(Self::Call(lhs, Box::new(rhs.execute_once(false, ctx)?)))
+                    Ok(Self::Call(
+                        lhs,
+                        Box::new(rhs.execute_once(false, ctx).await?),
+                    ))
                 } else {
-                    Self::Call(Box::new(new_lhs), rhs).execute_once(false, ctx)
+                    Self::Call(Box::new(new_lhs), rhs)
+                        .execute_once(false, ctx)
+                        .await
                 }
             }
             Self::Asg(box Self::Id(id), rhs) => {
                 if !first {
                     Ok(self)
                 } else {
-                    ctx.insert_into_values(&id, *rhs, &mut values_defined_here);
+                    ctx.insert_into_values(&id, *rhs, &mut values_defined_here)
+                        .await;
                     Ok(Self::ValAny())
                 }
             }
@@ -516,7 +576,7 @@ impl Syntax {
                     Ok(self)
                 } else {
                     #[tailcall]
-                    fn extract_id(
+                    async fn extract_id(
                         syntax: Syntax,
                         mut unpacked: Vec<Syntax>,
                     ) -> Result<(String, Syntax), InterpreterError> {
@@ -554,14 +614,15 @@ impl Syntax {
                         }
                     }
 
-                    fn unpack_params(
+                    #[async_recursion]
+                    async fn unpack_params(
                         syntax: Syntax,
                         mut result: Vec<Syntax>,
                     ) -> Result<Vec<Syntax>, InterpreterError> {
                         match syntax {
                             Syntax::Call(a, b) => {
                                 result.insert(0, *b);
-                                unpack_params(*a, result)
+                                unpack_params(*a, result).await
                             }
                             _ => {
                                 result.insert(0, syntax);
@@ -570,22 +631,33 @@ impl Syntax {
                         }
                     }
 
-                    let (id, syntax) = extract_id(*lhs, Vec::new())?;
+                    let (id, syntax) = extract_id(*lhs, Vec::new()).await?;
                     ctx.insert_fns(
                         id,
-                        (unpack_params(syntax, Default::default())?, rhs.reduce()),
-                    );
+                        (
+                            unpack_params(syntax, Default::default()).await?,
+                            rhs.reduce().await,
+                        ),
+                    )
+                    .await;
 
                     Ok(Syntax::ValAny())
                 }
             }
             Self::Let((lhs, rhs), expr) => {
-                if !ctx.set_values_in_context(&lhs, &rhs, &mut values_defined_here) {
+                if !ctx
+                    .set_values_in_context(&lhs, &rhs, &mut values_defined_here)
+                    .await
+                {
                     Ok(*expr)
                 } else {
                     let mut result = (*expr).clone();
-                    for (key, value) in ctx.remove_values(&mut values_defined_here).into_iter() {
-                        result = result.replace_args(&key, &value);
+                    for (key, value) in ctx
+                        .remove_values(&mut values_defined_here)
+                        .await
+                        .into_iter()
+                    {
+                        result = result.replace_args(&key, &value).await;
                     }
 
                     Ok(result)
@@ -643,66 +715,65 @@ impl Syntax {
             | Self::BiOp(op @ BiOpType::OpLeq, lhs, rhs)
             | Self::BiOp(op @ BiOpType::OpGt, lhs, rhs)
             | Self::BiOp(op @ BiOpType::OpLt, lhs, rhs) => {
-                let lhs = lhs.execute_once(false, ctx)?;
-                let rhs = rhs.execute_once(false, ctx)?;
+                let lhs = lhs.execute_once(false, ctx).await?;
+                let rhs = rhs.execute_once(false, ctx).await?;
 
                 Ok(Self::BiOp(op, Box::new(lhs), Box::new(rhs)))
             }
             Self::BiOp(BiOpType::OpEq, lhs, rhs) => {
-                let lhs = lhs.execute(false, ctx)?;
-                let rhs = rhs.execute(false, ctx)?;
+                let lhs = lhs.execute(false, ctx).await?;
+                let rhs = rhs.execute(false, ctx).await?;
 
-                Ok(if lhs.eval_equal(&rhs) {
+                Ok(if lhs.eval_equal(&rhs).await {
                     Self::ValAtom("true".to_string())
                 } else {
                     Self::ValAtom("false".to_string())
                 })
             }
             Self::BiOp(BiOpType::OpNeq, lhs, rhs) => {
-                let lhs = lhs.execute(false, ctx)?;
-                let rhs = rhs.execute(false, ctx)?;
+                let lhs = lhs.execute(false, ctx).await?;
+                let rhs = rhs.execute(false, ctx).await?;
 
-                Ok(if !lhs.eval_equal(&rhs) {
+                Ok(if !lhs.eval_equal(&rhs).await {
                     Self::ValAtom("true".to_string())
                 } else {
                     Self::ValAtom("false".to_string())
                 })
             }
             Self::BiOp(op, lhs, rhs) => {
-                let lhs = lhs.execute_once(false, ctx)?;
-                let rhs = rhs.execute_once(false, ctx)?;
+                let lhs = lhs.execute_once(false, ctx).await?;
+                let rhs = rhs.execute_once(false, ctx).await?;
 
                 Ok(Self::BiOp(op, Box::new(lhs), Box::new(rhs)))
             }
             Self::If(cond, expr_true, expr_false) => {
-                let cond = cond.execute(false, ctx)?;
+                let cond = cond.execute(false, ctx).await?;
                 Ok(match cond {
-                    Self::ValAtom(id) if id == "true" => expr_true.execute_once(false, ctx)?,
+                    Self::ValAtom(id) if id == "true" => expr_true.execute_once(false, ctx).await?,
                     Self::ValAtom(id) if id == "false" => {
-                        expr_false.execute_once(false, ctx)?
+                        expr_false.execute_once(false, ctx).await?
                     }
                     _ => {
-                        ctx
-                            .errors
-                            .push(format!("Expected :true or :false in if-condition"));
+                        ctx.push_error(format!("Expected :true or :false in if-condition"))
+                            .await;
                         self
                     }
                 })
             }
             Self::Tuple(lhs, rhs) => {
-                let lhs = lhs.execute_once(false, ctx)?;
-                let rhs = rhs.execute_once(false, ctx)?;
+                let lhs = lhs.execute_once(false, ctx).await?;
+                let rhs = rhs.execute_once(false, ctx).await?;
 
                 Ok(Self::Tuple(Box::new(lhs), Box::new(rhs)))
             }
             Self::UnexpectedArguments() => {
-                ctx.errors.push(format!("Unexpected arguments"));
+                ctx.push_error(format!("Unexpected arguments")).await;
                 Ok(self)
             }
             Self::Lst(lst) => {
                 let mut result = Vec::new();
                 for e in lst {
-                    result.push(e.execute_once(false, ctx)?);
+                    result.push(e.execute_once(false, ctx).await?);
                 }
 
                 Ok(Self::Lst(result))
@@ -710,34 +781,48 @@ impl Syntax {
             Self::LstMatch(lst) => {
                 let mut result = Vec::new();
                 for e in lst {
-                    result.push(e.execute_once(false, ctx)?);
+                    result.push(e.execute_once(false, ctx).await?);
                 }
 
                 Ok(Self::LstMatch(result))
             }
             Self::Map(map) => {
-                let map = map
-                    .into_iter()
-                    .map(
-                        |(key, (val, is_id))| -> Result<(String, (Syntax, bool)), InterpreterError> {
-                            Ok((key, (val.execute_once(false, ctx)?, is_id)))
-                        },
+                let map =
+                    join_all(
+                        map.into_iter().map({
+                            let ctx = ctx.clone();
+                            move |(key, (val, is_id))| {
+                                let mut ctx = ctx.clone();
+
+                                async move {
+                                    Ok((key, (val.execute_once(false, &mut ctx).await?, is_id)))
+                                }
+                            }
+                        }),
                     )
+                    .await
+                    .into_iter()
                     .try_collect()?;
 
                 Ok(Self::Map(map))
             }
             Self::MapMatch(_) => Ok(self),
             Self::ExplicitExpr(box expr) => Ok(expr),
-        }
-        .map(|expr| expr.reduce())
+        }?;
+
+        Ok(expr.reduce().await)
     }
 
-    pub fn execute(self, first: bool, ctx: &mut Context) -> Result<Syntax, InterpreterError> {
+    #[async_recursion]
+    pub async fn execute(
+        self,
+        first: bool,
+        ctx: &mut ContextHandler,
+    ) -> Result<Syntax, InterpreterError> {
         let mut this = self;
         let mut old = this.clone();
         loop {
-            this = this.execute_once(first, ctx)?;
+            this = this.execute_once(first, ctx).await?;
 
             if this == old {
                 break;
@@ -753,7 +838,7 @@ impl Syntax {
         Ok(this)
     }
 
-    pub fn eval_equal(&self, other: &Self) -> bool {
+    pub async fn eval_equal(&self, other: &Self) -> bool {
         match (self, other) {
             (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => a0 == a1 && b0 == b1,
             (Syntax::Call(a0, b0), Syntax::Call(a1, b1)) => a0 == a1 && b0 == b1,
