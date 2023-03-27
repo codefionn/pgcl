@@ -1,7 +1,7 @@
 use rowan::GreenNodeBuilder;
 
 use crate::{
-    context::{Context, ContextHandler},
+    context::{Context, ContextHandler, ContextHolder},
     errors::InterpreterError,
     execute::Syntax,
     lexer::Token,
@@ -800,5 +800,27 @@ async fn test_minus_1() {
     assert_eq!(
         Ok(r"-1".to_string()),
         parse_to_str("-1", &mut ContextHandler::async_default().await).await
+    );
+}
+
+#[tokio::test]
+async fn test_two_ctx() {
+    let mut holder = ContextHolder::default();
+    let mut ctx0 = holder
+        .create_context("0".to_string())
+        .await
+        .handler(holder.clone());
+    let mut ctx1 = holder
+        .create_context("1".to_string())
+        .await
+        .handler(holder.clone());
+
+    assert!(parse_to_str("x = 1", &mut ctx0).await.is_ok());
+    assert_eq!(
+        Ok(r"1".to_string()),
+        Syntax::Contextual(ctx0.get_id(), Box::new(Syntax::Id("x".to_string())))
+            .execute(true, &mut ctx1)
+            .await
+            .map(|expr| format!("{}", expr))
     );
 }

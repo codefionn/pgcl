@@ -547,6 +547,10 @@ impl ContextHandler {
             .set_values_in_context(lhs, rhs, values_defined_here)
             .await
     }
+
+    pub fn get_holder(&self) -> ContextHolder {
+        self.holder.clone()
+    }
 }
 
 #[derive(Clone, Default)]

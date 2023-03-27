@@ -79,12 +79,13 @@ pub enum Syntax {
         )>,
     ),
     ExplicitExpr(Box<Syntax>),
-    UnexpectedArguments(),
+    Contextual(/* ctx_id: */ usize, Box<Syntax>),
     ValAny(),
     ValInt(/* num: */ num::BigInt),
     ValFlt(/* num: */ BigDecimal),
     ValStr(/* str: */ String),
     ValAtom(/* atom: */ String),
+    UnexpectedArguments(),
 }
 
 impl From<bool> for Syntax {
@@ -273,6 +274,17 @@ impl Syntax {
                 Self::MapMatch(map)
             }
             Self::ExplicitExpr(expr) => expr.reduce().await,
+            Self::Contextual(
+                _,
+                expr @ (box Self::ValAny()
+                | box Self::ValInt(_)
+                | box Self::ValFlt(_)
+                | box Self::ValStr(_)
+                | box Self::ValAtom(_)),
+            ) => *expr,
+            Self::Contextual(ctx_id, expr) => {
+                Self::Contextual(ctx_id, Box::new(expr.reduce().await))
+            }
             Self::UnexpectedArguments() => self,
         }
     }
@@ -394,6 +406,7 @@ impl Syntax {
             Self::ExplicitExpr(expr) => {
                 Self::ExplicitExpr(Box::new(expr.replace_args(key, value).await))
             }
+            expr @ Self::Contextual(_, _) => expr,
             Self::Pipe(expr) => Self::Pipe(Box::new(expr.replace_args(key, value).await)),
         }
     }
@@ -483,6 +496,7 @@ impl Syntax {
                 result.extend(expr.get_args().await);
             }
             Self::Pipe(expr) => result.extend(expr.get_args().await),
+            Self::Contextual(_, _) => {}
         }
 
         result
@@ -808,6 +822,19 @@ impl Syntax {
             }
             Self::MapMatch(_) => Ok(self),
             Self::ExplicitExpr(box expr) => Ok(expr),
+            Self::Contextual(ctx_id, expr) => {
+                let holder = ctx.get_holder();
+                Ok(Self::Contextual(
+                    ctx_id,
+                    Box::new(
+                        expr.execute_once(
+                            false,
+                            &mut holder.clone().get(ctx_id).await.unwrap().handler(holder),
+                        )
+                        .await?,
+                    ),
+                ))
+            }
         }?;
 
         Ok(expr.reduce().await)
@@ -996,6 +1023,7 @@ impl std::fmt::Display for Syntax {
                         })
                 ),
                 Self::ExplicitExpr(expr) => format!("{}", expr),
+                Self::Contextual(_, expr) => format!("{}", expr),
             }
             .as_str(),
         )
