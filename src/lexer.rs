@@ -8,6 +8,7 @@ use crate::{errors::InterpreterError, parser::SyntaxKind};
 #[derive(Logos, Clone, Debug, PartialEq)]
 #[repr(u16)]
 pub enum Token {
+    // cov ignore {
     #[token("\\")]
     Lambda,
 
@@ -131,6 +132,7 @@ pub enum Token {
     #[regex(r"[ \t\f]+", logos::skip)]
     #[regex(r"//[^\n\r]*", logos::skip)]
     Error,
+    // } cov ignore
 }
 
 impl Token {

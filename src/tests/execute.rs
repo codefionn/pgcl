@@ -66,6 +66,18 @@ async fn add_floats() {
 }
 
 #[tokio::test]
+async fn more_maths() {
+    assert_eq!(
+        Ok(format!("1")),
+        parse_to_str("2.0 / 2.0", &mut ContextHandler::async_default().await).await
+    );
+    assert_eq!(
+        Ok(format!("6")),
+        parse_to_str("1 * 6", &mut ContextHandler::async_default().await).await
+    );
+}
+
+#[tokio::test]
 async fn eq() {
     assert_eq!(
         Ok(format!("@true")),
@@ -74,6 +86,10 @@ async fn eq() {
     assert_eq!(
         Ok(format!("@false")),
         parse_to_str("3 == 2", &mut ContextHandler::async_default().await).await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("_ == 2", &mut ContextHandler::async_default().await).await
     );
 }
 
