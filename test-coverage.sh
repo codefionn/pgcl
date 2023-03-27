@@ -9,3 +9,4 @@ cargo test
 grcov . --binary-path ./target/debug/deps/ -s . -t html --branch --ignore-not-existing --ignore '../*' --ignore "/*" \
   --excl-start '^[ ]*// cov ignore \{[ ]*$' --excl-stop '^[ ]*// \} cov ignore[ ]*$' \
   -o target/coverage/html
+rm ./cargo-test-*
