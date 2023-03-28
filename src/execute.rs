@@ -5,7 +5,7 @@ use log::debug;
 use std::collections::{BTreeMap, HashSet};
 use tailcall::tailcall;
 
-use crate::{context::ContextHandler, errors::InterpreterError};
+use crate::{context::ContextHandler, errors::InterpreterError, rational::BigRational};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BiOpType {
@@ -82,7 +82,7 @@ pub enum Syntax {
     Contextual(/* ctx_id: */ usize, Box<Syntax>),
     ValAny(),
     ValInt(/* num: */ num::BigInt),
-    ValFlt(/* num: */ BigDecimal),
+    ValFlt(/* num: */ BigRational),
     ValStr(/* str: */ String),
     ValAtom(/* atom: */ String),
     UnexpectedArguments(),
@@ -98,7 +98,7 @@ impl From<bool> for Syntax {
 }
 
 #[inline]
-fn int_to_flt(x: num::BigInt) -> BigDecimal {
+fn int_to_flt(x: num::BigInt) -> BigRational {
     x.to_string().parse().unwrap()
 }
 
@@ -879,8 +879,8 @@ impl Syntax {
             (Syntax::ValAtom(a), Syntax::ValAtom(b)) => a == b,
             (Syntax::ValInt(a), Syntax::ValInt(b)) => a == b,
             (Syntax::ValFlt(a), Syntax::ValFlt(b)) => a == b,
-            (Syntax::ValFlt(a), Syntax::ValInt(b)) => *a == b.to_string().parse().unwrap(),
-            (Syntax::ValInt(b), Syntax::ValFlt(a)) => *a == b.to_string().parse().unwrap(),
+            (Syntax::ValFlt(a), Syntax::ValInt(b)) => *a == *b,
+            (Syntax::ValInt(b), Syntax::ValFlt(a)) => *a == *b,
             (Syntax::ValStr(a), Syntax::ValStr(b)) => a == b,
             _ => false,
         }
@@ -953,9 +953,12 @@ impl std::fmt::Display for Syntax {
                 Self::UnexpectedArguments() => format!("UnexpectedArguments"),
                 Self::ValAny() => format!("_"),
                 Self::ValInt(x) => x.to_string(),
-                Self::ValFlt(x) => format!("{}", x)
-                    .trim_end_matches(|c| c == '0' || c == '.')
-                    .to_string(),
+                Self::ValFlt(x) => {
+                    let x: BigDecimal = x.clone().into();
+                    format!("{}", x)
+                }
+                .trim_end_matches(|c| c == '0' || c == '.')
+                .to_string(),
                 Self::ValStr(x) => val_str(x),
                 Self::ValAtom(x) => format!("@{}", x),
                 Self::Lst(lst) => format!(

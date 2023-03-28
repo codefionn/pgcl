@@ -7,6 +7,7 @@ mod execute;
 mod interpreter;
 mod lexer;
 mod parser;
+mod rational;
 mod reader;
 
 #[cfg(test)]

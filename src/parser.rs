@@ -869,7 +869,8 @@ impl TryInto<Syntax> for SyntaxElement {
                         .map_err(|_| InterpreterError::ExpectedInteger())?,
                 )),
                 SyntaxKind::Flt => Ok(Syntax::ValFlt(
-                    BigDecimal::from_str(tok.text())
+                    tok.text()
+                        .parse()
                         .map_err(|_| InterpreterError::ExpectedFloat())?,
                 )),
                 SyntaxKind::Str => Ok(Syntax::ValStr(tok.text().to_string())),
