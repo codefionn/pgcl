@@ -109,12 +109,6 @@ pub enum Token {
     #[token("in")]
     KwIn,
 
-    #[token("export")]
-    KwExport,
-
-    #[token("import")]
-    KwImport,
-
     #[token("_")]
     Any,
 
@@ -152,8 +146,9 @@ impl Token {
                 Lambda | ParenLeft | ParenRight | LstLeft | LstRight | MapLeft | MapRight
                 | OpAdd | OpSub | OpMul | OpDiv | Unpack | OpPeriod | OpComma | OpAsg | OpEq
                 | OpStrictEq | OpNeq | OpStrictNeq | OpMap | KwIn | KwLet | NewLine | Semicolon
-                | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe | KwIf | KwElse | KwThen
-                | KwExport | KwImport | Error => lex.slice().to_string(),
+                | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe | KwIf | KwElse | KwThen | Error => {
+                    lex.slice().to_string()
+                }
 
                 Flt(x) => x.to_string(),
                 Int(x) => x.to_string(),
@@ -205,8 +200,6 @@ impl TryInto<SyntaxKind> for Token {
             Token::Int(_) => Ok(SyntaxKind::Int),
             Token::KwLet => Ok(SyntaxKind::KwLet),
             Token::KwIn => Ok(SyntaxKind::KwIn),
-            Token::KwExport => Ok(SyntaxKind::KwExport),
-            Token::KwImport => Ok(SyntaxKind::KwImport),
             Token::Any => Ok(SyntaxKind::Any),
             Token::Id(_) => Ok(SyntaxKind::Id),
             Token::Atom(_) => Ok(SyntaxKind::Atom),

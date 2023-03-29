@@ -45,3 +45,16 @@ fn test_addition() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_import_fib() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    println!("{:?}", std::env::current_dir());
+
+    cmd.write_stdin("fib = import \"./examples/fib.pgcl\"\nfib.fib 10")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^_\n55\n$").unwrap());
+
+    Ok(())
+}

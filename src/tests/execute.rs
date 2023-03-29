@@ -835,3 +835,14 @@ async fn test_export() {
     assert_eq!(Vec::<String>::new(), ctx.get_errors().await);
     assert!(ctx.get_global(&"id".to_string()).await.is_some());
 }
+
+#[tokio::test]
+async fn test_import_std() {
+    let mut ctx = ContextHandler::async_default().await;
+
+    assert!(parse_to_str("std = import std", &mut ctx).await.is_ok());
+    assert_eq!(
+        Ok("21".to_string()),
+        parse_to_str("std.id 21", &mut ctx).await
+    );
+}

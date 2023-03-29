@@ -47,8 +47,6 @@ pub enum SyntaxKind {
 
     KwLet,
     KwIn,
-    KwExport,
-    KwImport,
     If,
     IfLet,
     KwThen,
@@ -160,46 +158,6 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             Some(SyntaxKind::Atom) => {
                 self.bump();
                 true
-            }
-            Some(SyntaxKind::KwExport) => {
-                self.iter.next();
-
-                if self.peek() == Some(SyntaxKind::Id) {
-                    self.builder.start_node(SyntaxKind::KwExport.into());
-                    self.bump();
-                    self.builder.finish_node();
-
-                    true
-                } else {
-                    self.errors
-                        .push(format!("Expected identifier after export keyword"));
-
-                    self.builder.start_node(SyntaxKind::Error.into());
-                    self.bump();
-                    self.builder.finish_node();
-
-                    false
-                }
-            }
-            Some(SyntaxKind::KwImport) => {
-                self.iter.next();
-
-                if self.peek() == Some(SyntaxKind::Str) || self.peek() == Some(SyntaxKind::Id) {
-                    self.builder.start_node(SyntaxKind::KwImport.into());
-                    self.bump();
-                    self.builder.finish_node();
-
-                    true
-                } else {
-                    self.errors
-                        .push(format!("Expected string after import keyword"));
-
-                    self.builder.start_node(SyntaxKind::Error.into());
-                    self.bump();
-                    self.builder.finish_node();
-
-                    false
-                }
             }
             Some(SyntaxKind::OpPipe) if first => {
                 self.iter.next(); // skip |
@@ -919,24 +877,6 @@ impl TryInto<Syntax> for SyntaxElement {
                             .ok_or(InterpreterError::ExpectedExpression())?;
 
                         Ok(Syntax::Pipe(Box::new(child.try_into()?)))
-                    }
-                    SyntaxKind::KwExport => {
-                        let child = children
-                            .next()
-                            .ok_or(InterpreterError::ExpectedIdentifier())?
-                            .into_token()
-                            .ok_or(InterpreterError::ExpectedIdentifier())?;
-
-                        Ok(Syntax::Export(child.text().to_string()))
-                    }
-                    SyntaxKind::KwImport => {
-                        let child = children
-                            .next()
-                            .ok_or(InterpreterError::ExpectedIdentifier())?
-                            .into_token()
-                            .ok_or(InterpreterError::ExpectedIdentifier())?;
-
-                        Ok(Syntax::Import(child.text().to_string()))
                     }
                     _ => Err(InterpreterError::UnexpectedExpressionEmpty(kind)),
                 }

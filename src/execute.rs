@@ -99,8 +99,6 @@ pub enum Syntax {
     ValFlt(/* num: */ BigRational),
     ValStr(/* str: */ String),
     ValAtom(/* atom: */ String),
-    Export(String),
-    Import(String),
     UnexpectedArguments(),
 }
 
@@ -305,8 +303,6 @@ impl Syntax {
                 Self::Contextual(ctx_id, Box::new(expr.reduce().await))
             }
             expr @ Self::Context(_, _) => expr,
-            expr @ Self::Export(_) => expr,
-            expr @ Self::Import(_) => expr,
             Self::UnexpectedArguments() => self,
         }
     }
@@ -431,8 +427,6 @@ impl Syntax {
             }
             expr @ Self::Contextual(_, _) => expr,
             expr @ Self::Context(_, _) => expr,
-            expr @ Self::Export(_) => expr,
-            expr @ Self::Import(_) => expr,
             Self::Pipe(expr) => Self::Pipe(Box::new(expr.replace_args(key, value).await)),
         }
     }
@@ -523,10 +517,8 @@ impl Syntax {
                 result.extend(expr.get_args().await);
             }
             Self::Pipe(expr) => result.extend(expr.get_args().await),
-            Self::Export(_) => {}
-            Self::Import(_) => {}
-            Self::Contextual(_, _) => {}
             Self::Context(_, _) => {}
+            Self::Contextual(_, _) => {}
         }
 
         result
@@ -590,7 +582,24 @@ impl Syntax {
                 if let Some(value) = ctx.get_from_values(&id, &mut values_defined_here).await {
                     Ok(Self::Call(Box::new(value), body))
                 } else {
-                    Ok(self)
+                    match (id.as_str(), *body) {
+                        ("export", Syntax::Id(id)) => {
+                            Ok(if ctx.add_global(&id, &mut values_defined_here).await {
+                                Self::ValAny()
+                            } else {
+                                ctx.push_error(format!("Cannot export symbol {}", id)).await;
+
+                                Self::Call(
+                                    Box::new(Syntax::Id(format!("export"))),
+                                    Box::new(Syntax::Id(id)),
+                                )
+                            })
+                        }
+                        ("import", Syntax::Id(id)) | ("import", Syntax::ValStr(id)) => {
+                            import_lib(ctx, id).await
+                        }
+                        _ => Ok(self),
+                    }
                 }
             }
             Self::Call(box Syntax::Lambda(id, fn_expr), expr) => {
@@ -926,102 +935,6 @@ impl Syntax {
                 ))
             }
             expr @ Self::Context(_, _) => Ok(expr),
-            Self::Export(id) if first => {
-                Ok(if ctx.add_global(&id, &mut values_defined_here).await {
-                    Self::ValAny()
-                } else {
-                    ctx.push_error(format!("Cannot export symbol {}", id)).await;
-
-                    Self::Export(id)
-                })
-            }
-            expr @ Self::Export(_) => Ok(expr),
-            Self::Import(path) => {
-                if let Some(ctx) = ctx.get_holder().get_path(&path).await {
-                    Ok(Self::Context(ctx.get_id(), path))
-                } else if let Some(ctx_path) = ctx.get_path().await {
-                    let mut module_path = ctx_path.clone();
-                    module_path.push(path.clone());
-
-                    module_path =
-                        std::fs::canonicalize(module_path.clone()).unwrap_or(module_path.clone());
-
-                    let module_path_str = module_path.to_string_lossy().to_string();
-                    if module_path.is_file() {
-                        if let Some(ctx) = ctx.get_holder().get_path(&module_path_str).await {
-                            Ok(Self::Context(ctx.get_id(), module_path_str))
-                        } else {
-                            let code = std::fs::read_to_string(&module_path).map_err({
-                                let module_path_str = module_path_str.clone();
-                                move |_| InterpreterError::ImportFileDoesNotExist(module_path_str)
-                            })?;
-
-                            let holder = &mut ctx.get_holder();
-
-                            let ctx = execute_code(
-                                &module_path_str,
-                                Some(module_path.clone()),
-                                code.as_str(),
-                                holder,
-                            )
-                            .await?;
-
-                            holder
-                                .set_path(
-                                    &module_path_str,
-                                    &holder.get(ctx.get_id()).await.unwrap(),
-                                )
-                                .await;
-
-                            debug!("Imported {} as {}", module_path_str, ctx.get_id());
-
-                            Ok(Self::Context(ctx.get_id(), module_path_str))
-                        }
-                    } else if ["std"].into_iter().any({
-                        let path = path.clone();
-                        move |p| p == path
-                    }) {
-                        if let Some(ctx) = ctx.get_holder().get_path(&module_path_str).await {
-                            Ok(Self::Context(ctx.get_id(), module_path_str))
-                        } else {
-                            let code = if path == "std" {
-                                include_str!("./modules/std.pgcl")
-                            } else {
-                                ctx.push_error(format!(
-                                    "Expected {} to be a file",
-                                    module_path_str
-                                ))
-                                .await;
-
-                                return Err(InterpreterError::ImportFileDoesNotExist(
-                                    module_path_str,
-                                ));
-                            };
-
-                            let holder = &mut ctx.get_holder();
-                            let ctx = execute_code(&path, None, code, holder).await?;
-                            holder
-                                .set_path(
-                                    &module_path_str,
-                                    &holder.get(ctx.get_id()).await.unwrap(),
-                                )
-                                .await;
-
-                            Ok(Self::Context(ctx.get_id(), path))
-                        }
-                    } else {
-                        ctx.push_error(format!("Expected {} to be a file", module_path_str))
-                            .await;
-
-                        Err(InterpreterError::ImportFileDoesNotExist(module_path_str))
-                    }
-                } else {
-                    ctx.push_error("Import can only be done in real modules".to_string())
-                        .await;
-
-                    Err(InterpreterError::ContextNotInFile(ctx.get_name().await))
-                }
-            }
         }?;
 
         Ok(expr.reduce().await)
@@ -1074,6 +987,103 @@ impl Syntax {
     }
 }
 
+/// Imports the specified library (including builtin libraries)
+async fn import_lib(ctx: &mut ContextHandler, path: String) -> Result<Syntax, InterpreterError> {
+    if let Some(ctx) = ctx.get_holder().get_path(&path).await {
+        Ok(Syntax::Context(ctx.get_id(), path))
+    } else if let Some(ctx_path) = ctx.get_path().await {
+        let mut module_path = ctx_path.clone();
+        module_path.push(path.clone());
+
+        module_path = std::fs::canonicalize(module_path.clone()).unwrap_or(module_path.clone());
+
+        let module_path_str = module_path.to_string_lossy().to_string();
+        if module_path.is_file() {
+            if let Some(ctx) = ctx.get_holder().get_path(&module_path_str).await {
+                Ok(Syntax::Context(ctx.get_id(), module_path_str))
+            } else {
+                let code = std::fs::read_to_string(&module_path).map_err({
+                    let module_path_str = module_path_str.clone();
+                    move |_| InterpreterError::ImportFileDoesNotExist(module_path_str)
+                })?;
+
+                let holder = &mut ctx.get_holder();
+
+                let ctx = execute_code(
+                    &module_path_str,
+                    Some(module_path.clone()),
+                    code.as_str(),
+                    holder,
+                )
+                .await?;
+
+                holder
+                    .set_path(&module_path_str, &holder.get(ctx.get_id()).await.unwrap())
+                    .await;
+
+                debug!("Imported {} as {}", module_path_str, ctx.get_id());
+
+                Ok(Syntax::Context(ctx.get_id(), module_path_str))
+            }
+        } else if ["std"].into_iter().any({
+            let path = path.clone();
+            move |p| p == path
+        }) {
+            import_std_lib(ctx, path).await
+        } else {
+            ctx.push_error(format!("Expected {} to be a file", module_path_str))
+                .await;
+
+            Err(InterpreterError::ImportFileDoesNotExist(module_path_str))
+        }
+    } else {
+        ctx.push_error("Import can only be done in real modules".to_string())
+            .await;
+
+        let result = import_std_lib(ctx, path).await;
+        if let Err(InterpreterError::ImportFileDoesNotExist(_)) = result {
+            Err(InterpreterError::ContextNotInFile(ctx.get_name().await))
+        } else {
+            result
+        }
+    }
+}
+
+/// Imports a builtin library
+async fn import_std_lib(
+    ctx: &mut ContextHandler,
+    path: String,
+) -> Result<Syntax, InterpreterError> {
+    if let Some(ctx) = ctx.get_holder().get_path(&path).await {
+        Ok(Syntax::Context(ctx.get_id(), path))
+    } else {
+        let code = if path == "std" {
+            include_str!("./modules/std.pgcl")
+        } else {
+            ctx.push_error(format!("Expected {} to be a file", path))
+                .await;
+
+            return Err(InterpreterError::ImportFileDoesNotExist(path));
+        };
+
+        let holder = &mut ctx.get_holder();
+        let ctx = execute_code(&path, None, code, holder).await?;
+        holder
+            .set_path(&path, &holder.get(ctx.get_id()).await.unwrap())
+            .await;
+
+        Ok(Syntax::Context(ctx.get_id(), path))
+    }
+}
+
+/// Executes code (a module)
+///
+/// ## Parameters
+///
+/// - `name`: Name of the code-module
+/// - `path`: The real path to the module
+/// - `code`: The code itself
+/// - `holder`: The context holder
 async fn execute_code(
     name: &String,
     path: Option<PathBuf>,
@@ -1106,7 +1116,7 @@ async fn execute_code(
 
 fn parse_to_typed(toks: Vec<(SyntaxKind, String)>) -> Result<Syntax, InterpreterError> {
     let (ast, errors) = Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse();
-    print_ast(0, &ast);
+    //print_ast(0, &ast);
     if !errors.is_empty() {
         println!("{:?}", errors);
     }
@@ -1268,8 +1278,6 @@ impl std::fmt::Display for Syntax {
                 Self::ExplicitExpr(expr) => format!("{}", expr),
                 Self::Contextual(_, expr) => format!("{}", expr),
                 Self::Context(_, id) => format!("{}", id),
-                Self::Export(id) => format!("export {}", id),
-                Self::Import(path) => format!("import {}", val_str(path)),
             }
             .as_str(),
         )
