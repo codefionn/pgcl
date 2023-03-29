@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use async_recursion::async_recursion;
 use bigdecimal::BigDecimal;
 use futures::future::{join_all, OptionFuture};
@@ -16,7 +15,6 @@ use crate::{
     lexer::Token,
     parser::{print_ast, Parser, SyntaxKind},
     rational::BigRational,
-    Args,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -762,6 +760,13 @@ impl Syntax {
                 let lhs = lhs.execute_once(false, ctx).await?;
                 Ok(Self::BiOp(BiOpType::OpPeriod, Box::new(lhs), rhs))
             }
+            Self::BiOp(BiOpType::OpAdd, box Self::Lst(lhs), box Self::Lst(rhs)) => {
+                let mut lst = Vec::new();
+                lst.extend(lhs.into_iter());
+                lst.extend(rhs.into_iter());
+
+                Ok(Self::Lst(lst))
+            }
             Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValInt(y)) => {
                 Ok((x >= y).into())
             }
@@ -936,7 +941,7 @@ impl Syntax {
                     Ok(Self::Context(ctx.get_id(), path))
                 } else if let Some(ctx_path) = ctx.get_path().await {
                     let mut module_path = ctx_path.clone();
-                    module_path.push(path);
+                    module_path.push(path.clone());
 
                     module_path =
                         std::fs::canonicalize(module_path.clone()).unwrap_or(module_path.clone());
@@ -953,9 +958,13 @@ impl Syntax {
 
                             let holder = &mut ctx.get_holder();
 
-                            let ctx =
-                                execute_code(&module_path_str, &module_path, code.as_str(), holder)
-                                    .await?;
+                            let ctx = execute_code(
+                                &module_path_str,
+                                Some(module_path.clone()),
+                                code.as_str(),
+                                holder,
+                            )
+                            .await?;
 
                             holder
                                 .set_path(
@@ -967,6 +976,38 @@ impl Syntax {
                             debug!("Imported {} as {}", module_path_str, ctx.get_id());
 
                             Ok(Self::Context(ctx.get_id(), module_path_str))
+                        }
+                    } else if ["std"].into_iter().any({
+                        let path = path.clone();
+                        move |p| p == path
+                    }) {
+                        if let Some(ctx) = ctx.get_holder().get_path(&module_path_str).await {
+                            Ok(Self::Context(ctx.get_id(), module_path_str))
+                        } else {
+                            let code = if path == "std" {
+                                include_str!("./modules/std.pgcl")
+                            } else {
+                                ctx.push_error(format!(
+                                    "Expected {} to be a file",
+                                    module_path_str
+                                ))
+                                .await;
+
+                                return Err(InterpreterError::ImportFileDoesNotExist(
+                                    module_path_str,
+                                ));
+                            };
+
+                            let holder = &mut ctx.get_holder();
+                            let ctx = execute_code(&path, None, code, holder).await?;
+                            holder
+                                .set_path(
+                                    &module_path_str,
+                                    &holder.get(ctx.get_id()).await.unwrap(),
+                                )
+                                .await;
+
+                            Ok(Self::Context(ctx.get_id(), path))
                         }
                     } else {
                         ctx.push_error(format!("Expected {} to be a file", module_path_str))
@@ -1035,12 +1076,12 @@ impl Syntax {
 
 async fn execute_code(
     name: &String,
-    path: &PathBuf,
+    path: Option<PathBuf>,
     code: &str,
     holder: &mut ContextHolder,
 ) -> Result<ContextHandler, InterpreterError> {
     let mut ctx = holder
-        .create_context(name.clone(), Some(path.clone()))
+        .create_context(name.clone(), path)
         .await
         .handler(holder.clone());
 

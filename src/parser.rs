@@ -184,7 +184,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             Some(SyntaxKind::KwImport) => {
                 self.iter.next();
 
-                if self.peek() == Some(SyntaxKind::Str) {
+                if self.peek() == Some(SyntaxKind::Str) || self.peek() == Some(SyntaxKind::Id) {
                     self.builder.start_node(SyntaxKind::KwImport.into());
                     self.bump();
                     self.builder.finish_node();

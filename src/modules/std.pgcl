@@ -1,0 +1,6 @@
+map _ [] = []
+map f [x:xs] = [(f x)] + (map f xs)
+export map
+
+id x = x
+export id
