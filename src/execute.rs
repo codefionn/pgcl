@@ -1011,7 +1011,7 @@ async fn import_lib(ctx: &mut ContextHandler, path: String) -> Result<Syntax, In
 
                 let ctx = execute_code(
                     &module_path_str,
-                    Some(module_path.clone()),
+                    module_path.parent().clone().map(|path| path.to_path_buf()),
                     code.as_str(),
                     holder,
                 )
