@@ -46,6 +46,18 @@ async fn add_integers() {
 }
 
 #[tokio::test]
+async fn test_comments() {
+    assert_eq!(
+        Ok(format!("5")),
+        parse_to_str("5 // Test", &mut ContextHandler::async_default().await).await
+    );
+    assert_eq!(
+        Ok(format!("5")),
+        parse_to_str("5 # Test", &mut ContextHandler::async_default().await).await
+    );
+}
+
+#[tokio::test]
 async fn add_with_pipe() {
     assert_eq!(
         Ok(r"3".to_string()),

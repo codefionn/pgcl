@@ -131,6 +131,7 @@ pub enum Token {
     #[error]
     #[regex(r"[ \t\f]+", logos::skip)]
     #[regex(r"//[^\n\r]*", logos::skip)]
+    #[regex(r"#[^\n\r]*", logos::skip)]
     Error,
     // } cov ignore
 }

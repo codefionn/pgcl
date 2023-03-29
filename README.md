@@ -18,6 +18,8 @@ The interpreter uses
 * [ ] Optimizations for groups with floating point numbers
 * [x] Import (modules)
 * [ ] Standard library
+* [ ] System call
+* [ ] Customize builtin function in imported modules (e.g. restrict access)
 
 ## Structures
 
