@@ -1,11 +1,23 @@
+use anyhow::anyhow;
 use async_recursion::async_recursion;
 use bigdecimal::BigDecimal;
 use futures::future::{join_all, OptionFuture};
 use log::debug;
-use std::collections::{BTreeMap, HashSet};
+use rowan::GreenNodeBuilder;
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::PathBuf,
+};
 use tailcall::tailcall;
 
-use crate::{context::ContextHandler, errors::InterpreterError, rational::BigRational};
+use crate::{
+    context::{ContextHandler, ContextHolder},
+    errors::InterpreterError,
+    lexer::Token,
+    parser::{print_ast, Parser, SyntaxKind},
+    rational::BigRational,
+    Args,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BiOpType {
@@ -35,11 +47,14 @@ pub enum BiOpType {
     OpLt,
     /// Operator pipe
     OpPipe,
+    /// Operator get in
+    OpPeriod,
 }
 
 /// Representing a typed syntax tree
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Syntax {
+    Program(Vec<Syntax>),
     Lambda(/* id: */ String, /* expr: */ Box<Syntax>),
     Call(/* rhs: */ Box<Syntax>, /* lhs: */ Box<Syntax>),
     Asg(/* rhs: */ Box<Syntax>, /* lhs: */ Box<Syntax>),
@@ -80,11 +95,14 @@ pub enum Syntax {
     ),
     ExplicitExpr(Box<Syntax>),
     Contextual(/* ctx_id: */ usize, Box<Syntax>),
+    Context(/* ctx_id: */ usize, /* representation: */ String),
     ValAny(),
     ValInt(/* num: */ num::BigInt),
     ValFlt(/* num: */ BigRational),
     ValStr(/* str: */ String),
     ValAtom(/* atom: */ String),
+    Export(String),
+    Import(String),
     UnexpectedArguments(),
 }
 
@@ -116,6 +134,9 @@ impl Syntax {
             Self::ValStr(_) => self,
             Self::ValAtom(_) => self,
             Self::Pipe(_) => self,
+            Self::Program(exprs) => Self::Program(
+                join_all(exprs.into_iter().map(|expr| async { expr.reduce().await })).await,
+            ),
             Self::Lambda(id, expr) => Self::Lambda(id, Box::new(expr.reduce().await)),
             Self::IfLet(asgs, expr_true, expr_false) => {
                 let mut expr_true = expr_true;
@@ -285,6 +306,9 @@ impl Syntax {
             Self::Contextual(ctx_id, expr) => {
                 Self::Contextual(ctx_id, Box::new(expr.reduce().await))
             }
+            expr @ Self::Context(_, _) => expr,
+            expr @ Self::Export(_) => expr,
+            expr @ Self::Import(_) => expr,
             Self::UnexpectedArguments() => self,
         }
     }
@@ -292,6 +316,7 @@ impl Syntax {
     #[async_recursion]
     async fn replace_args(self, key: &String, value: &Syntax) -> Syntax {
         match self {
+            expr @ Self::Program(_) => expr,
             Self::Id(id) if *id == *key => value.clone(),
             Self::Id(_) => self,
             Self::Lambda(id, expr) if *id != *key => {
@@ -407,6 +432,9 @@ impl Syntax {
                 Self::ExplicitExpr(Box::new(expr.replace_args(key, value).await))
             }
             expr @ Self::Contextual(_, _) => expr,
+            expr @ Self::Context(_, _) => expr,
+            expr @ Self::Export(_) => expr,
+            expr @ Self::Import(_) => expr,
             Self::Pipe(expr) => Self::Pipe(Box::new(expr.replace_args(key, value).await)),
         }
     }
@@ -418,6 +446,7 @@ impl Syntax {
             Self::Id(id) => {
                 result.insert(id.clone());
             }
+            Self::Program(_) => {}
             Self::Lambda(_, expr) => {
                 result.extend(expr.get_args().await);
             }
@@ -496,7 +525,10 @@ impl Syntax {
                 result.extend(expr.get_args().await);
             }
             Self::Pipe(expr) => result.extend(expr.get_args().await),
+            Self::Export(_) => {}
+            Self::Import(_) => {}
             Self::Contextual(_, _) => {}
+            Self::Context(_, _) => {}
         }
 
         result
@@ -524,6 +556,15 @@ impl Syntax {
             Self::ValAtom(_) => Ok(self),
             Self::Lambda(_, _) => Ok(self),
             Self::Pipe(_) => Ok(self),
+            Self::Program(exprs) => Ok(Self::Program(
+                join_all(exprs.into_iter().map(|expr| {
+                    let mut ctx = ctx.clone();
+                    async move { expr.execute(true, &mut ctx).await }
+                }))
+                .await
+                .into_iter()
+                .try_collect()?,
+            )),
             Self::IfLet(asgs, expr_true, expr_false) => {
                 for (lhs, rhs) in asgs {
                     let rhs = rhs.clone().execute(false, ctx).await?;
@@ -562,6 +603,33 @@ impl Syntax {
 
                 result*/
                 Ok(fn_expr.replace_args(&id, &expr).await)
+            }
+            Self::Call(box Syntax::Context(ctx_id, repr), box Syntax::Id(id)) => {
+                if let Some(global) = ctx
+                    .get_holder()
+                    .get(ctx_id)
+                    .await
+                    .unwrap()
+                    .get_global(&id)
+                    .await
+                {
+                    Ok(global)
+                } else {
+                    Err(InterpreterError::GlobalNotInContext(repr, id))
+                }
+            }
+            Self::Call(box Syntax::Contextual(ctx_id, lhs), rhs) => {
+                Self::Call(lhs, Box::new(Syntax::Contextual(ctx.get_id(), rhs)))
+                    .execute(
+                        false,
+                        &mut ctx
+                            .get_holder()
+                            .get(ctx_id)
+                            .await
+                            .unwrap()
+                            .handler(ctx.get_holder()),
+                    )
+                    .await
             }
             Self::Call(lhs, rhs) => {
                 let new_lhs = lhs.clone().execute(false, ctx).await?;
@@ -676,6 +744,23 @@ impl Syntax {
 
                     Ok(result)
                 }
+            }
+            Self::BiOp(
+                BiOpType::OpPeriod,
+                box Self::Context(ctx_id, ctx_name),
+                box Self::Id(id),
+            ) => {
+                let mut lhs_ctx = ctx.get_holder().get(ctx_id).await.unwrap();
+
+                if let Some(global) = lhs_ctx.get_global(&id).await {
+                    Ok(Self::Contextual(ctx_id, Box::new(global)))
+                } else {
+                    Err(InterpreterError::GlobalNotInContext(ctx_name, id))
+                }
+            }
+            Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => {
+                let lhs = lhs.execute_once(false, ctx).await?;
+                Ok(Self::BiOp(BiOpType::OpPeriod, Box::new(lhs), rhs))
             }
             Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValInt(y)) => {
                 Ok((x >= y).into())
@@ -835,6 +920,67 @@ impl Syntax {
                     ),
                 ))
             }
+            expr @ Self::Context(_, _) => Ok(expr),
+            Self::Export(id) if first => {
+                Ok(if ctx.add_global(&id, &mut values_defined_here).await {
+                    Self::ValAny()
+                } else {
+                    ctx.push_error(format!("Cannot export symbol {}", id)).await;
+
+                    Self::Export(id)
+                })
+            }
+            expr @ Self::Export(_) => Ok(expr),
+            Self::Import(path) => {
+                if let Some(ctx) = ctx.get_holder().get_path(&path).await {
+                    Ok(Self::Context(ctx.get_id(), path))
+                } else if let Some(ctx_path) = ctx.get_path().await {
+                    let mut module_path = ctx_path.clone();
+                    module_path.push(path);
+
+                    module_path =
+                        std::fs::canonicalize(module_path.clone()).unwrap_or(module_path.clone());
+
+                    let module_path_str = module_path.to_string_lossy().to_string();
+                    if module_path.is_file() {
+                        if let Some(ctx) = ctx.get_holder().get_path(&module_path_str).await {
+                            Ok(Self::Context(ctx.get_id(), module_path_str))
+                        } else {
+                            let code = std::fs::read_to_string(&module_path).map_err({
+                                let module_path_str = module_path_str.clone();
+                                move |_| InterpreterError::ImportFileDoesNotExist(module_path_str)
+                            })?;
+
+                            let holder = &mut ctx.get_holder();
+
+                            let ctx =
+                                execute_code(&module_path_str, &module_path, code.as_str(), holder)
+                                    .await?;
+
+                            holder
+                                .set_path(
+                                    &module_path_str,
+                                    &holder.get(ctx.get_id()).await.unwrap(),
+                                )
+                                .await;
+
+                            debug!("Imported {} as {}", module_path_str, ctx.get_id());
+
+                            Ok(Self::Context(ctx.get_id(), module_path_str))
+                        }
+                    } else {
+                        ctx.push_error(format!("Expected {} to be a file", module_path_str))
+                            .await;
+
+                        Err(InterpreterError::ImportFileDoesNotExist(module_path_str))
+                    }
+                } else {
+                    ctx.push_error("Import can only be done in real modules".to_string())
+                        .await;
+
+                    Err(InterpreterError::ContextNotInFile(ctx.get_name().await))
+                }
+            }
         }?;
 
         Ok(expr.reduce().await)
@@ -887,9 +1033,50 @@ impl Syntax {
     }
 }
 
+async fn execute_code(
+    name: &String,
+    path: &PathBuf,
+    code: &str,
+    holder: &mut ContextHolder,
+) -> Result<ContextHandler, InterpreterError> {
+    let mut ctx = holder
+        .create_context(name.clone(), Some(path.clone()))
+        .await
+        .handler(holder.clone());
+
+    let toks: Vec<(SyntaxKind, String)> = Token::lex_for_rowan(code)
+        .into_iter()
+        .map(
+            |(tok, slice)| -> Result<(SyntaxKind, String), InterpreterError> {
+                Ok((tok.clone().try_into()?, slice.clone()))
+            },
+        )
+        .try_collect()?;
+
+    debug!("{:?}", toks);
+
+    let typed = parse_to_typed(toks);
+    debug!("{:?}", typed);
+    let typed = typed?;
+    typed.execute(true, &mut ctx).await?;
+
+    Ok(ctx)
+}
+
+fn parse_to_typed(toks: Vec<(SyntaxKind, String)>) -> Result<Syntax, InterpreterError> {
+    let (ast, errors) = Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse();
+    print_ast(0, &ast);
+    if !errors.is_empty() {
+        println!("{:?}", errors);
+    }
+
+    return (*ast).try_into();
+}
+
 impl std::fmt::Display for BiOpType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
+            Self::OpPeriod => ".",
             Self::OpAdd => "+",
             Self::OpSub => "-",
             Self::OpMul => "*",
@@ -929,6 +1116,18 @@ impl std::fmt::Display for Syntax {
 
         f.write_str(
             match self {
+                Self::Program(exprs) => {
+                    exprs
+                        .iter()
+                        .map(|expr| format!("{}", expr))
+                        .fold(String::new(), |a, b| {
+                            if a.is_empty() {
+                                b
+                            } else {
+                                format!("{}\n{}", a, b)
+                            }
+                        })
+                }
                 Self::Lambda(id, expr) => format!("(\\{} {})", id, expr.to_string()),
                 Self::Call(lhs, rhs) => format!("({} {})", lhs, rhs),
                 Self::Asg(lhs, rhs) => format!("({} = {})", lhs.to_string(), rhs.to_string()),
@@ -1027,6 +1226,9 @@ impl std::fmt::Display for Syntax {
                 ),
                 Self::ExplicitExpr(expr) => format!("{}", expr),
                 Self::Contextual(_, expr) => format!("{}", expr),
+                Self::Context(_, id) => format!("{}", id),
+                Self::Export(id) => format!("export {}", id),
+                Self::Import(path) => format!("import {}", val_str(path)),
             }
             .as_str(),
         )

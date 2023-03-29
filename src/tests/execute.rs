@@ -807,11 +807,11 @@ async fn test_minus_1() {
 async fn test_two_ctx() {
     let mut holder = ContextHolder::default();
     let mut ctx0 = holder
-        .create_context("0".to_string())
+        .create_context("0".to_string(), None)
         .await
         .handler(holder.clone());
     let mut ctx1 = holder
-        .create_context("1".to_string())
+        .create_context("1".to_string(), None)
         .await
         .handler(holder.clone());
 
@@ -823,4 +823,15 @@ async fn test_two_ctx() {
             .await
             .map(|expr| format!("{}", expr))
     );
+}
+
+#[tokio::test]
+async fn test_export() {
+    let mut ctx = ContextHandler::async_default().await;
+
+    assert!(parse_to_str("id x = x", &mut ctx).await.is_ok());
+    assert!(parse_to_str("export id", &mut ctx).await.is_ok());
+
+    assert_eq!(Vec::<String>::new(), ctx.get_errors().await);
+    assert!(ctx.get_global(&"id".to_string()).await.is_some());
 }

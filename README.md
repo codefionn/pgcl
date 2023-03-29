@@ -16,7 +16,7 @@ The interpreter uses
 * [x] Pipes
 * [ ] Operators as functions
 * [ ] Optimizations for groups with floating point numbers
-* [ ] Import (modules)
+* [x] Import (modules)
 * [ ] Standard library
 
 ## Structures

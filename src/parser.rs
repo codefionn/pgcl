@@ -36,6 +36,7 @@ pub enum SyntaxKind {
     OpStrictNeq,
     OpMap,
     OpPipe,
+    NewLine,
     Pipe,
 
     Semicolon,
@@ -47,6 +48,7 @@ pub enum SyntaxKind {
     KwLet,
     KwIn,
     KwExport,
+    KwImport,
     If,
     IfLet,
     KwThen,
@@ -158,6 +160,46 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             Some(SyntaxKind::Atom) => {
                 self.bump();
                 true
+            }
+            Some(SyntaxKind::KwExport) => {
+                self.iter.next();
+
+                if self.peek() == Some(SyntaxKind::Id) {
+                    self.builder.start_node(SyntaxKind::KwExport.into());
+                    self.bump();
+                    self.builder.finish_node();
+
+                    true
+                } else {
+                    self.errors
+                        .push(format!("Expected identifier after export keyword"));
+
+                    self.builder.start_node(SyntaxKind::Error.into());
+                    self.bump();
+                    self.builder.finish_node();
+
+                    false
+                }
+            }
+            Some(SyntaxKind::KwImport) => {
+                self.iter.next();
+
+                if self.peek() == Some(SyntaxKind::Str) {
+                    self.builder.start_node(SyntaxKind::KwImport.into());
+                    self.bump();
+                    self.builder.finish_node();
+
+                    true
+                } else {
+                    self.errors
+                        .push(format!("Expected string after import keyword"));
+
+                    self.builder.start_node(SyntaxKind::Error.into());
+                    self.bump();
+                    self.builder.finish_node();
+
+                    false
+                }
             }
             Some(SyntaxKind::OpPipe) if first => {
                 self.iter.next(); // skip |
@@ -413,6 +455,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             }
             _ => {
                 if !allow_empty {
+                    self.errors.push(format!("Expected primary expression"));
+
                     self.builder.start_node(SyntaxKind::Error.into());
                     self.bump();
                     self.builder.finish_node();
@@ -568,6 +612,15 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     pub fn parse(mut self) -> (Box<SyntaxElement>, Vec<String>) {
         self.builder.start_node(SyntaxKind::Root.into());
         self.parse_expr(true);
+        while self.peek() == Some(SyntaxKind::NewLine) {
+            self.iter.next();
+
+            let peeked = self.peek();
+            if !peeked.is_none() && peeked != Some(SyntaxKind::NewLine) {
+                self.parse_expr(true);
+            }
+        }
+
         self.builder.finish_node();
 
         (
@@ -591,12 +644,19 @@ impl TryInto<Syntax> for SyntaxElement {
                 match kind {
                     SyntaxKind::Root => {
                         let children: Vec<SyntaxElement> = children.collect();
-                        if children.len() != 1 {
+                        if children.len() == 0 {
                             Err(InterpreterError::InternalError(format!(
-                                "Root must only have one child"
+                                "Root must have at least one child"
                             )))
-                        } else {
+                        } else if children.len() == 1 {
                             children.into_iter().next().unwrap().try_into()
+                        } else {
+                            Ok(Syntax::Program(
+                                children
+                                    .into_iter()
+                                    .map(|child| child.try_into())
+                                    .try_collect()?,
+                            ))
                         }
                     }
                     SyntaxKind::ExplicitExpr => {
@@ -717,6 +777,7 @@ impl TryInto<Syntax> for SyntaxElement {
                                     SyntaxKind::OpGt => Ok(OpGt),
                                     SyntaxKind::OpLt => Ok(OpLt),
                                     SyntaxKind::OpPipe => Ok(OpPipe),
+                                    SyntaxKind::OpPeriod => Ok(OpPeriod),
                                     _ => Err(InterpreterError::InvalidOperator()),
                                 })?,
                                 Box::new(lhs.try_into()?),
@@ -859,7 +920,25 @@ impl TryInto<Syntax> for SyntaxElement {
 
                         Ok(Syntax::Pipe(Box::new(child.try_into()?)))
                     }
-                    _ => Err(InterpreterError::UnexpectedExpressionEmpty()),
+                    SyntaxKind::KwExport => {
+                        let child = children
+                            .next()
+                            .ok_or(InterpreterError::ExpectedIdentifier())?
+                            .into_token()
+                            .ok_or(InterpreterError::ExpectedIdentifier())?;
+
+                        Ok(Syntax::Export(child.text().to_string()))
+                    }
+                    SyntaxKind::KwImport => {
+                        let child = children
+                            .next()
+                            .ok_or(InterpreterError::ExpectedIdentifier())?
+                            .into_token()
+                            .ok_or(InterpreterError::ExpectedIdentifier())?;
+
+                        Ok(Syntax::Import(child.text().to_string()))
+                    }
+                    _ => Err(InterpreterError::UnexpectedExpressionEmpty(kind)),
                 }
             }
             NodeOrToken::Token(tok) => match kind {

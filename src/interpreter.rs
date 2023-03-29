@@ -123,9 +123,11 @@ impl InterpreterExecuteActor {
     async fn run(mut self) -> anyhow::Result<()> {
         debug!("Started {}", stringify!(InterpreterExecuteActor));
 
+        let path = std::env::current_dir()?;
+
         let mut main_ctx: ContextHandler = ContextHandler::new(
             self.ctx
-                .create_context("<stdin>".to_string())
+                .create_context("<stdin>".to_string(), Some(path))
                 .await
                 .get_id(),
             self.ctx.clone(),

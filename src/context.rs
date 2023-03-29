@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -11,25 +12,55 @@ use crate::execute::Syntax;
 pub struct PrivateContext {
     id: usize,
     name: String,
+    path: Option<PathBuf>,
     /// HashMap with a stack of values
     values: HashMap<String, Vec<Syntax>>,
     fns: HashMap<String, Vec<(Vec<Syntax>, Syntax)>>,
     errors: Vec<String>,
+    globals: HashMap<String, Syntax>,
 }
 
 impl PrivateContext {
-    pub fn new(id: usize, name: String) -> Self {
+    pub fn new(id: usize, name: String, path: Option<PathBuf>) -> Self {
         Self {
             id,
             name,
+            path,
             values: Default::default(),
             fns: Default::default(),
             errors: Default::default(),
+            globals: Default::default(),
         }
     }
 
     pub fn get_id(&self) -> usize {
         self.id
+    }
+
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn get_path(&self) -> Option<PathBuf> {
+        self.path.clone()
+    }
+
+    pub async fn add_global(&mut self, id: &String, values_defined_here: &mut Vec<String>) -> bool {
+        if self.globals.contains_key(id) {
+            return false;
+        }
+
+        if let Some(expr) = self.get_from_values(&id, values_defined_here).await {
+            self.globals.insert(id.clone(), expr);
+
+            true
+        } else {
+            false
+        }
+    }
+
+    pub async fn get_global(&mut self, id: &String) -> Option<Syntax> {
+        self.globals.get(id).map(|expr| expr.clone())
     }
 
     pub fn insert_into_values(
@@ -360,6 +391,26 @@ impl Context {
         self.id
     }
 
+    pub async fn get_path(&self) -> Option<PathBuf> {
+        self.ctx.lock().await.get_path()
+    }
+
+    pub async fn get_name(&self) -> String {
+        self.ctx.lock().await.get_name()
+    }
+
+    pub async fn add_global(&mut self, id: &String, values_defined_here: &mut Vec<String>) -> bool {
+        self.ctx
+            .lock()
+            .await
+            .add_global(id, values_defined_here)
+            .await
+    }
+
+    pub async fn get_global(&mut self, id: &String) -> Option<Syntax> {
+        self.ctx.lock().await.get_global(id).await
+    }
+
     pub async fn insert_into_values(
         &mut self,
         id: &String,
@@ -428,6 +479,7 @@ impl Context {
 struct PrivateContextHandler {
     id_to_ctx: BTreeMap<usize, Context>,
     last_id: usize,
+    path_to_ctx: BTreeMap<String, Context>,
 }
 
 impl PrivateContextHandler {
@@ -435,14 +487,22 @@ impl PrivateContextHandler {
         self.id_to_ctx.get(&id).map(|ctx| ctx.clone())
     }
 
-    pub fn create_context(&mut self, name: String) -> Context {
+    pub fn create_context(&mut self, name: String, path: Option<PathBuf>) -> Context {
         let id = self.last_id;
-        let ctx: Context = PrivateContext::new(id, name).into();
+        let ctx: Context = PrivateContext::new(id, name, path).into();
         self.last_id += 1;
 
         self.id_to_ctx.insert(id, ctx.clone());
 
         ctx
+    }
+
+    pub fn set_path(&mut self, name: &String, ctx: &Context) {
+        self.path_to_ctx.insert(name.clone(), ctx.clone());
+    }
+
+    pub fn get_path(&mut self, name: &String) -> Option<Context> {
+        self.path_to_ctx.get(name).map(|ctx| ctx.clone())
     }
 }
 
@@ -455,7 +515,7 @@ pub struct ContextHandler {
 impl ContextHandler {
     pub async fn async_default() -> Self {
         let mut holder = ContextHolder::default();
-        let ctx = holder.create_context("<stdin>".to_string()).await;
+        let ctx = holder.create_context("<stdin>".to_string(), None).await;
 
         ctx.handler(holder)
     }
@@ -471,6 +531,27 @@ impl ContextHandler {
 
     pub fn get_id(&self) -> usize {
         self.id
+    }
+
+    pub async fn get_name(&self) -> String {
+        self.holder.get(self.id).await.unwrap().get_name().await
+    }
+
+    pub async fn get_path(&self) -> Option<PathBuf> {
+        self.holder.get(self.id).await.unwrap().get_path().await
+    }
+
+    pub async fn add_global(&mut self, id: &String, values_defined_here: &mut Vec<String>) -> bool {
+        self.holder
+            .get(self.id)
+            .await
+            .unwrap()
+            .add_global(id, values_defined_here)
+            .await
+    }
+
+    pub async fn get_global(&mut self, id: &String) -> Option<Syntax> {
+        self.holder.get(self.id).await.unwrap().get_global(id).await
     }
 
     pub async fn insert_into_values(
@@ -563,7 +644,15 @@ impl ContextHolder {
         self.handler.lock().await.get(id)
     }
 
-    pub async fn create_context(&mut self, name: String) -> Context {
-        self.handler.lock().await.create_context(name)
+    pub async fn create_context(&mut self, name: String, path: Option<PathBuf>) -> Context {
+        self.handler.lock().await.create_context(name, path)
+    }
+
+    pub async fn set_path(&mut self, name: &String, ctx: &Context) {
+        self.handler.lock().await.set_path(name, ctx);
+    }
+
+    pub async fn get_path(&mut self, name: &String) -> Option<Context> {
+        self.handler.lock().await.get_path(name)
     }
 }

@@ -1,12 +1,13 @@
-use crate::lexer::Token;
+use crate::{lexer::Token, parser::SyntaxKind};
 
 #[derive(Debug, PartialEq)]
 pub enum InterpreterError {
     UnknownError(),
     InternalError(String),
+    GlobalNotInContext(String, String),
     UnexpectedToken(Token),
     UnexpectedTokenEmpty(),
-    UnexpectedExpressionEmpty(),
+    UnexpectedExpressionEmpty(SyntaxKind),
     ExpectedExpression(),
     ExpectedRHSExpression(),
     ExpectedLHSExpression(),
@@ -17,4 +18,6 @@ pub enum InterpreterError {
     ExpectedInteger(),
     ExpectedFloat(),
     ExpectedCall(),
+    ContextNotInFile(String),
+    ImportFileDoesNotExist(String),
 }
