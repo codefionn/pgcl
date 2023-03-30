@@ -841,7 +841,11 @@ impl Syntax {
                     .set_values_in_context(&lhs, &rhs, &mut values_defined_here)
                     .await
                 {
-                    Ok(*expr)
+                    ctx.remove_values(&mut values_defined_here).await;
+                    ctx.push_error(format!("Let expression failed: {}", self))
+                        .await;
+
+                    Ok(Self::Let((lhs, rhs), expr))
                 } else {
                     let mut result = (*expr).clone();
                     for (key, value) in ctx

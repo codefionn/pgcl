@@ -133,6 +133,8 @@ impl InterpreterExecuteActor {
             self.ctx.clone(),
         );
 
+        let mut last_error_len = 0;
+
         while let Some(msg) = self.rx.recv().await {
             match msg {
                 LexerMessage::Line(lexer_result, tx_confirm) => {
@@ -167,6 +169,12 @@ impl InterpreterExecuteActor {
                         if let Ok(executed) = reduced.execute(true, &mut main_ctx).await {
                             println!("{}", executed);
                             self.last_result = Some(executed);
+                        }
+
+                        let errors = main_ctx.get_errors().await;
+                        if last_error_len < errors.len() {
+                            println!("{:?}", &errors[last_error_len..]);
+                            last_error_len = errors.len();
                         }
                     }
 
