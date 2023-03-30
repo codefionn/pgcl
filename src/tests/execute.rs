@@ -655,6 +655,19 @@ async fn pattern_match_list() {
         Ok(format!("3")),
         parse_to_str("len [0, 1, 2]", &mut ctx).await
     );
+
+    let mut ctx = ContextHandler::async_default().await;
+    assert!(parse_to_str("len [] = 0", &mut ctx).await.is_ok());
+    assert!(parse_to_str("len [x] = 1 ", &mut ctx).await.is_ok());
+    assert!(parse_to_str("len [x;xs] = 2", &mut ctx).await.is_ok());
+    assert_eq!(Ok(format!("0")), parse_to_str("len []", &mut ctx).await);
+    assert_eq!(Ok(format!("1")), parse_to_str("len [1]", &mut ctx).await);
+    assert_eq!(Ok(format!("1")), parse_to_str("len [2]", &mut ctx).await);
+    assert_eq!(Ok(format!("2")), parse_to_str("len [1, 2]", &mut ctx).await);
+    assert_eq!(
+        Ok(format!("2")),
+        parse_to_str("len [1, 2, 3]", &mut ctx).await
+    );
 }
 
 #[tokio::test]

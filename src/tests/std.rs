@@ -78,3 +78,72 @@ async fn test_map() {
         .await
     );
 }
+
+#[tokio::test]
+async fn test_foldl() {
+    assert_eq!(
+        Ok(format!("15")),
+        parse_to_str(
+            r"std.foldl (\x \y x + y) 0 [1, 2, 3, 4, 5]",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok(format!("-15")),
+        parse_to_str(
+            r"std.foldl (\x \y x - y) 0 [1, 2, 3, 4, 5]",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok(format!("-13")),
+        parse_to_str(
+            r"std.foldl (\x \y if x == 0 then y else x - y) 0 [1, 2, 3, 4, 5]",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok(format!("3")),
+        parse_to_str(
+            r"std.foldl (\x \y if x == 0 then y else y - x) 0 [1, 2, 3, 4, 5]",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+}
+
+#[tokio::test]
+async fn test_foldr() {
+    assert_eq!(
+        Ok(format!("15")),
+        parse_to_str(
+            r"std.foldr (\x \y x + y) 0 [1, 2, 3, 4, 5]",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok(format!("-15")),
+        parse_to_str(
+            r"std.foldr (\x \y y - x) 0 [1, 2, 3, 4, 5]",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok(format!("-5")),
+        parse_to_str(
+            r"std.foldr (\x \y if y == 0 then x else y - x) 0 [1, 2, 3, 4, 5]",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+}

@@ -183,7 +183,7 @@ impl PrivateContext {
             }
             (Syntax::Lst(lst0), Syntax::Lst(lst1)) if lst0.len() == lst1.len() => {
                 for i in 0..lst0.len() {
-                    if self
+                    if !self
                         .set_values_in_context(&lst0[i], &lst1[i], values_defined_here)
                         .await
                     {
