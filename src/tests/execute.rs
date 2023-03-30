@@ -127,6 +127,14 @@ async fn neq() {
         Ok(format!("@true")),
         parse_to_str("3 != 2", &mut ContextHandler::async_default().await).await
     );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("_ != 2", &mut ContextHandler::async_default().await).await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("2 != _", &mut ContextHandler::async_default().await).await
+    );
 }
 
 #[tokio::test]
@@ -713,6 +721,14 @@ async fn test_map() {
         .await
     );
     assert_eq!(
+        Ok("\"Hello, world\"".to_string()),
+        parse_to_str(
+            "let {x: y} = {y: 0, x: \"Hello, world\"} in y",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
         Ok("10".to_string()),
         parse_to_str(
             "if let {\"z\"} = {y: 0, x: \"Hello, world\"} then z else 10",
@@ -870,6 +886,11 @@ async fn test_import_std() {
         Ok("21".to_string()),
         parse_to_str("std.id 21", &mut ctx).await
     );
+
+    assert_eq!(
+        Ok("std".to_string()),
+        parse_to_str("import std", &mut ctx).await
+    );
 }
 
 #[tokio::test]
@@ -884,5 +905,168 @@ async fn test_map_add() {
     assert_eq!(
         Ok("{ x: 10, y: 12 }".to_string()),
         parse_to_str("{ x: 10 } + { x: 13, y: 12 }", &mut ctx).await
+    );
+}
+
+#[tokio::test]
+async fn test_int_div() {
+    let mut ctx = ContextHandler::async_default().await;
+
+    assert_eq!(Ok("2.5".to_string()), parse_to_str("5 / 2", &mut ctx).await);
+}
+
+#[tokio::test]
+async fn test_float() {
+    let mut ctx = ContextHandler::async_default().await;
+
+    assert_eq!(Ok("1".to_string()), parse_to_str("1.0", &mut ctx).await);
+    assert_eq!(Ok("1.2".to_string()), parse_to_str("1.2", &mut ctx).await);
+    assert_eq!(
+        Ok("2".to_string()),
+        parse_to_str("1.0 + 1.0", &mut ctx).await
+    );
+    assert_eq!(Ok("2".to_string()), parse_to_str("1.0 + 1", &mut ctx).await);
+    assert_eq!(Ok("2".to_string()), parse_to_str("1 + 1.0", &mut ctx).await);
+    assert_eq!(
+        Ok("2".to_string()),
+        parse_to_str("0.5 + 1.5", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("-0.5".to_string()),
+        parse_to_str("1 - 1.5", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("-0.5".to_string()),
+        parse_to_str("0.5 - 1", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("-1".to_string()),
+        parse_to_str("0.5 - 1.5", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("6.6".to_string()),
+        parse_to_str("2.2 * 3.0", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("6.6".to_string()),
+        parse_to_str("2.2 * 3", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("6.6".to_string()),
+        parse_to_str("3 * 2.2", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("3".to_string()),
+        parse_to_str("6.6 / 2.2", &mut ctx).await
+    );
+    assert_eq!(Ok("3".to_string()), parse_to_str("6.0 / 2", &mut ctx).await);
+    assert_eq!(Ok("3".to_string()), parse_to_str("6 / 2.0", &mut ctx).await);
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str("6.6 >= 2.2", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str("2.2 > 2.2", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str("2.2 > 2.3", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str("2.2 > 2.2", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str("2.2 >= 2.2", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str("2.2 >= 2.3", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str("1.2 < 2.2", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str("2.2 < 2.2", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str("3.2 < 2.2", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str("1.2 <= 2.2", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str("3.2 <= 2.2", &mut ctx).await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str("2.2 <= 2.2", &mut ctx).await
+    );
+}
+
+#[tokio::test]
+async fn test_lambda() {
+    assert_eq!(
+        Ok("2".to_string()),
+        parse_to_str(
+            r"(\x \x x) 10 2",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(10, 2)".to_string()),
+        parse_to_str(
+            r"(\x \y (x, y)) 10 2",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str(
+            r"(\x \y x == y) 10 2",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            r"(\x \y x == y) 10 (8 + 2)",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("2".to_string()),
+        parse_to_str(
+            r"(\x let (1 x) = (1 x) in x) 2",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("2".to_string()),
+        parse_to_str(
+            r"(\x \y let (1 y) = (1 y) in x) 2 10",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("10".to_string()),
+        parse_to_str(
+            r"(\x \y let (1 y) = (1 y) in y) 2 10",
+            &mut ContextHandler::async_default().await
+        )
+        .await
     );
 }

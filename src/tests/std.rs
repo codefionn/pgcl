@@ -45,6 +45,15 @@ async fn test_let_map_from_std() {
         )
         .await
     );
+
+    assert_eq!(
+        Ok(format!("@atom")),
+        parse_to_str(
+            "let { \"id\" as_id } = std in as_id @atom",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
 }
 
 #[tokio::test]

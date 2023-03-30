@@ -1,2 +1,3 @@
 /target
 /cargo-test-*
+/default_*_*_*.profraw
