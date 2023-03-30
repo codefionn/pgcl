@@ -45,3 +45,16 @@ export foldl
 foldr _ i []     = i
 foldr f i [x:xs] = f x (foldr f i xs)
 export foldr
+
+##
+# Returns the beginning of a list. Fails spetaculary, if empty.
+##
+head [x:xs] = x
+export head
+
+##
+# Returns the tail of a list or an empty list, if the list has no arguments
+##
+tail [] = []
+tail [x:xs] = xs
+export tail

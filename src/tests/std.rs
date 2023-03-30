@@ -147,3 +147,47 @@ async fn test_foldr() {
         .await
     );
 }
+
+#[tokio::test]
+async fn test_head() {
+    assert_eq!(
+        Ok(format!("10")),
+        parse_to_str(r"std.head [10]", &mut ContextHandler::async_default().await).await
+    );
+    assert_eq!(
+        Ok(format!("10")),
+        parse_to_str(
+            r"std.head [10, 2]",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+}
+
+#[tokio::test]
+async fn test_tail() {
+    assert_eq!(
+        Ok(format!("[3]")),
+        parse_to_str(
+            r"std.tail [2, 3]",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok(format!("[3, 1]")),
+        parse_to_str(
+            r"std.tail [2, 3, 1]",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok(format!("[3, 4, 1]")),
+        parse_to_str(
+            r"std.tail [2, 3, 4, 1]",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+}
