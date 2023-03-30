@@ -662,7 +662,7 @@ async fn test_map() {
     assert_eq!(
         Ok("\"Hello, world\"".to_string()),
         parse_to_str(
-            "let {x} = {x: \"Hello, world\"} in x",
+            "let { x } = { x: \"Hello, world\" } in x",
             &mut ContextHandler::async_default().await
         )
         .await
@@ -670,7 +670,7 @@ async fn test_map() {
     assert_eq!(
         Ok("\"Hello, world\"".to_string()),
         parse_to_str(
-            "let {x} = {x: \"Hello, world\", y: 0} in x",
+            "let { x } = { x: \"Hello, world\", y: 0 } in x",
             &mut ContextHandler::async_default().await
         )
         .await
@@ -678,7 +678,7 @@ async fn test_map() {
     assert_eq!(
         Ok("\"Hello, world\"".to_string()),
         parse_to_str(
-            "let {x} = {y: 0, x: \"Hello, world\"} in x",
+            "let { x } = { y: 0, x: \"Hello, world\" } in x",
             &mut ContextHandler::async_default().await
         )
         .await
@@ -686,7 +686,7 @@ async fn test_map() {
     assert_eq!(
         Ok("\"Hello, world\"".to_string()),
         parse_to_str(
-            "let {\"x\" a} = {y: 0, x: \"Hello, world\"} in a",
+            "let { \"x\" a } = { y: 0, x: \"Hello, world\" } in a",
             &mut ContextHandler::async_default().await
         )
         .await
@@ -856,5 +856,20 @@ async fn test_import_std() {
     assert_eq!(
         Ok("21".to_string()),
         parse_to_str("std.id 21", &mut ctx).await
+    );
+}
+
+#[tokio::test]
+async fn test_map_add() {
+    let mut ctx = ContextHandler::async_default().await;
+
+    assert_eq!(
+        Ok("{ x: 10, y: 12 }".to_string()),
+        parse_to_str("{ x: 10 } + { y: 12 }", &mut ctx).await
+    );
+
+    assert_eq!(
+        Ok("{ x: 10, y: 12 }".to_string()),
+        parse_to_str("{ x: 10 } + { x: 13, y: 12 }", &mut ctx).await
     );
 }

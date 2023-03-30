@@ -4,7 +4,7 @@ use futures::future::{join_all, OptionFuture};
 use log::debug;
 use rowan::GreenNodeBuilder;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
 };
 use tailcall::tailcall;
@@ -248,6 +248,26 @@ impl Syntax {
                 lst.extend(rhs.into_iter());
 
                 Self::BiOp(BiOpType::OpAdd, Box::new(Self::Lst(lst)), rest)
+            }
+            Self::BiOp(BiOpType::OpAdd, box Self::Map(lhs), box Self::Map(rhs)) => {
+                let mut map = BTreeMap::new();
+                // Keys from lhs overwrite keys from rhs
+                map.extend(rhs.into_iter());
+                map.extend(lhs.into_iter());
+
+                Self::Map(map)
+            }
+            Self::BiOp(
+                BiOpType::OpAdd,
+                box Self::Map(lhs),
+                box Self::BiOp(BiOpType::OpAdd, box Self::Map(rhs), rest),
+            ) => {
+                let mut map = BTreeMap::new();
+                // Keys from lhs overwrite keys from rhs
+                map.extend(rhs.into_iter());
+                map.extend(lhs.into_iter());
+
+                Self::BiOp(BiOpType::OpAdd, Box::new(Self::Map(map)), rest)
             }
             Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValInt(y)) => {
                 (x >= y).into()
@@ -1266,7 +1286,7 @@ impl std::fmt::Display for Syntax {
                         })
                 ),
                 Self::Map(map) => format!(
-                    "{{{}}}",
+                    "{{ {} }}",
                     map.iter()
                         .map(|(key, (val, is_id))| format!(
                             "{}: {}",
@@ -1282,7 +1302,7 @@ impl std::fmt::Display for Syntax {
                         })
                 ),
                 Self::MapMatch(map) => format!(
-                    "{{{}}}",
+                    "{{ {} }}",
                     map.iter()
                         .map(|(key, key_into, val, is_id)| {
                             let key = if let Some(key_into) = key_into {
