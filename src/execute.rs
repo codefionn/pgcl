@@ -238,6 +238,17 @@ impl Syntax {
 
                 Self::Lst(lst)
             }
+            Self::BiOp(
+                BiOpType::OpAdd,
+                box Self::Lst(lhs),
+                box Self::BiOp(BiOpType::OpAdd, box Self::Lst(rhs), rest),
+            ) => {
+                let mut lst = Vec::new();
+                lst.extend(lhs.into_iter());
+                lst.extend(rhs.into_iter());
+
+                Self::BiOp(BiOpType::OpAdd, Box::new(Self::Lst(lst)), rest)
+            }
             Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValInt(y)) => {
                 (x >= y).into()
             }
