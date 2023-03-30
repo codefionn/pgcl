@@ -1,6 +1,23 @@
+## 
+# Map elements in the list with the given `f` function
+##
 map _ [] = []
 map f [x:xs] = [(f x)] + (map f xs)
 export map
 
+##
+# Return the identity of `x` (the same object)
+##
 id x = x
 export id
+
+##
+# Turns a left-associative expression into a right-associative expression
+#
+# ```
+# right ((1 2) 3) == (1 (2 3))
+# ```
+##
+right ((x y) z) = right (x (y z))
+right x = x
+export right

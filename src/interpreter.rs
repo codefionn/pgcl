@@ -186,7 +186,8 @@ fn parse_to_typed(
     args: &Args,
     toks: Vec<(SyntaxKind, String)>,
 ) -> Result<Syntax, InterpreterError> {
-    let (ast, errors) = Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse();
+    let (ast, errors) =
+        Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse_main(true);
     if !errors.is_empty() {
         println!("{:?}", errors);
     }

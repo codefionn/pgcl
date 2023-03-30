@@ -69,3 +69,11 @@ async fn parse_pipe_op() {
 async fn parse_negative() {
     assert_eq!(Ok(r"(0 - 1)".to_string()), parse_to_str("-1").await);
 }
+
+#[tokio::test]
+async fn parse_std_right_expr() {
+    assert_eq!(
+        Ok(r"((std.right) ((1 2) 3))".to_string()),
+        parse_to_str("std.right (1 2 3)").await
+    );
+}

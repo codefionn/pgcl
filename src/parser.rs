@@ -2,6 +2,7 @@
 use std::{iter::Peekable, str::FromStr};
 
 use bigdecimal::BigDecimal;
+use log::warn;
 use num::Num;
 use rowan::{GreenNodeBuilder, NodeOrToken};
 
@@ -99,6 +100,7 @@ pub struct Parser<I: Iterator<Item = (SyntaxKind, String)>> {
     errors: Vec<String>,
     iter: Peekable<I>,
     tuple: Vec<bool>,
+    line: usize,
 }
 
 impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
@@ -108,6 +110,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             iter,
             errors: Default::default(),
             tuple: Vec::new(),
+            line: 1,
         }
     }
 }
@@ -567,15 +570,43 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         self.parse_asg(first)
     }
 
-    pub fn parse(mut self) -> (Box<SyntaxElement>, Vec<String>) {
-        self.builder.start_node(SyntaxKind::Root.into());
-        self.parse_expr(true);
+    fn skip_newlines(&mut self) -> usize {
+        let mut lines = 0;
         while self.peek() == Some(SyntaxKind::NewLine) {
             self.iter.next();
 
+            lines += 1;
+            self.line += 1;
+        }
+
+        lines
+    }
+
+    pub fn parse(mut self) -> (Box<SyntaxElement>, Vec<String>) {
+        self.parse_main(false)
+    }
+
+    pub fn parse_main(mut self, print_error_lines: bool) -> (Box<SyntaxElement>, Vec<String>) {
+        self.builder.start_node(SyntaxKind::Root.into());
+        self.line += self.skip_newlines();
+
+        if !self.parse_expr(true) {
+            if print_error_lines {
+                warn!("Error in line {}", self.line);
+            }
+        }
+
+        while self.peek() == Some(SyntaxKind::NewLine) {
+            self.iter.next();
+            self.line += 1;
+
             let peeked = self.peek();
             if !peeked.is_none() && peeked != Some(SyntaxKind::NewLine) {
-                self.parse_expr(true);
+                if !self.parse_expr(true) {
+                    if print_error_lines {
+                        warn!("Error in line {}", self.line);
+                    }
+                }
             }
         }
 

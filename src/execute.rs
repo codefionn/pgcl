@@ -231,6 +231,53 @@ impl Syntax {
             Self::BiOp(BiOpType::OpAdd, box Self::ValStr(x), box Self::ValStr(y)) => {
                 Self::ValStr(x + y.as_str())
             }
+            Self::BiOp(BiOpType::OpAdd, box Self::Lst(lhs), box Self::Lst(rhs)) => {
+                let mut lst = Vec::new();
+                lst.extend(lhs.into_iter());
+                lst.extend(rhs.into_iter());
+
+                Self::Lst(lst)
+            }
+            Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValInt(y)) => {
+                (x >= y).into()
+            }
+            Self::BiOp(BiOpType::OpLeq, box Self::ValInt(x), box Self::ValInt(y)) => {
+                (x <= y).into()
+            }
+            Self::BiOp(BiOpType::OpGt, box Self::ValInt(x), box Self::ValInt(y)) => (x > y).into(),
+            Self::BiOp(BiOpType::OpLt, box Self::ValInt(x), box Self::ValInt(y)) => (x < y).into(),
+            Self::BiOp(BiOpType::OpGeq, box Self::ValFlt(x), box Self::ValFlt(y)) => {
+                (x >= y).into()
+            }
+            Self::BiOp(BiOpType::OpLeq, box Self::ValFlt(x), box Self::ValFlt(y)) => {
+                (x <= y).into()
+            }
+            Self::BiOp(BiOpType::OpGt, box Self::ValFlt(x), box Self::ValFlt(y)) => (x > y).into(),
+            Self::BiOp(BiOpType::OpLt, box Self::ValFlt(x), box Self::ValFlt(y)) => (x < y).into(),
+            Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                (int_to_flt(x) >= y).into()
+            }
+            Self::BiOp(BiOpType::OpLeq, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                (int_to_flt(x) <= y).into()
+            }
+            Self::BiOp(BiOpType::OpGt, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                (int_to_flt(x) > y).into()
+            }
+            Self::BiOp(BiOpType::OpLt, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                (int_to_flt(x) < y).into()
+            }
+            Self::BiOp(BiOpType::OpGeq, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                (x >= int_to_flt(y)).into()
+            }
+            Self::BiOp(BiOpType::OpLeq, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                (x <= int_to_flt(y)).into()
+            }
+            Self::BiOp(BiOpType::OpGt, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                (x > int_to_flt(y)).into()
+            }
+            Self::BiOp(BiOpType::OpLt, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                (x < int_to_flt(y)).into()
+            }
             Self::BiOp(BiOpType::OpEq, box Self::ValAny(), _) => Self::ValAtom("true".to_string()),
             Self::BiOp(BiOpType::OpEq, _, box Self::ValAny()) => Self::ValAtom("true".to_string()),
             Self::BiOp(BiOpType::OpNeq, box Self::ValAny(), _) => {
@@ -291,19 +338,53 @@ impl Syntax {
                 Self::MapMatch(map)
             }
             Self::ExplicitExpr(expr) => expr.reduce().await,
-            Self::Contextual(
-                _,
-                expr @ (box Self::ValAny()
-                | box Self::ValInt(_)
-                | box Self::ValFlt(_)
-                | box Self::ValStr(_)
-                | box Self::ValAtom(_)),
-            ) => *expr,
             Self::Contextual(ctx_id, expr) => {
-                Self::Contextual(ctx_id, Box::new(expr.reduce().await))
+                let expr = expr.reduce().await;
+
+                expr.reduce_contextual(ctx_id).await
             }
             expr @ Self::Context(_, _) => expr,
             Self::UnexpectedArguments() => self,
+        }
+    }
+
+    async fn reduce_contextual(self, ctx_id: usize) -> Self {
+        match self {
+            expr @ (Self::ValAny()
+            | Self::ValInt(_)
+            | Self::ValFlt(_)
+            | Self::ValStr(_)
+            | Self::ValAtom(_)) => expr,
+            Self::Lst(lst) => Self::Lst(
+                lst.into_iter()
+                    .map(|expr| Self::Contextual(ctx_id, Box::new(expr)))
+                    .collect(),
+            ),
+            Self::Map(map) => Self::Map(
+                map.into_iter()
+                    .map(|(key, (expr, is_id))| {
+                        (key, (Self::Contextual(ctx_id, Box::new(expr)), is_id))
+                    })
+                    .collect(),
+            ),
+            Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => Self::BiOp(
+                BiOpType::OpPeriod,
+                Box::new(Self::Contextual(ctx_id, lhs)),
+                rhs,
+            ),
+            Self::BiOp(op, lhs, rhs) => Self::BiOp(
+                op,
+                Box::new(Self::Contextual(ctx_id, lhs)),
+                Box::new(Self::Contextual(ctx_id, rhs)),
+            ),
+            Self::Call(lhs, rhs) => Self::Call(
+                Box::new(Self::Contextual(ctx_id, lhs)),
+                Box::new(Self::Contextual(ctx_id, rhs)),
+            ),
+            // If a contextual is in a contextual we can use just he inner contextual
+            expr @ Self::Contextual(_, _) => expr,
+            // Nothing can be done => revert to contextual
+            expr @ _ => Self::Contextual(ctx_id, Box::new(expr)),
         }
     }
 
@@ -340,6 +421,10 @@ impl Syntax {
                     let expr = expr.replace_args(key, value);
                     Self::Let((lhs, Box::new(rhs.await)), Box::new(expr.await))
                 }
+            }
+            Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => {
+                let lhs = lhs.replace_args(key, value);
+                Self::BiOp(BiOpType::OpPeriod, Box::new(lhs.await), rhs)
             }
             Self::BiOp(op, lhs, rhs) => {
                 let lhs = lhs.replace_args(key, value);
@@ -611,44 +696,31 @@ impl Syntax {
                 result*/
                 Ok(fn_expr.replace_args(&id, &expr).await)
             }
-            Self::Call(box Syntax::Context(ctx_id, repr), box Syntax::Id(id)) => {
-                if let Some(global) = ctx
-                    .get_holder()
-                    .get(ctx_id)
-                    .await
-                    .unwrap()
-                    .get_global(&id)
-                    .await
-                {
-                    Ok(global)
-                } else {
-                    Err(InterpreterError::GlobalNotInContext(repr, id))
-                }
-            }
-            Self::Call(box Syntax::Contextual(ctx_id, lhs), rhs) => {
-                Self::Call(lhs, Box::new(Syntax::Contextual(ctx.get_id(), rhs)))
-                    .execute(
-                        false,
-                        &mut ctx
-                            .get_holder()
-                            .get(ctx_id)
-                            .await
-                            .unwrap()
-                            .handler(ctx.get_holder()),
-                    )
-                    .await
-            }
+            Self::Call(box Syntax::Contextual(ctx_id, lhs), rhs) => Ok(Self::Contextual(
+                ctx_id,
+                Box::new(
+                    Self::Call(lhs, Box::new(Syntax::Contextual(ctx.get_id(), rhs)))
+                        .execute_once(
+                            false,
+                            &mut ctx
+                                .get_holder()
+                                .get(ctx_id)
+                                .await
+                                .unwrap()
+                                .handler(ctx.get_holder()),
+                        )
+                        .await?,
+                ),
+            )),
             Self::Call(lhs, rhs) => {
-                let new_lhs = lhs.clone().execute(false, ctx).await?;
+                let new_lhs = lhs.clone().execute_once(false, ctx).await?;
                 if new_lhs == *lhs {
                     Ok(Self::Call(
                         lhs,
                         Box::new(rhs.execute_once(false, ctx).await?),
                     ))
                 } else {
-                    Self::Call(Box::new(new_lhs), rhs)
-                        .execute_once(false, ctx)
-                        .await
+                    Ok(Self::Call(Box::new(new_lhs), rhs))
                 }
             }
             Self::Asg(box Self::Id(id), rhs) => {
@@ -769,61 +841,6 @@ impl Syntax {
                 let lhs = lhs.execute_once(false, ctx).await?;
                 Ok(Self::BiOp(BiOpType::OpPeriod, Box::new(lhs), rhs))
             }
-            Self::BiOp(BiOpType::OpAdd, box Self::Lst(lhs), box Self::Lst(rhs)) => {
-                let mut lst = Vec::new();
-                lst.extend(lhs.into_iter());
-                lst.extend(rhs.into_iter());
-
-                Ok(Self::Lst(lst))
-            }
-            Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValInt(y)) => {
-                Ok((x >= y).into())
-            }
-            Self::BiOp(BiOpType::OpLeq, box Self::ValInt(x), box Self::ValInt(y)) => {
-                Ok((x <= y).into())
-            }
-            Self::BiOp(BiOpType::OpGt, box Self::ValInt(x), box Self::ValInt(y)) => {
-                Ok((x > y).into())
-            }
-            Self::BiOp(BiOpType::OpLt, box Self::ValInt(x), box Self::ValInt(y)) => {
-                Ok((x < y).into())
-            }
-            Self::BiOp(BiOpType::OpGeq, box Self::ValFlt(x), box Self::ValFlt(y)) => {
-                Ok((x >= y).into())
-            }
-            Self::BiOp(BiOpType::OpLeq, box Self::ValFlt(x), box Self::ValFlt(y)) => {
-                Ok((x <= y).into())
-            }
-            Self::BiOp(BiOpType::OpGt, box Self::ValFlt(x), box Self::ValFlt(y)) => {
-                Ok((x > y).into())
-            }
-            Self::BiOp(BiOpType::OpLt, box Self::ValFlt(x), box Self::ValFlt(y)) => {
-                Ok((x < y).into())
-            }
-            Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValFlt(y)) => {
-                Ok((int_to_flt(x) >= y).into())
-            }
-            Self::BiOp(BiOpType::OpLeq, box Self::ValInt(x), box Self::ValFlt(y)) => {
-                Ok((int_to_flt(x) <= y).into())
-            }
-            Self::BiOp(BiOpType::OpGt, box Self::ValInt(x), box Self::ValFlt(y)) => {
-                Ok((int_to_flt(x) > y).into())
-            }
-            Self::BiOp(BiOpType::OpLt, box Self::ValInt(x), box Self::ValFlt(y)) => {
-                Ok((int_to_flt(x) < y).into())
-            }
-            Self::BiOp(BiOpType::OpGeq, box Self::ValFlt(x), box Self::ValInt(y)) => {
-                Ok((x >= int_to_flt(y)).into())
-            }
-            Self::BiOp(BiOpType::OpLeq, box Self::ValFlt(x), box Self::ValInt(y)) => {
-                Ok((x <= int_to_flt(y)).into())
-            }
-            Self::BiOp(BiOpType::OpGt, box Self::ValFlt(x), box Self::ValInt(y)) => {
-                Ok((x > int_to_flt(y)).into())
-            }
-            Self::BiOp(BiOpType::OpLt, box Self::ValFlt(x), box Self::ValInt(y)) => {
-                Ok((x < int_to_flt(y)).into())
-            }
             Self::BiOp(op @ BiOpType::OpGeq, lhs, rhs)
             | Self::BiOp(op @ BiOpType::OpLeq, lhs, rhs)
             | Self::BiOp(op @ BiOpType::OpGt, lhs, rhs)
@@ -921,13 +938,14 @@ impl Syntax {
             }
             Self::MapMatch(_) => Ok(self),
             Self::ExplicitExpr(box expr) => Ok(expr),
+            Self::Contextual(ctx_id, expr) if ctx_id == ctx.get_id() => Ok(*expr),
             Self::Contextual(ctx_id, expr) => {
                 let holder = ctx.get_holder();
                 Ok(Self::Contextual(
                     ctx_id,
                     Box::new(
                         expr.execute_once(
-                            false,
+                            first,
                             &mut holder.clone().get(ctx_id).await.unwrap().handler(holder),
                         )
                         .await?,
@@ -1185,6 +1203,7 @@ impl std::fmt::Display for Syntax {
                 Self::Tuple(lhs, rhs) => format!("({}, {})", lhs.to_string(), rhs.to_string()),
                 Self::Let((lhs, rhs), expr) => format!("(let {} = {} in {})", lhs, rhs, expr),
                 Self::Pipe(expr) => format!("| {}", expr),
+                Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => format!("({}.{})", lhs, rhs),
                 Self::BiOp(op, lhs, rhs) => format!("({} {} {})", lhs, op, rhs),
                 Self::IfLet(asgs, expr_true, expr_false) => format!(
                     "if let {} then {} else {}",
@@ -1276,7 +1295,7 @@ impl std::fmt::Display for Syntax {
                         })
                 ),
                 Self::ExplicitExpr(expr) => format!("{}", expr),
-                Self::Contextual(_, expr) => format!("{}", expr),
+                Self::Contextual(_, expr) => format!("@{}", expr),
                 Self::Context(_, id) => format!("{}", id),
             }
             .as_str(),

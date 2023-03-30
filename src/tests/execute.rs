@@ -1,11 +1,11 @@
 use rowan::GreenNodeBuilder;
 
 use crate::{
-    context::{Context, ContextHandler, ContextHolder},
+    context::{ContextHandler, ContextHolder},
     errors::InterpreterError,
     execute::Syntax,
     lexer::Token,
-    parser::{Parser, SyntaxElement, SyntaxKind},
+    parser::{Parser, SyntaxKind},
 };
 
 async fn parse(line: &str, ctx: &mut ContextHandler) -> Result<Syntax, InterpreterError> {
