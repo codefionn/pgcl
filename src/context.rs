@@ -5,6 +5,7 @@ use std::{
 };
 
 use async_recursion::async_recursion;
+use log::debug;
 use tokio::sync::Mutex;
 
 use crate::execute::Syntax;
@@ -140,6 +141,7 @@ impl PrivateContext {
     #[async_recursion]
     pub async fn set_values_in_context(
         &mut self,
+        holder: &mut ContextHolder,
         lhs: &Syntax,
         rhs: &Syntax,
         values_defined_here: &mut Vec<String>,
@@ -147,19 +149,19 @@ impl PrivateContext {
         match (lhs, rhs) {
             (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => {
                 let a = self
-                    .set_values_in_context(a0, a1, values_defined_here)
+                    .set_values_in_context(holder, a0, a1, values_defined_here)
                     .await;
                 let b = self
-                    .set_values_in_context(b0, b1, values_defined_here)
+                    .set_values_in_context(holder, b0, b1, values_defined_here)
                     .await;
                 a && b
             }
             (Syntax::Call(a0, b0), Syntax::Call(a1, b1)) => {
                 let a = self
-                    .set_values_in_context(a0, a1, values_defined_here)
+                    .set_values_in_context(holder, a0, a1, values_defined_here)
                     .await;
                 let b = self
-                    .set_values_in_context(b0, b1, values_defined_here)
+                    .set_values_in_context(holder, b0, b1, values_defined_here)
                     .await;
                 a && b
             }
@@ -173,10 +175,10 @@ impl PrivateContext {
                     false
                 } else {
                     let a = self
-                        .set_values_in_context(a0, a1, values_defined_here)
+                        .set_values_in_context(holder, a0, a1, values_defined_here)
                         .await;
                     let b = self
-                        .set_values_in_context(b0, b1, values_defined_here)
+                        .set_values_in_context(holder, b0, b1, values_defined_here)
                         .await;
                     a && b
                 }
@@ -184,7 +186,7 @@ impl PrivateContext {
             (Syntax::Lst(lst0), Syntax::Lst(lst1)) if lst0.len() == lst1.len() => {
                 for i in 0..lst0.len() {
                     if !self
-                        .set_values_in_context(&lst0[i], &lst1[i], values_defined_here)
+                        .set_values_in_context(holder, &lst0[i], &lst1[i], values_defined_here)
                         .await
                     {
                         return false;
@@ -201,7 +203,7 @@ impl PrivateContext {
                     if i == lst0.len() - 1 {
                         let lst1 = Syntax::Lst(lst1.into());
                         if !self
-                            .set_values_in_context(&lst0[i], &lst1, values_defined_here)
+                            .set_values_in_context(holder, &lst0[i], &lst1, values_defined_here)
                             .await
                         {
                             return false;
@@ -212,7 +214,7 @@ impl PrivateContext {
                         let lst1_val = &lst1[0];
                         lst1 = &lst1[1..];
                         if !self
-                            .set_values_in_context(&lst0[i], &lst1_val, values_defined_here)
+                            .set_values_in_context(holder, &lst0[i], &lst1_val, values_defined_here)
                             .await
                         {
                             return false;
@@ -228,7 +230,12 @@ impl PrivateContext {
                 let mut lst1 = lst1.clone();
                 for i in (0..lst0.len() - 1).rev() {
                     if !self
-                        .set_values_in_context(&lst0[i], &lst1.pop().unwrap(), values_defined_here)
+                        .set_values_in_context(
+                            holder,
+                            &lst0[i],
+                            &lst1.pop().unwrap(),
+                            values_defined_here,
+                        )
                         .await
                     {
                         return false;
@@ -236,6 +243,7 @@ impl PrivateContext {
                 }
 
                 self.set_values_in_context(
+                    holder,
                     &lst0.last().unwrap(),
                     &Syntax::Lst(Vec::default()),
                     values_defined_here,
@@ -247,6 +255,7 @@ impl PrivateContext {
                     if let Some((rhs, _)) = rhs.get(key) {
                         if *is_id {
                             self.set_values_in_context(
+                                holder,
                                 &Syntax::Id(key.clone()),
                                 rhs,
                                 values_defined_here,
@@ -255,7 +264,7 @@ impl PrivateContext {
                         }
 
                         if !self
-                            .set_values_in_context(&val, &rhs, values_defined_here)
+                            .set_values_in_context(holder, &val, &rhs, values_defined_here)
                             .await
                         {
                             return false;
@@ -272,6 +281,7 @@ impl PrivateContext {
                     if let Some((rhs, _)) = rhs.get(key) {
                         if *is_id {
                             self.set_values_in_context(
+                                holder,
                                 &Syntax::Id(key.clone()),
                                 rhs,
                                 values_defined_here,
@@ -279,6 +289,7 @@ impl PrivateContext {
                             .await;
                         } else if let Some(key) = key_into {
                             self.set_values_in_context(
+                                holder,
                                 &Syntax::Id(key.clone()),
                                 rhs,
                                 values_defined_here,
@@ -288,7 +299,46 @@ impl PrivateContext {
 
                         if let Some(val) = val {
                             if !self
-                                .set_values_in_context(&val, &rhs, values_defined_here)
+                                .set_values_in_context(holder, &val, &rhs, values_defined_here)
+                                .await
+                            {
+                                return false;
+                            }
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+
+                true
+            }
+            (Syntax::MapMatch(lhs), Syntax::Context(ctx_id, _)) => {
+                let mut ctx = holder.get(*ctx_id).await.unwrap();
+
+                for (key, key_into, val, is_id) in lhs.iter() {
+                    debug!("{}", ctx_id);
+                    if let Some(rhs) = ctx.get_global(key).await {
+                        if *is_id {
+                            self.set_values_in_context(
+                                holder,
+                                &Syntax::Id(key.clone()),
+                                &rhs,
+                                values_defined_here,
+                            )
+                            .await;
+                        } else if let Some(key) = key_into {
+                            self.set_values_in_context(
+                                holder,
+                                &Syntax::Id(key.clone()),
+                                &rhs,
+                                values_defined_here,
+                            )
+                            .await;
+                        }
+
+                        if let Some(val) = val {
+                            if !self
+                                .set_values_in_context(holder, &val, &rhs, values_defined_here)
                                 .await
                             {
                                 return false;
@@ -302,11 +352,11 @@ impl PrivateContext {
                 true
             }
             (Syntax::ExplicitExpr(lhs), rhs) => {
-                self.set_values_in_context(lhs, rhs, values_defined_here)
+                self.set_values_in_context(holder, lhs, rhs, values_defined_here)
                     .await
             }
             (lhs, Syntax::ExplicitExpr(rhs)) => {
-                self.set_values_in_context(lhs, rhs, values_defined_here)
+                self.set_values_in_context(holder, lhs, rhs, values_defined_here)
                     .await
             }
             (expr0, expr1) => expr0.eval_equal(expr1).await,
@@ -456,6 +506,7 @@ impl Context {
 
     pub async fn set_values_in_context(
         &mut self,
+        holder: &mut ContextHolder,
         lhs: &Syntax,
         rhs: &Syntax,
         values_defined_here: &mut Vec<String>,
@@ -463,7 +514,7 @@ impl Context {
         self.ctx
             .lock()
             .await
-            .set_values_in_context(lhs, rhs, values_defined_here)
+            .set_values_in_context(holder, lhs, rhs, values_defined_here)
             .await
     }
 
@@ -617,6 +668,7 @@ impl ContextHandler {
 
     pub async fn set_values_in_context(
         &mut self,
+        holder: &mut ContextHolder,
         lhs: &Syntax,
         rhs: &Syntax,
         values_defined_here: &mut Vec<String>,
@@ -625,7 +677,7 @@ impl ContextHandler {
             .get(self.id)
             .await
             .unwrap()
-            .set_values_in_context(lhs, rhs, values_defined_here)
+            .set_values_in_context(holder, lhs, rhs, values_defined_here)
             .await
     }
 

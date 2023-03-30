@@ -36,6 +36,18 @@ async fn parse_to_str(line: &str, ctx: &mut ContextHandler) -> Result<String, In
 }
 
 #[tokio::test]
+async fn test_let_map_from_std() {
+    assert_eq!(
+        Ok(format!("@atom")),
+        parse_to_str(
+            "let { id } = std in id @atom",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+}
+
+#[tokio::test]
 async fn test_id() {
     assert_eq!(
         Ok(format!("5")),

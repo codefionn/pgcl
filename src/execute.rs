@@ -675,7 +675,12 @@ impl Syntax {
                 for (lhs, rhs) in asgs {
                     let rhs = rhs.clone().execute(false, ctx).await?;
                     if !ctx
-                        .set_values_in_context(&lhs, &rhs, &mut values_defined_here)
+                        .set_values_in_context(
+                            &mut ctx.get_holder(),
+                            &lhs,
+                            &rhs,
+                            &mut values_defined_here,
+                        )
                         .await
                     {
                         ctx.remove_values(&mut values_defined_here).await;
@@ -837,15 +842,21 @@ impl Syntax {
                 }
             }
             Self::Let((lhs, rhs), expr) => {
+                let rhs = rhs.execute(false, ctx).await?;
                 if !ctx
-                    .set_values_in_context(&lhs, &rhs, &mut values_defined_here)
+                    .set_values_in_context(
+                        &mut ctx.get_holder(),
+                        &lhs,
+                        &rhs,
+                        &mut values_defined_here,
+                    )
                     .await
                 {
                     ctx.remove_values(&mut values_defined_here).await;
                     ctx.push_error(format!("Let expression failed: {}", self))
                         .await;
 
-                    Ok(Self::Let((lhs, rhs), expr))
+                    Ok(Self::Let((lhs, Box::new(rhs)), expr))
                 } else {
                     let mut result = (*expr).clone();
                     for (key, value) in ctx
