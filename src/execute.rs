@@ -719,6 +719,23 @@ impl Syntax {
                         ("import", Syntax::Id(id)) | ("import", Syntax::ValStr(id)) => {
                             import_lib(ctx, id).await
                         }
+                        ("syscall", Syntax::Tuple(box Syntax::ValAtom(id), expr))
+                            if id == "type" =>
+                        {
+                            Ok(match *expr {
+                                Syntax::ValInt(_) => Syntax::ValAtom("int".to_string()),
+                                Syntax::ValFlt(_) => Syntax::ValAtom("float".to_string()),
+                                Syntax::ValStr(_) => Syntax::ValAtom("string".to_string()),
+                                Syntax::Lst(_) => Syntax::ValAtom("list".to_string()),
+                                Syntax::Map(_) => Syntax::ValAtom("map".to_string()),
+                                expr @ _ => {
+                                    ctx.push_error(format!("Cannot infer type from: {}", expr))
+                                        .await;
+
+                                    Syntax::UnexpectedArguments()
+                                }
+                            })
+                        }
                         _ => Ok(self),
                     }
                 }
@@ -1300,46 +1317,61 @@ impl std::fmt::Display for Syntax {
                             }
                         })
                 ),
-                Self::Map(map) => format!(
-                    "{{ {} }}",
-                    map.iter()
-                        .map(|(key, (val, is_id))| format!(
-                            "{}: {}",
-                            if *is_id { key.clone() } else { val_str(key) },
-                            val
-                        ))
-                        .fold(String::new(), |x, y| {
-                            if x.is_empty() {
-                                y
-                            } else {
-                                format!("{}, {}", x, y)
-                            }
-                        })
-                ),
-                Self::MapMatch(map) => format!(
-                    "{{ {} }}",
-                    map.iter()
-                        .map(|(key, key_into, val, is_id)| {
-                            let key = if let Some(key_into) = key_into {
-                                format!("{} {}", val_str(key), key_into)
-                            } else {
-                                format!("{}", if *is_id { key.clone() } else { val_str(key) })
-                            };
+                Self::Map(map) => {
+                    if map.is_empty() {
+                        format!("{{}}")
+                    } else {
+                        format!(
+                            "{{ {} }}",
+                            map.iter()
+                                .map(|(key, (val, is_id))| format!(
+                                    "{}: {}",
+                                    if *is_id { key.clone() } else { val_str(key) },
+                                    val
+                                ))
+                                .fold(String::new(), |x, y| {
+                                    if x.is_empty() {
+                                        y
+                                    } else {
+                                        format!("{}, {}", x, y)
+                                    }
+                                })
+                        )
+                    }
+                }
+                Self::MapMatch(map) => {
+                    if map.is_empty() {
+                        format!("{{}}")
+                    } else {
+                        format!(
+                            "{{ {} }}",
+                            map.iter()
+                                .map(|(key, key_into, val, is_id)| {
+                                    let key = if let Some(key_into) = key_into {
+                                        format!("{} {}", val_str(key), key_into)
+                                    } else {
+                                        format!(
+                                            "{}",
+                                            if *is_id { key.clone() } else { val_str(key) }
+                                        )
+                                    };
 
-                            if let Some(val) = val {
-                                format!("{}: {}", key, val)
-                            } else {
-                                key
-                            }
-                        })
-                        .fold(String::new(), |x, y| {
-                            if x.is_empty() {
-                                y
-                            } else {
-                                format!("{}, {}", x, y)
-                            }
-                        })
-                ),
+                                    if let Some(val) = val {
+                                        format!("{}: {}", key, val)
+                                    } else {
+                                        key
+                                    }
+                                })
+                                .fold(String::new(), |x, y| {
+                                    if x.is_empty() {
+                                        y
+                                    } else {
+                                        format!("{}, {}", x, y)
+                                    }
+                                })
+                        )
+                    }
+                }
                 Self::ExplicitExpr(expr) => format!("{}", expr),
                 Self::Contextual(_, expr) => format!("@{}", expr),
                 Self::Context(_, id) => format!("{}", id),

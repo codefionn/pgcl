@@ -744,6 +744,10 @@ async fn test_map() {
         )
         .await
     );
+    assert_eq!(
+        Ok("{}".to_string()),
+        parse_to_str("{}", &mut ContextHandler::async_default().await).await
+    );
 }
 
 #[tokio::test]
@@ -1065,6 +1069,50 @@ async fn test_lambda() {
         Ok("10".to_string()),
         parse_to_str(
             r"(\x \y let (1 y) = (1 y) in y) 2 10",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+}
+
+#[tokio::test]
+async fn test_syscall_type() {
+    assert_eq!(
+        Ok("@int".to_string()),
+        parse_to_str(
+            r"syscall (@type, 2)",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@float".to_string()),
+        parse_to_str(
+            r"syscall (@type, 2.0)",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@string".to_string()),
+        parse_to_str(
+            "syscall (@type, \"\")",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@list".to_string()),
+        parse_to_str(
+            r"syscall (@type, [])",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@map".to_string()),
+        parse_to_str(
+            r"syscall (@type, {})",
             &mut ContextHandler::async_default().await
         )
         .await

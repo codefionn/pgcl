@@ -229,7 +229,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
 
                 let checkpoint = self.builder.checkpoint();
 
-                if Some(SyntaxKind::MapRight) != self.peek() {
+                if self.peek() != Some(SyntaxKind::MapRight) {
                     self.tuple.push(false);
 
                     let has_errors = false;
@@ -280,6 +280,9 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     self.builder.finish_node();
 
                     self.tuple.pop().unwrap();
+                } else {
+                    self.builder.start_node(SyntaxKind::Map.into());
+                    self.builder.finish_node();
                 }
 
                 if Some(SyntaxKind::MapRight) == self.peek() {
