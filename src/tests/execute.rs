@@ -1117,4 +1117,28 @@ async fn test_syscall_type() {
         )
         .await
     );
+    assert_eq!(
+        Ok("@lambda".to_string()),
+        parse_to_str(
+            r"syscall (@type, (\x x))",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@tuple (@int, @int))".to_string()),
+        parse_to_str(
+            r"syscall (@type, (2, 3))",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@tuple (@int, @list))".to_string()),
+        parse_to_str(
+            r"syscall (@type, (2, []))",
+            &mut ContextHandler::async_default().await
+        )
+        .await
+    );
 }

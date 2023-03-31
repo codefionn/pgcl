@@ -722,12 +722,30 @@ impl Syntax {
                         ("syscall", Syntax::Tuple(box Syntax::ValAtom(id), expr))
                             if id == "type" =>
                         {
+                            fn create_syscall_type(expr: Box<Syntax>) -> Syntax {
+                                Syntax::Call(
+                                    Box::new(Syntax::Id("syscall".to_string())),
+                                    Box::new(Syntax::Tuple(
+                                        Box::new(Syntax::ValAtom("type".to_string())),
+                                        expr,
+                                    )),
+                                )
+                            }
+
                             Ok(match *expr {
                                 Syntax::ValInt(_) => Syntax::ValAtom("int".to_string()),
                                 Syntax::ValFlt(_) => Syntax::ValAtom("float".to_string()),
                                 Syntax::ValStr(_) => Syntax::ValAtom("string".to_string()),
                                 Syntax::Lst(_) => Syntax::ValAtom("list".to_string()),
                                 Syntax::Map(_) => Syntax::ValAtom("map".to_string()),
+                                Syntax::Lambda(_, _) => Syntax::ValAtom("lambda".to_string()),
+                                Syntax::Tuple(lhs, rhs) => Syntax::Call(
+                                    Box::new(Syntax::ValAtom("tuple".to_string())),
+                                    Box::new(Syntax::Tuple(
+                                        Box::new(create_syscall_type(lhs)),
+                                        Box::new(create_syscall_type(rhs)),
+                                    )),
+                                ),
                                 expr @ _ => {
                                     ctx.push_error(format!("Cannot infer type from: {}", expr))
                                         .await;
