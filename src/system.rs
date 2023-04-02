@@ -3,19 +3,24 @@ use std::{
     sync::Arc,
 };
 
-use tokio::sync::Mutex;
+use num::FromPrimitive;
+use tokio::{sync::Mutex, time::Instant};
 
-use crate::{context::ContextHandler, errors::InterpreterError, execute::Syntax};
+use crate::{
+    context::ContextHandler, errors::InterpreterError, execute::Syntax, rational::BigRational,
+};
 
 #[derive(Clone, Debug, PartialEq, Hash, Eq, PartialOrd, Ord, Copy)]
 pub enum SystemCallType {
     Typeof,
+    MeasureTime,
 }
 
 impl SystemCallType {
     pub fn to_systemcall(&self) -> &'static str {
         match self {
             Self::Typeof => "type",
+            Self::MeasureTime => "time",
         }
     }
 }
@@ -76,14 +81,22 @@ impl PrivateSystem {
                     }
                 }
             }
+            (SystemCallType::MeasureTime, expr) => {
+                let now = Instant::now();
+
+                let expr = expr.execute(false, ctx, system).await?;
+
+                let diff = now.elapsed().as_secs_f64();
+                let diff: BigRational = BigRational::from_f64(diff).unwrap();
+
+                Syntax::Tuple(Box::new(Syntax::ValFlt(diff)), Box::new(expr))
+            }
             (syscall, expr) => Syntax::Call(
                 Box::new(Syntax::Id("syscall".to_string())),
-                Box::new(match syscall {
-                    SystemCallType::Typeof => Syntax::Tuple(
-                        Box::new(Syntax::ValAtom("type".to_string())),
-                        Box::new(expr.execute_once(false, no_change, ctx, system).await?),
-                    ),
-                }),
+                Box::new(Syntax::Tuple(
+                    Box::new(Syntax::ValAtom(syscall.to_systemcall().to_string())),
+                    Box::new(expr.execute_once(false, no_change, ctx, system).await?),
+                )),
             ),
         })
     }

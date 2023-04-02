@@ -3,3 +3,9 @@
 ##
 type expr = syscall (@type, expr)
 export type
+
+##
+# Returns time that was required to execute the expression
+##
+time expr = syscall (@time, expr)
+export time
