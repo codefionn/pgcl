@@ -1165,7 +1165,12 @@ async fn import_lib(
     // List all systemcalls here
     let mut builtins_map: BTreeMap<String, Syntax> = builtins_map
         .into_iter()
-        .filter(|(key, _)| ["type", "time"].iter().any(move |can_be| can_be == key))
+        .filter(|(key, _)| {
+            SystemCallType::all()
+                .iter()
+                .map(|syscall| syscall.to_systemcall())
+                .any(move |can_be| can_be == key)
+        })
         .collect();
 
     let old_ctx_id = ctx.get_id();

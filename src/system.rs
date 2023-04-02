@@ -23,6 +23,10 @@ impl SystemCallType {
             Self::MeasureTime => "time",
         }
     }
+
+    pub fn all() -> &'static [SystemCallType] {
+        &[Self::Typeof, Self::MeasureTime]
+    }
 }
 
 struct PrivateSystem {
