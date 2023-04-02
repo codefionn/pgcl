@@ -20,6 +20,7 @@ The interpreter uses
 * [ ] Standard library
 * [ ] System call
 * [x] Customize builtin function in imported modules (e.g. restrict access)
+* [ ] Write documentation
 
 ## Structures
 
@@ -38,7 +39,8 @@ The interpreter uses
   add (@succ x) y = add x (@succ y)
   ```
 - Values:
-  - Strings: `@something"`
+  - Strings: `"Test"`
+  - Atoms: `@test`
   - Ints: `1`, `0xFF`, `-1`
   - Floats: `1.0`, `-1.0`
   - Lists: `[10, 10, 10]`
