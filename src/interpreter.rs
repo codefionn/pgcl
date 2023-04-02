@@ -9,6 +9,7 @@ use crate::{
     lexer::Token,
     parser::{print_ast, Parser, SyntaxKind},
     reader::LineMessage,
+    system::{SystemHandler, SystemHolder},
     Args,
 };
 
@@ -108,6 +109,7 @@ struct InterpreterExecuteActor {
     rx: mpsc::Receiver<LexerMessage>,
     last_result: Option<Syntax>,
     ctx: ContextHolder,
+    system: SystemHolder,
 }
 
 impl InterpreterExecuteActor {
@@ -117,6 +119,7 @@ impl InterpreterExecuteActor {
             rx,
             last_result: None,
             ctx: ContextHolder::default(),
+            system: SystemHolder::default(),
         }
     }
 
@@ -132,6 +135,8 @@ impl InterpreterExecuteActor {
                 .get_id(),
             self.ctx.clone(),
         );
+
+        let mut main_system: SystemHandler = self.system.get_handler(0).await.unwrap();
 
         let mut last_error_len = 0;
 
@@ -166,7 +171,9 @@ impl InterpreterExecuteActor {
                         let reduced: Syntax = typed.reduce().await;
 
                         debug!("{}", reduced);
-                        if let Ok(executed) = reduced.execute(true, &mut main_ctx).await {
+                        if let Ok(executed) =
+                            reduced.execute(true, &mut main_ctx, &mut main_system).await
+                        {
                             println!("{}", executed);
                             self.last_result = Some(executed);
                         }

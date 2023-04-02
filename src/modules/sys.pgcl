@@ -1,0 +1,5 @@
+##
+# Get basic type of the expression
+##
+type expr = syscall (@type, expr)
+export type

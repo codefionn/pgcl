@@ -15,6 +15,7 @@ use crate::{
     lexer::Token,
     parser::{print_ast, Parser, SyntaxKind},
     rational::BigRational,
+    system::{SystemCallType, SystemHandler},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -92,8 +93,16 @@ pub enum Syntax {
         )>,
     ),
     ExplicitExpr(Box<Syntax>),
-    Contextual(/* ctx_id: */ usize, Box<Syntax>),
-    Context(/* ctx_id: */ usize, /* representation: */ String),
+    Contextual(
+        /* ctx_id: */ usize,
+        /* system_id: */ usize,
+        Box<Syntax>,
+    ),
+    Context(
+        /* ctx_id: */ usize,
+        /* system_id: */ usize,
+        /* representation: */ String,
+    ),
     ValAny(),
     ValInt(/* num: */ num::BigInt),
     ValFlt(/* num: */ BigRational),
@@ -369,17 +378,17 @@ impl Syntax {
                 Self::MapMatch(map)
             }
             Self::ExplicitExpr(expr) => expr.reduce().await,
-            Self::Contextual(ctx_id, expr) => {
+            Self::Contextual(ctx_id, system_id, expr) => {
                 let expr = expr.reduce().await;
 
-                expr.reduce_contextual(ctx_id).await
+                expr.reduce_contextual(ctx_id, system_id).await
             }
-            expr @ Self::Context(_, _) => expr,
+            expr @ Self::Context(_, _, _) => expr,
             Self::UnexpectedArguments() => self,
         }
     }
 
-    async fn reduce_contextual(self, ctx_id: usize) -> Self {
+    async fn reduce_contextual(self, ctx_id: usize, system_id: usize) -> Self {
         match self {
             expr @ (Self::ValAny()
             | Self::ValInt(_)
@@ -388,34 +397,41 @@ impl Syntax {
             | Self::ValAtom(_)) => expr,
             Self::Lst(lst) => Self::Lst(
                 lst.into_iter()
-                    .map(|expr| Self::Contextual(ctx_id, Box::new(expr)))
+                    .map(|expr| Self::Contextual(ctx_id, system_id, Box::new(expr)))
                     .collect(),
             ),
             Self::Map(map) => Self::Map(
                 map.into_iter()
                     .map(|(key, (expr, is_id))| {
-                        (key, (Self::Contextual(ctx_id, Box::new(expr)), is_id))
+                        (
+                            key,
+                            (Self::Contextual(ctx_id, system_id, Box::new(expr)), is_id),
+                        )
                     })
                     .collect(),
             ),
             Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => Self::BiOp(
                 BiOpType::OpPeriod,
-                Box::new(Self::Contextual(ctx_id, lhs)),
+                Box::new(Self::Contextual(ctx_id, system_id, lhs)),
                 rhs,
             ),
             Self::BiOp(op, lhs, rhs) => Self::BiOp(
                 op,
-                Box::new(Self::Contextual(ctx_id, lhs)),
-                Box::new(Self::Contextual(ctx_id, rhs)),
+                Box::new(Self::Contextual(ctx_id, system_id, lhs)),
+                Box::new(Self::Contextual(ctx_id, system_id, rhs)),
             ),
             Self::Call(lhs, rhs) => Self::Call(
-                Box::new(Self::Contextual(ctx_id, lhs)),
-                Box::new(Self::Contextual(ctx_id, rhs)),
+                Box::new(Self::Contextual(ctx_id, system_id, lhs)),
+                Box::new(Self::Contextual(ctx_id, system_id, rhs)),
+            ),
+            Self::Tuple(lhs, rhs) => Self::Tuple(
+                Box::new(Self::Contextual(ctx_id, system_id, lhs)),
+                Box::new(Self::Contextual(ctx_id, system_id, rhs)),
             ),
             // If a contextual is in a contextual we can use just he inner contextual
-            expr @ Self::Contextual(_, _) => expr,
+            expr @ Self::Contextual(_, _, _) => expr,
             // Nothing can be done => revert to contextual
-            expr @ _ => Self::Contextual(ctx_id, Box::new(expr)),
+            expr @ _ => Self::Contextual(ctx_id, system_id, Box::new(expr)),
         }
     }
 
@@ -541,8 +557,8 @@ impl Syntax {
             Self::ExplicitExpr(expr) => {
                 Self::ExplicitExpr(Box::new(expr.replace_args(key, value).await))
             }
-            expr @ Self::Contextual(_, _) => expr,
-            expr @ Self::Context(_, _) => expr,
+            expr @ Self::Contextual(_, _, _) => expr,
+            expr @ Self::Context(_, _, _) => expr,
             Self::Pipe(expr) => Self::Pipe(Box::new(expr.replace_args(key, value).await)),
         }
     }
@@ -633,8 +649,8 @@ impl Syntax {
                 result.extend(expr.get_args().await);
             }
             Self::Pipe(expr) => result.extend(expr.get_args().await),
-            Self::Context(_, _) => {}
-            Self::Contextual(_, _) => {}
+            Self::Context(_, _, _) => {}
+            Self::Contextual(_, _, _) => {}
         }
 
         result
@@ -645,6 +661,7 @@ impl Syntax {
         self,
         first: bool,
         ctx: &mut ContextHandler,
+        system: &mut SystemHandler,
     ) -> Result<Syntax, InterpreterError> {
         let mut values_defined_here = Vec::new();
         let expr: Syntax = match self.clone().reduce().await {
@@ -665,7 +682,9 @@ impl Syntax {
             Self::Program(exprs) => Ok(Self::Program(
                 join_all(exprs.into_iter().map(|expr| {
                     let mut ctx = ctx.clone();
-                    async move { expr.execute(true, &mut ctx).await }
+                    let mut system = system.clone();
+
+                    async move { expr.execute(true, &mut ctx, &mut system).await }
                 }))
                 .await
                 .into_iter()
@@ -673,7 +692,7 @@ impl Syntax {
             )),
             Self::IfLet(asgs, expr_true, expr_false) => {
                 for (lhs, rhs) in asgs {
-                    let rhs = rhs.clone().execute(false, ctx).await?;
+                    let rhs = rhs.clone().execute(false, ctx, system).await?;
                     if !ctx
                         .set_values_in_context(
                             &mut ctx.get_holder(),
@@ -684,7 +703,7 @@ impl Syntax {
                         .await
                     {
                         ctx.remove_values(&mut values_defined_here).await;
-                        return expr_false.execute_once(false, ctx).await;
+                        return expr_false.execute_once(false, ctx, system).await;
                     }
                 }
 
@@ -700,63 +719,7 @@ impl Syntax {
                 Ok(*result)
             }
             Self::Call(box Syntax::Id(id), body) => {
-                if let Some(value) = ctx.get_from_values(&id, &mut values_defined_here).await {
-                    Ok(Self::Call(Box::new(value), body))
-                } else {
-                    match (id.as_str(), *body) {
-                        ("export", Syntax::Id(id)) => {
-                            Ok(if ctx.add_global(&id, &mut values_defined_here).await {
-                                Self::ValAny()
-                            } else {
-                                ctx.push_error(format!("Cannot export symbol {}", id)).await;
-
-                                Self::Call(
-                                    Box::new(Syntax::Id(format!("export"))),
-                                    Box::new(Syntax::Id(id)),
-                                )
-                            })
-                        }
-                        ("import", Syntax::Id(id)) | ("import", Syntax::ValStr(id)) => {
-                            import_lib(ctx, id).await
-                        }
-                        ("syscall", Syntax::Tuple(box Syntax::ValAtom(id), expr))
-                            if id == "type" =>
-                        {
-                            fn create_syscall_type(expr: Box<Syntax>) -> Syntax {
-                                Syntax::Call(
-                                    Box::new(Syntax::Id("syscall".to_string())),
-                                    Box::new(Syntax::Tuple(
-                                        Box::new(Syntax::ValAtom("type".to_string())),
-                                        expr,
-                                    )),
-                                )
-                            }
-
-                            Ok(match *expr {
-                                Syntax::ValInt(_) => Syntax::ValAtom("int".to_string()),
-                                Syntax::ValFlt(_) => Syntax::ValAtom("float".to_string()),
-                                Syntax::ValStr(_) => Syntax::ValAtom("string".to_string()),
-                                Syntax::Lst(_) => Syntax::ValAtom("list".to_string()),
-                                Syntax::Map(_) => Syntax::ValAtom("map".to_string()),
-                                Syntax::Lambda(_, _) => Syntax::ValAtom("lambda".to_string()),
-                                Syntax::Tuple(lhs, rhs) => Syntax::Call(
-                                    Box::new(Syntax::ValAtom("tuple".to_string())),
-                                    Box::new(Syntax::Tuple(
-                                        Box::new(create_syscall_type(lhs)),
-                                        Box::new(create_syscall_type(rhs)),
-                                    )),
-                                ),
-                                expr @ _ => {
-                                    ctx.push_error(format!("Cannot infer type from: {}", expr))
-                                        .await;
-
-                                    Syntax::UnexpectedArguments()
-                                }
-                            })
-                        }
-                        _ => Ok(self),
-                    }
-                }
+                make_call(ctx, system, id, body, self, &mut values_defined_here).await
             }
             Self::Call(box Syntax::Lambda(id, fn_expr), expr) => {
                 /*insert_into_values(&id, expr.execute(false, ctx)?, ctx);
@@ -767,28 +730,52 @@ impl Syntax {
                 result*/
                 Ok(fn_expr.replace_args(&id, &expr).await)
             }
-            Self::Call(box Syntax::Contextual(ctx_id, lhs), rhs) => Ok(Self::Contextual(
-                ctx_id,
-                Box::new(
-                    Self::Call(lhs, Box::new(Syntax::Contextual(ctx.get_id(), rhs)))
-                        .execute_once(
-                            false,
-                            &mut ctx
-                                .get_holder()
-                                .get(ctx_id)
-                                .await
-                                .unwrap()
-                                .handler(ctx.get_holder()),
+            Self::Call(box Syntax::Contextual(ctx_id, system_id, box Syntax::Id(id)), rhs) => {
+                let mut ctx = ctx.get_holder().get_handler(ctx_id).await.unwrap();
+                let mut system = system.get_holder().get_handler(system_id).await.unwrap();
+
+                Ok(Self::Contextual(
+                    ctx_id,
+                    system_id,
+                    Box::new(
+                        make_call(
+                            &mut ctx,
+                            &mut system,
+                            id,
+                            rhs,
+                            self.clone(),
+                            &mut values_defined_here,
                         )
                         .await?,
-                ),
-            )),
+                    ),
+                ))
+            }
+            Self::Call(box Syntax::Contextual(ctx_id, system_id, lhs), rhs) => {
+                let old_ctx_id = ctx.get_id();
+                let old_system_id = system.get_id();
+
+                let mut ctx = ctx.get_holder().get_handler(ctx_id).await.unwrap();
+                let mut system = system.get_holder().get_handler(system_id).await.unwrap();
+
+                Ok(Self::Contextual(
+                    ctx_id,
+                    system_id,
+                    Box::new(
+                        Self::Call(
+                            lhs,
+                            Box::new(Syntax::Contextual(old_ctx_id, old_system_id, rhs)),
+                        )
+                        .execute_once(false, &mut ctx, &mut system)
+                        .await?,
+                    ),
+                ))
+            }
             Self::Call(lhs, rhs) => {
-                let new_lhs = lhs.clone().execute_once(false, ctx).await?;
+                let new_lhs = lhs.clone().execute_once(false, ctx, system).await?;
                 if new_lhs == *lhs {
                     Ok(Self::Call(
                         lhs,
-                        Box::new(rhs.execute_once(false, ctx).await?),
+                        Box::new(rhs.execute_once(false, ctx, system).await?),
                     ))
                 } else {
                     Ok(Self::Call(Box::new(new_lhs), rhs))
@@ -877,7 +864,7 @@ impl Syntax {
                 }
             }
             Self::Let((lhs, rhs), expr) => {
-                let rhs = rhs.execute(false, ctx).await?;
+                let rhs = rhs.execute(false, ctx, system).await?;
                 if !ctx
                     .set_values_in_context(
                         &mut ctx.get_holder(),
@@ -907,33 +894,33 @@ impl Syntax {
             }
             Self::BiOp(
                 BiOpType::OpPeriod,
-                box Self::Context(ctx_id, ctx_name),
+                box Self::Context(ctx_id, system_id, ctx_name),
                 box Self::Id(id),
             ) => {
                 let mut lhs_ctx = ctx.get_holder().get(ctx_id).await.unwrap();
 
                 if let Some(global) = lhs_ctx.get_global(&id).await {
-                    Ok(Self::Contextual(ctx_id, Box::new(global)))
+                    Ok(Self::Contextual(ctx_id, system_id, Box::new(global)))
                 } else {
                     Err(InterpreterError::GlobalNotInContext(ctx_name, id))
                 }
             }
             Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => {
-                let lhs = lhs.execute_once(false, ctx).await?;
+                let lhs = lhs.execute_once(false, ctx, system).await?;
                 Ok(Self::BiOp(BiOpType::OpPeriod, Box::new(lhs), rhs))
             }
             Self::BiOp(op @ BiOpType::OpGeq, lhs, rhs)
             | Self::BiOp(op @ BiOpType::OpLeq, lhs, rhs)
             | Self::BiOp(op @ BiOpType::OpGt, lhs, rhs)
             | Self::BiOp(op @ BiOpType::OpLt, lhs, rhs) => {
-                let lhs = lhs.execute_once(false, ctx).await?;
-                let rhs = rhs.execute_once(false, ctx).await?;
+                let lhs = lhs.execute_once(false, ctx, system).await?;
+                let rhs = rhs.execute_once(false, ctx, system).await?;
 
                 Ok(Self::BiOp(op, Box::new(lhs), Box::new(rhs)))
             }
             Self::BiOp(BiOpType::OpEq, lhs, rhs) => {
-                let lhs = lhs.execute(false, ctx).await?;
-                let rhs = rhs.execute(false, ctx).await?;
+                let lhs = lhs.execute(false, ctx, system).await?;
+                let rhs = rhs.execute(false, ctx, system).await?;
 
                 Ok(if lhs.eval_equal(&rhs).await {
                     Self::ValAtom("true".to_string())
@@ -942,8 +929,8 @@ impl Syntax {
                 })
             }
             Self::BiOp(BiOpType::OpNeq, lhs, rhs) => {
-                let lhs = lhs.execute(false, ctx).await?;
-                let rhs = rhs.execute(false, ctx).await?;
+                let lhs = lhs.execute(false, ctx, system).await?;
+                let rhs = rhs.execute(false, ctx, system).await?;
 
                 Ok(if !lhs.eval_equal(&rhs).await {
                     Self::ValAtom("true".to_string())
@@ -952,17 +939,19 @@ impl Syntax {
                 })
             }
             Self::BiOp(op, lhs, rhs) => {
-                let lhs = lhs.execute_once(false, ctx).await?;
-                let rhs = rhs.execute_once(false, ctx).await?;
+                let lhs = lhs.execute_once(false, ctx, system).await?;
+                let rhs = rhs.execute_once(false, ctx, system).await?;
 
                 Ok(Self::BiOp(op, Box::new(lhs), Box::new(rhs)))
             }
             Self::If(cond, expr_true, expr_false) => {
-                let cond = cond.execute(false, ctx).await?;
+                let cond = cond.execute(false, ctx, system).await?;
                 Ok(match cond {
-                    Self::ValAtom(id) if id == "true" => expr_true.execute_once(false, ctx).await?,
+                    Self::ValAtom(id) if id == "true" => {
+                        expr_true.execute_once(false, ctx, system).await?
+                    }
                     Self::ValAtom(id) if id == "false" => {
-                        expr_false.execute_once(false, ctx).await?
+                        expr_false.execute_once(false, ctx, system).await?
                     }
                     _ => {
                         ctx.push_error(format!("Expected :true or :false in if-condition"))
@@ -972,8 +961,8 @@ impl Syntax {
                 })
             }
             Self::Tuple(lhs, rhs) => {
-                let lhs = lhs.execute_once(false, ctx).await?;
-                let rhs = rhs.execute_once(false, ctx).await?;
+                let lhs = lhs.execute_once(false, ctx, system).await?;
+                let rhs = rhs.execute_once(false, ctx, system).await?;
 
                 Ok(Self::Tuple(Box::new(lhs), Box::new(rhs)))
             }
@@ -984,7 +973,7 @@ impl Syntax {
             Self::Lst(lst) => {
                 let mut result = Vec::new();
                 for e in lst {
-                    result.push(e.execute_once(false, ctx).await?);
+                    result.push(e.execute_once(false, ctx, system).await?);
                 }
 
                 Ok(Self::Lst(result))
@@ -992,48 +981,55 @@ impl Syntax {
             Self::LstMatch(lst) => {
                 let mut result = Vec::new();
                 for e in lst {
-                    result.push(e.execute_once(false, ctx).await?);
+                    result.push(e.execute_once(false, ctx, system).await?);
                 }
 
                 Ok(Self::LstMatch(result))
             }
             Self::Map(map) => {
-                let map =
-                    join_all(
-                        map.into_iter().map({
-                            let ctx = ctx.clone();
-                            move |(key, (val, is_id))| {
-                                let mut ctx = ctx.clone();
+                let map = join_all(map.into_iter().map({
+                    let ctx = ctx.clone();
+                    move |(key, (val, is_id))| {
+                        let mut ctx = ctx.clone();
+                        let mut system = system.clone();
 
-                                async move {
-                                    Ok((key, (val.execute_once(false, &mut ctx).await?, is_id)))
-                                }
-                            }
-                        }),
-                    )
-                    .await
-                    .into_iter()
-                    .try_collect()?;
+                        async move {
+                            Ok((
+                                key,
+                                (val.execute_once(false, &mut ctx, &mut system).await?, is_id),
+                            ))
+                        }
+                    }
+                }))
+                .await
+                .into_iter()
+                .try_collect()?;
 
                 Ok(Self::Map(map))
             }
             Self::MapMatch(_) => Ok(self),
             Self::ExplicitExpr(box expr) => Ok(expr),
-            Self::Contextual(ctx_id, expr) if ctx_id == ctx.get_id() => Ok(*expr),
-            Self::Contextual(ctx_id, expr) => {
+            Self::Contextual(ctx_id, system_id, expr)
+                if ctx_id == ctx.get_id() && system_id == system.get_id() =>
+            {
+                Ok(*expr)
+            }
+            Self::Contextual(ctx_id, system_id, expr) => {
                 let holder = ctx.get_holder();
                 Ok(Self::Contextual(
                     ctx_id,
+                    system_id,
                     Box::new(
                         expr.execute_once(
                             first,
-                            &mut holder.clone().get(ctx_id).await.unwrap().handler(holder),
+                            &mut holder.clone().get_handler(ctx_id).await.unwrap(),
+                            system,
                         )
                         .await?,
                     ),
                 ))
             }
-            expr @ Self::Context(_, _) => Ok(expr),
+            expr @ Self::Context(_, _, _) => Ok(expr),
         }?;
 
         Ok(expr.reduce().await)
@@ -1044,11 +1040,12 @@ impl Syntax {
         self,
         first: bool,
         ctx: &mut ContextHandler,
+        system: &mut SystemHandler,
     ) -> Result<Syntax, InterpreterError> {
         let mut this = self;
         let mut old = this.clone();
         loop {
-            this = this.execute_once(first, ctx).await?;
+            this = this.execute_once(first, ctx, system).await?;
 
             if this == old {
                 break;
@@ -1087,9 +1084,55 @@ impl Syntax {
 }
 
 /// Imports the specified library (including builtin libraries)
-async fn import_lib(ctx: &mut ContextHandler, path: String) -> Result<Syntax, InterpreterError> {
+async fn import_lib(
+    ctx: &mut ContextHandler,
+    system: &mut SystemHandler,
+    path: String,
+    builtins_map: BTreeMap<String, Syntax>,
+) -> Result<Syntax, InterpreterError> {
+    let has_restrict = builtins_map.get("restrict") == Some(&Syntax::ValAtom("true".to_string()));
+    debug!("has_restrict: {}", has_restrict);
+
+    let mut builtins_map: BTreeMap<String, Syntax> = builtins_map
+        .into_iter()
+        .filter(|(key, _)| ["type"].iter().any(move |can_be| can_be == key))
+        .collect();
+
+    let old_ctx_id = ctx.get_id();
+    let old_system_id = system.get_id();
+
+    let mut system = if builtins_map.is_empty() && !has_restrict {
+        system.clone()
+    } else {
+        let mut new_builtins_map = BTreeMap::<SystemCallType, Syntax>::new();
+        for (syscall_type, syscall_name) in [(SystemCallType::Typeof, "type")] {
+            if let Some((_, expr)) = builtins_map.remove_entry(syscall_name) {
+                new_builtins_map.insert(
+                    syscall_type,
+                    Syntax::Contextual(old_ctx_id, old_system_id, Box::new(expr)),
+                );
+            } else if let Some(expr) = system.get(syscall_type).await {
+                new_builtins_map.insert(syscall_type, expr);
+            }
+        }
+
+        if has_restrict {
+            for syscall_type in [SystemCallType::Typeof] {
+                if !new_builtins_map.contains_key(&syscall_type) {
+                    debug!("{:?}", syscall_type);
+                    new_builtins_map.insert(syscall_type, Syntax::ValAtom("error".to_string()));
+                }
+            }
+        }
+
+        system
+            .get_holder()
+            .new_system_handler(new_builtins_map)
+            .await
+    };
+
     if let Some(ctx) = ctx.get_holder().get_path(&path).await {
-        Ok(Syntax::Context(ctx.get_id(), path))
+        Ok(Syntax::Context(ctx.get_id(), system.get_id(), path))
     } else if let Some(ctx_path) = ctx.get_path().await {
         let mut module_path = ctx_path.clone();
         module_path.push(path.clone());
@@ -1099,7 +1142,11 @@ async fn import_lib(ctx: &mut ContextHandler, path: String) -> Result<Syntax, In
         let module_path_str = module_path.to_string_lossy().to_string();
         if module_path.is_file() {
             if let Some(ctx) = ctx.get_holder().get_path(&module_path_str).await {
-                Ok(Syntax::Context(ctx.get_id(), module_path_str))
+                Ok(Syntax::Context(
+                    ctx.get_id(),
+                    system.get_id(),
+                    module_path_str,
+                ))
             } else {
                 let code = std::fs::read_to_string(&module_path).map_err({
                     let module_path_str = module_path_str.clone();
@@ -1113,6 +1160,7 @@ async fn import_lib(ctx: &mut ContextHandler, path: String) -> Result<Syntax, In
                     module_path.parent().clone().map(|path| path.to_path_buf()),
                     code.as_str(),
                     holder,
+                    &mut system,
                 )
                 .await?;
 
@@ -1122,13 +1170,17 @@ async fn import_lib(ctx: &mut ContextHandler, path: String) -> Result<Syntax, In
 
                 debug!("Imported {} as {}", module_path_str, ctx.get_id());
 
-                Ok(Syntax::Context(ctx.get_id(), module_path_str))
+                Ok(Syntax::Context(
+                    ctx.get_id(),
+                    system.get_id(),
+                    module_path_str,
+                ))
             }
-        } else if ["std"].into_iter().any({
+        } else if ["std", "sys"].into_iter().any({
             let path = path.clone();
             move |p| p == path
         }) {
-            import_std_lib(ctx, path).await
+            import_std_lib(ctx, &mut system, path).await
         } else {
             ctx.push_error(format!("Expected {} to be a file", module_path_str))
                 .await;
@@ -1139,7 +1191,7 @@ async fn import_lib(ctx: &mut ContextHandler, path: String) -> Result<Syntax, In
         ctx.push_error("Import can only be done in real modules".to_string())
             .await;
 
-        let result = import_std_lib(ctx, path).await;
+        let result = import_std_lib(ctx, &mut system, path).await;
         if let Err(InterpreterError::ImportFileDoesNotExist(_)) = result {
             Err(InterpreterError::ContextNotInFile(ctx.get_name().await))
         } else {
@@ -1148,16 +1200,66 @@ async fn import_lib(ctx: &mut ContextHandler, path: String) -> Result<Syntax, In
     }
 }
 
+async fn make_call(
+    ctx: &mut ContextHandler,
+    system: &mut SystemHandler,
+    id: String,
+    body: Box<Syntax>,
+    original_expr: Syntax,
+    values_defined_here: &mut Vec<String>,
+) -> Result<Syntax, InterpreterError> {
+    if let Some(value) = ctx.get_from_values(&id, values_defined_here).await {
+        Ok(Syntax::Call(Box::new(value), body))
+    } else {
+        match (id.as_str(), body.reduce().await) {
+            ("export", Syntax::Id(id)) => Ok(if ctx.add_global(&id, values_defined_here).await {
+                Syntax::ValAny()
+            } else {
+                ctx.push_error(format!("Cannot export symbol {}", id)).await;
+
+                Syntax::Call(
+                    Box::new(Syntax::Id(format!("export"))),
+                    Box::new(Syntax::Id(id)),
+                )
+            }),
+            ("import", Syntax::Id(id)) | ("import", Syntax::ValStr(id)) => {
+                import_lib(ctx, system, id, Default::default()).await
+            }
+            ("import", Syntax::Tuple(box Syntax::Id(id), box Syntax::Map(map)))
+            | ("import", Syntax::Tuple(box Syntax::ValStr(id), box Syntax::Map(map))) => {
+                import_lib(
+                    ctx,
+                    system,
+                    id,
+                    map.into_iter()
+                        .filter(|(_, (_, is_id))| *is_id)
+                        .map(|(key, (value, _))| (key, value))
+                        .collect(),
+                )
+                .await
+            }
+            ("syscall", Syntax::Tuple(box Syntax::ValAtom(id), expr)) => match id.as_str() {
+                "type" => Ok(system.do_syscall(ctx, SystemCallType::Typeof, *expr).await),
+                _ => Ok(original_expr),
+            },
+            _ => Ok(original_expr),
+        }
+    }
+}
+
 /// Imports a builtin library
 async fn import_std_lib(
     ctx: &mut ContextHandler,
+    system: &mut SystemHandler,
     path: String,
 ) -> Result<Syntax, InterpreterError> {
     if let Some(ctx) = ctx.get_holder().get_path(&path).await {
-        Ok(Syntax::Context(ctx.get_id(), path))
+        Ok(Syntax::Context(ctx.get_id(), system.get_id(), path))
     } else {
         let code = if path == "std" {
             include_str!("./modules/std.pgcl")
+        } else if path == "sys" {
+            include_str!("./modules/sys.pgcl")
         } else {
             ctx.push_error(format!("Expected {} to be a file", path))
                 .await;
@@ -1166,12 +1268,12 @@ async fn import_std_lib(
         };
 
         let holder = &mut ctx.get_holder();
-        let ctx = execute_code(&path, None, code, holder).await?;
+        let ctx = execute_code(&path, None, code, holder, system).await?;
         holder
             .set_path(&path, &holder.get(ctx.get_id()).await.unwrap())
             .await;
 
-        Ok(Syntax::Context(ctx.get_id(), path))
+        Ok(Syntax::Context(ctx.get_id(), system.get_id(), path))
     }
 }
 
@@ -1188,6 +1290,7 @@ async fn execute_code(
     path: Option<PathBuf>,
     code: &str,
     holder: &mut ContextHolder,
+    system: &mut SystemHandler,
 ) -> Result<ContextHandler, InterpreterError> {
     let mut ctx = holder
         .create_context(name.clone(), path)
@@ -1208,7 +1311,7 @@ async fn execute_code(
     let typed = parse_to_typed(toks);
     debug!("{:?}", typed);
     let typed = typed?;
-    typed.execute(true, &mut ctx).await?;
+    typed.execute(true, &mut ctx, system).await?;
 
     Ok(ctx)
 }
@@ -1391,8 +1494,8 @@ impl std::fmt::Display for Syntax {
                     }
                 }
                 Self::ExplicitExpr(expr) => format!("{}", expr),
-                Self::Contextual(_, expr) => format!("@{}", expr),
-                Self::Context(_, id) => format!("{}", id),
+                Self::Contextual(_, _, expr) => format!("@{}", expr),
+                Self::Context(_, _, id) => format!("{}", id),
             }
             .as_str(),
         )

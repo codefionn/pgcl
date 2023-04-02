@@ -312,7 +312,7 @@ impl PrivateContext {
 
                 true
             }
-            (Syntax::MapMatch(lhs), Syntax::Context(ctx_id, _)) => {
+            (Syntax::MapMatch(lhs), Syntax::Context(ctx_id, _system_id, _)) => {
                 let mut ctx = holder.get(*ctx_id).await.unwrap();
 
                 for (key, key_into, val, is_id) in lhs.iter() {
@@ -694,6 +694,17 @@ pub struct ContextHolder {
 impl ContextHolder {
     pub async fn get(&self, id: usize) -> Option<Context> {
         self.handler.lock().await.get(id)
+    }
+
+    pub async fn get_handler(&self, id: usize) -> Option<ContextHandler> {
+        if let Some(_) = self.handler.lock().await.get(id) {
+            Some(ContextHandler {
+                id,
+                holder: self.clone(),
+            })
+        } else {
+            None
+        }
     }
 
     pub async fn create_context(&mut self, name: String, path: Option<PathBuf>) -> Context {

@@ -9,6 +9,7 @@ mod lexer;
 mod parser;
 mod rational;
 mod reader;
+mod system;
 
 #[cfg(test)]
 mod tests;
