@@ -19,7 +19,7 @@ The interpreter uses
 * [x] Import (modules)
 * [ ] Standard library
 * [ ] System call
-* [ ] Customize builtin function in imported modules (e.g. restrict access)
+* [x] Customize builtin function in imported modules (e.g. restrict access)
 
 ## Structures
 
