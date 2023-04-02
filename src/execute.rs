@@ -1162,9 +1162,10 @@ async fn import_lib(
     let has_restrict = builtins_map.get("restrict") == Some(&Syntax::ValAtom("true".to_string()));
     debug!("has_restrict: {}", has_restrict);
 
+    // List all systemcalls here
     let mut builtins_map: BTreeMap<String, Syntax> = builtins_map
         .into_iter()
-        .filter(|(key, _)| ["type"].iter().any(move |can_be| can_be == key))
+        .filter(|(key, _)| ["type", "time"].iter().any(move |can_be| can_be == key))
         .collect();
 
     let old_ctx_id = ctx.get_id();
