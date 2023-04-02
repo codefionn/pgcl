@@ -5,11 +5,19 @@ use std::{
 
 use tokio::sync::Mutex;
 
-use crate::{context::ContextHandler, execute::Syntax};
+use crate::{context::ContextHandler, errors::InterpreterError, execute::Syntax};
 
 #[derive(Clone, Debug, PartialEq, Hash, Eq, PartialOrd, Ord, Copy)]
 pub enum SystemCallType {
     Typeof,
+}
+
+impl SystemCallType {
+    pub fn to_systemcall(&self) -> &'static str {
+        match self {
+            Self::Typeof => "type",
+        }
+    }
 }
 
 struct PrivateSystem {
@@ -25,14 +33,16 @@ impl PrivateSystem {
     pub async fn do_syscall(
         &self,
         ctx: &mut ContextHandler,
+        system: &mut SystemHandler,
+        no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
-    ) -> Syntax {
+    ) -> Result<Syntax, InterpreterError> {
         if let Some(expr) = self.map.get(&syscall) {
-            return expr.clone();
+            return Ok(expr.clone());
         }
 
-        match (syscall, expr) {
+        Ok(match (syscall, expr) {
             (SystemCallType::Typeof, expr) => {
                 fn create_syscall_type(expr: Box<Syntax>) -> Syntax {
                     Syntax::Call(
@@ -71,11 +81,11 @@ impl PrivateSystem {
                 Box::new(match syscall {
                     SystemCallType::Typeof => Syntax::Tuple(
                         Box::new(Syntax::ValAtom("type".to_string())),
-                        Box::new(expr),
+                        Box::new(expr.execute_once(false, no_change, ctx, system).await?),
                     ),
                 }),
             ),
-        }
+        })
     }
 
     pub async fn get(&self, syscall: SystemCallType) -> Option<Syntax> {
@@ -97,13 +107,15 @@ impl System {
     pub async fn do_syscall(
         &self,
         ctx: &mut ContextHandler,
+        system: &mut SystemHandler,
+        no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
-    ) -> Syntax {
+    ) -> Result<Syntax, InterpreterError> {
         self.private_system
             .lock()
             .await
-            .do_syscall(ctx, syscall, expr)
+            .do_syscall(ctx, system, no_change, syscall, expr)
             .await
     }
 
@@ -229,14 +241,16 @@ impl SystemHandler {
     pub async fn do_syscall(
         &mut self,
         ctx: &mut ContextHandler,
+        system: &mut SystemHandler,
+        no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
-    ) -> Syntax {
+    ) -> Result<Syntax, InterpreterError> {
         self.system
             .get(self.id)
             .await
             .unwrap()
-            .do_syscall(ctx, syscall, expr)
+            .do_syscall(ctx, system, no_change, syscall, expr)
             .await
     }
 

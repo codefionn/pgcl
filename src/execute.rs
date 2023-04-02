@@ -656,10 +656,20 @@ impl Syntax {
         result
     }
 
+    /// Executes the AST once (tries to do minimal changes)
+    ///
+    /// ## Arguments
+    ///
+    /// - `first`: Is a top-level expression
+    /// - `no_change`: There's wasn't any change since the last call of `execute_once` (Maybe
+    /// change a little more?)
+    /// - `ctx`: The current context
+    /// - `system`: The current system
     #[async_recursion]
-    async fn execute_once(
+    pub async fn execute_once(
         self,
         first: bool,
+        no_change: bool,
         ctx: &mut ContextHandler,
         system: &mut SystemHandler,
     ) -> Result<Syntax, InterpreterError> {
@@ -703,7 +713,7 @@ impl Syntax {
                         .await
                     {
                         ctx.remove_values(&mut values_defined_here).await;
-                        return expr_false.execute_once(false, ctx, system).await;
+                        return Ok(*expr_false);
                     }
                 }
 
@@ -719,7 +729,16 @@ impl Syntax {
                 Ok(*result)
             }
             Self::Call(box Syntax::Id(id), body) => {
-                make_call(ctx, system, id, body, self, &mut values_defined_here).await
+                make_call(
+                    ctx,
+                    system,
+                    no_change,
+                    id,
+                    body,
+                    self,
+                    &mut values_defined_here,
+                )
+                .await
             }
             Self::Call(box Syntax::Lambda(id, fn_expr), expr) => {
                 /*insert_into_values(&id, expr.execute(false, ctx)?, ctx);
@@ -741,6 +760,7 @@ impl Syntax {
                         make_call(
                             &mut ctx,
                             &mut system,
+                            no_change,
                             id,
                             rhs,
                             self.clone(),
@@ -765,20 +785,21 @@ impl Syntax {
                             lhs,
                             Box::new(Syntax::Contextual(old_ctx_id, old_system_id, rhs)),
                         )
-                        .execute_once(false, &mut ctx, &mut system)
+                        .execute_once(false, no_change, &mut ctx, &mut system)
                         .await?,
                     ),
                 ))
             }
             Self::Call(lhs, rhs) => {
-                let new_lhs = lhs.clone().execute_once(false, ctx, system).await?;
-                if new_lhs == *lhs {
+                let old_lhs = lhs.clone();
+                let lhs = lhs.execute_once(false, no_change, ctx, system).await?;
+                if lhs == *old_lhs {
                     Ok(Self::Call(
-                        lhs,
-                        Box::new(rhs.execute_once(false, ctx, system).await?),
+                        Box::new(lhs),
+                        Box::new(rhs.execute_once(false, no_change, ctx, system).await?),
                     ))
                 } else {
-                    Ok(Self::Call(Box::new(new_lhs), rhs))
+                    Ok(Self::Call(Box::new(lhs), rhs))
                 }
             }
             Self::Asg(box Self::Id(id), rhs) => {
@@ -864,32 +885,41 @@ impl Syntax {
                 }
             }
             Self::Let((lhs, rhs), expr) => {
-                let rhs = rhs.execute(false, ctx, system).await?;
-                if !ctx
-                    .set_values_in_context(
-                        &mut ctx.get_holder(),
-                        &lhs,
-                        &rhs,
-                        &mut values_defined_here,
-                    )
-                    .await
-                {
-                    ctx.remove_values(&mut values_defined_here).await;
-                    ctx.push_error(format!("Let expression failed: {}", self))
-                        .await;
-
-                    Ok(Self::Let((lhs, Box::new(rhs)), expr))
-                } else {
-                    let mut result = (*expr).clone();
-                    for (key, value) in ctx
-                        .remove_values(&mut values_defined_here)
+                if no_change {
+                    if !ctx
+                        .set_values_in_context(
+                            &mut ctx.get_holder(),
+                            &lhs,
+                            &rhs,
+                            &mut values_defined_here,
+                        )
                         .await
-                        .into_iter()
                     {
-                        result = result.replace_args(&key, &value).await;
-                    }
+                        ctx.remove_values(&mut values_defined_here).await;
+                        ctx.push_error(format!("Let expression failed: {}", self))
+                            .await;
 
-                    Ok(result)
+                        Ok(Self::Let((lhs, rhs), expr))
+                    } else {
+                        let mut result = (*expr).clone();
+                        for (key, value) in ctx
+                            .remove_values(&mut values_defined_here)
+                            .await
+                            .into_iter()
+                        {
+                            result = result.replace_args(&key, &value).await;
+                        }
+
+                        Ok(result)
+                    }
+                } else {
+                    Ok(Self::Let(
+                        (
+                            lhs,
+                            Box::new(rhs.execute_once(first, no_change, ctx, system).await?),
+                        ),
+                        expr,
+                    ))
                 }
             }
             Self::BiOp(
@@ -906,63 +936,86 @@ impl Syntax {
                 }
             }
             Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => {
-                let lhs = lhs.execute_once(false, ctx, system).await?;
+                let lhs = lhs.execute_once(false, no_change, ctx, system).await?;
                 Ok(Self::BiOp(BiOpType::OpPeriod, Box::new(lhs), rhs))
             }
             Self::BiOp(op @ BiOpType::OpGeq, lhs, rhs)
             | Self::BiOp(op @ BiOpType::OpLeq, lhs, rhs)
             | Self::BiOp(op @ BiOpType::OpGt, lhs, rhs)
             | Self::BiOp(op @ BiOpType::OpLt, lhs, rhs) => {
-                let lhs = lhs.execute_once(false, ctx, system).await?;
-                let rhs = rhs.execute_once(false, ctx, system).await?;
+                let lhs = lhs.execute_once(false, no_change, ctx, system).await?;
+                let rhs = rhs.execute_once(false, no_change, ctx, system).await?;
 
                 Ok(Self::BiOp(op, Box::new(lhs), Box::new(rhs)))
             }
-            Self::BiOp(BiOpType::OpEq, lhs, rhs) => {
-                let lhs = lhs.execute(false, ctx, system).await?;
-                let rhs = rhs.execute(false, ctx, system).await?;
+            Self::BiOp(op @ BiOpType::OpEq, lhs, rhs)
+            | Self::BiOp(op @ BiOpType::OpNeq, lhs, rhs) => {
+                if no_change {
+                    let old_lhs = lhs.clone();
+                    let old_rhs = rhs.clone();
+                    let lhs = lhs.execute_once(false, true, ctx, system).await?;
+                    let rhs = rhs.execute_once(false, true, ctx, system).await?;
 
-                Ok(if lhs.eval_equal(&rhs).await {
-                    Self::ValAtom("true".to_string())
+                    if lhs == *old_lhs && rhs == *old_rhs {
+                        if op == BiOpType::OpEq {
+                            Ok(if lhs.eval_equal(&rhs).await {
+                                Self::ValAtom("true".to_string())
+                            } else {
+                                Self::ValAtom("false".to_string())
+                            })
+                        } else {
+                            Ok(if !lhs.eval_equal(&rhs).await {
+                                Self::ValAtom("true".to_string())
+                            } else {
+                                Self::ValAtom("false".to_string())
+                            })
+                        }
+                    } else {
+                        Ok(Self::BiOp(op, Box::new(lhs), Box::new(rhs)))
+                    }
                 } else {
-                    Self::ValAtom("false".to_string())
-                })
-            }
-            Self::BiOp(BiOpType::OpNeq, lhs, rhs) => {
-                let lhs = lhs.execute(false, ctx, system).await?;
-                let rhs = rhs.execute(false, ctx, system).await?;
-
-                Ok(if !lhs.eval_equal(&rhs).await {
-                    Self::ValAtom("true".to_string())
-                } else {
-                    Self::ValAtom("false".to_string())
-                })
+                    Ok(Self::BiOp(
+                        op,
+                        Box::new(lhs.execute_once(false, no_change, ctx, system).await?),
+                        Box::new(rhs.execute_once(false, no_change, ctx, system).await?),
+                    ))
+                }
             }
             Self::BiOp(op, lhs, rhs) => {
-                let lhs = lhs.execute_once(false, ctx, system).await?;
-                let rhs = rhs.execute_once(false, ctx, system).await?;
+                let lhs = lhs.execute_once(false, no_change, ctx, system).await?;
+                let rhs = rhs.execute_once(false, no_change, ctx, system).await?;
 
                 Ok(Self::BiOp(op, Box::new(lhs), Box::new(rhs)))
             }
             Self::If(cond, expr_true, expr_false) => {
-                let cond = cond.execute(false, ctx, system).await?;
-                Ok(match cond {
-                    Self::ValAtom(id) if id == "true" => {
-                        expr_true.execute_once(false, ctx, system).await?
-                    }
-                    Self::ValAtom(id) if id == "false" => {
-                        expr_false.execute_once(false, ctx, system).await?
-                    }
-                    _ => {
-                        ctx.push_error(format!("Expected :true or :false in if-condition"))
-                            .await;
-                        self
-                    }
-                })
+                if no_change {
+                    Ok(match *cond {
+                        Self::ValAtom(id) if id == "true" => *expr_true,
+                        Self::ValAtom(id) if id == "false" => *expr_false,
+                        _ => {
+                            let old_cond = cond.clone();
+                            let cond = cond.execute_once(false, true, ctx, system).await?;
+
+                            if cond == *old_cond {
+                                ctx.push_error(format!("Expected :true or :false in if-condition"))
+                                    .await;
+                                self
+                            } else {
+                                Self::If(Box::new(cond), expr_true, expr_false)
+                            }
+                        }
+                    })
+                } else {
+                    Ok(Self::If(
+                        Box::new(cond.execute_once(false, false, ctx, system).await?),
+                        expr_true,
+                        expr_false,
+                    ))
+                }
             }
             Self::Tuple(lhs, rhs) => {
-                let lhs = lhs.execute_once(false, ctx, system).await?;
-                let rhs = rhs.execute_once(false, ctx, system).await?;
+                let lhs = lhs.execute_once(false, no_change, ctx, system).await?;
+                let rhs = rhs.execute_once(false, no_change, ctx, system).await?;
 
                 Ok(Self::Tuple(Box::new(lhs), Box::new(rhs)))
             }
@@ -971,9 +1024,9 @@ impl Syntax {
                 Ok(self)
             }
             Self::Lst(lst) => {
-                let mut result = Vec::new();
+                let mut result = Vec::with_capacity(lst.len());
                 for e in lst {
-                    result.push(e.execute_once(false, ctx, system).await?);
+                    result.push(e.execute_once(false, no_change, ctx, system).await?);
                 }
 
                 Ok(Self::Lst(result))
@@ -981,7 +1034,7 @@ impl Syntax {
             Self::LstMatch(lst) => {
                 let mut result = Vec::new();
                 for e in lst {
-                    result.push(e.execute_once(false, ctx, system).await?);
+                    result.push(e.execute_once(false, no_change, ctx, system).await?);
                 }
 
                 Ok(Self::LstMatch(result))
@@ -996,7 +1049,11 @@ impl Syntax {
                         async move {
                             Ok((
                                 key,
-                                (val.execute_once(false, &mut ctx, &mut system).await?, is_id),
+                                (
+                                    val.execute_once(false, no_change, &mut ctx, &mut system)
+                                        .await?,
+                                    is_id,
+                                ),
                             ))
                         }
                     }
@@ -1022,6 +1079,7 @@ impl Syntax {
                     Box::new(
                         expr.execute_once(
                             first,
+                            no_change,
                             &mut holder.clone().get_handler(ctx_id).await.unwrap(),
                             system,
                         )
@@ -1032,7 +1090,7 @@ impl Syntax {
             expr @ Self::Context(_, _, _) => Ok(expr),
         }?;
 
-        Ok(expr.reduce().await)
+        Ok(expr)
     }
 
     #[async_recursion]
@@ -1044,11 +1102,22 @@ impl Syntax {
     ) -> Result<Syntax, InterpreterError> {
         let mut this = self;
         let mut old = this.clone();
+        let mut haschanged = true;
         loop {
-            this = this.execute_once(first, ctx, system).await?;
+            this = this
+                .reduce()
+                .await
+                .execute_once(first, !haschanged, ctx, system)
+                .await?;
 
             if this == old {
-                break;
+                if haschanged {
+                    haschanged = false;
+                } else {
+                    break;
+                }
+            } else {
+                haschanged = true;
             }
 
             if first {
@@ -1105,7 +1174,10 @@ async fn import_lib(
         system.clone()
     } else {
         let mut new_builtins_map = BTreeMap::<SystemCallType, Syntax>::new();
-        for (syscall_type, syscall_name) in [(SystemCallType::Typeof, "type")] {
+        let all_syscalls = [SystemCallType::Typeof];
+        for syscall_type in all_syscalls {
+            let syscall_name = syscall_type.to_systemcall();
+
             if let Some((_, expr)) = builtins_map.remove_entry(syscall_name) {
                 new_builtins_map.insert(
                     syscall_type,
@@ -1117,7 +1189,7 @@ async fn import_lib(
         }
 
         if has_restrict {
-            for syscall_type in [SystemCallType::Typeof] {
+            for syscall_type in all_syscalls {
                 if !new_builtins_map.contains_key(&syscall_type) {
                     debug!("{:?}", syscall_type);
                     new_builtins_map.insert(syscall_type, Syntax::ValAtom("error".to_string()));
@@ -1176,7 +1248,9 @@ async fn import_lib(
                     module_path_str,
                 ))
             }
-        } else if ["std", "sys"].into_iter().any({
+        } else if
+        /* List all builtin libraries here -> */
+        ["std", "sys"].into_iter().any({
             let path = path.clone();
             move |p| p == path
         }) {
@@ -1203,6 +1277,7 @@ async fn import_lib(
 async fn make_call(
     ctx: &mut ContextHandler,
     system: &mut SystemHandler,
+    no_change: bool,
     id: String,
     body: Box<Syntax>,
     original_expr: Syntax,
@@ -1239,7 +1314,12 @@ async fn make_call(
                 .await
             }
             ("syscall", Syntax::Tuple(box Syntax::ValAtom(id), expr)) => match id.as_str() {
-                "type" => Ok(system.do_syscall(ctx, SystemCallType::Typeof, *expr).await),
+                "type" => {
+                    system
+                        .clone()
+                        .do_syscall(ctx, system, no_change, SystemCallType::Typeof, *expr)
+                        .await
+                }
                 _ => Ok(original_expr),
             },
             _ => Ok(original_expr),
