@@ -73,3 +73,16 @@ fn test_import_time_fib() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_import_id_with_map_match() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    println!("{:?}", std::env::current_dir());
+
+    cmd.write_stdin("{ id } = import std\nid (12 + 10)")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^_\n22\n$").unwrap());
+
+    Ok(())
+}

@@ -871,15 +871,37 @@ impl Syntax {
                         }
                     }
 
-                    let (id, syntax) = extract_id(*lhs, Vec::new()).await?;
-                    ctx.insert_fns(
-                        id,
-                        (
-                            unpack_params(syntax, Default::default()).await?,
-                            rhs.reduce().await,
-                        ),
-                    )
-                    .await;
+                    if let Ok((id, syntax)) = extract_id(*lhs.clone(), Vec::new()).await {
+                        ctx.insert_fns(
+                            id,
+                            (
+                                unpack_params(syntax, Default::default()).await?,
+                                rhs.reduce().await,
+                            ),
+                        )
+                        .await
+                    } else {
+                        let rhs = rhs.execute(false, ctx, system).await?;
+                        if !ctx
+                            .clone()
+                            .set_values_in_context(
+                                &mut ctx.get_holder(),
+                                &lhs.clone(),
+                                &rhs,
+                                &mut values_defined_here,
+                            )
+                            .await
+                        {
+                            ctx.remove_values(&mut values_defined_here).await;
+                            ctx.push_error(format!(
+                                "{} must be assignable to {} but is not",
+                                lhs, rhs
+                            ))
+                            .await;
+                        } else {
+                            values_defined_here.clear();
+                        }
+                    }
 
                     Ok(Syntax::ValAny())
                 }
