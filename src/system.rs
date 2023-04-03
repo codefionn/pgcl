@@ -4,7 +4,7 @@ use std::{
 };
 
 use num::FromPrimitive;
-use tokio::{sync::Mutex, time::Instant};
+use tokio::{process::Command, sync::Mutex, time::Instant};
 
 use crate::{
     context::ContextHandler, errors::InterpreterError, execute::Syntax, rational::BigRational,
@@ -14,6 +14,7 @@ use crate::{
 pub enum SystemCallType {
     Typeof,
     MeasureTime,
+    Cmd,
 }
 
 impl SystemCallType {
@@ -21,11 +22,12 @@ impl SystemCallType {
         match self {
             Self::Typeof => "type",
             Self::MeasureTime => "time",
+            Self::Cmd => "cmd",
         }
     }
 
     pub fn all() -> &'static [SystemCallType] {
-        &[Self::Typeof, Self::MeasureTime]
+        &[Self::Typeof, Self::MeasureTime, Self::Cmd]
     }
 }
 
@@ -95,6 +97,25 @@ impl PrivateSystem {
 
                 Syntax::Tuple(Box::new(Syntax::ValFlt(diff)), Box::new(expr))
             }
+            (SystemCallType::Cmd, Syntax::ValStr(cmd)) => if cfg!(target_os = "windows") {
+                Command::new("cmd").args(["/C", cmd.as_str()]).output()
+            } else {
+                Command::new("sh").args(["-c", cmd.as_str()]).output()
+            }
+            .await
+            .map(|out| {
+                let status = out.status.code().unwrap_or(1);
+                let stdout = String::from_utf8(out.stdout).unwrap_or(String::new());
+                let stderr = String::from_utf8(out.stderr).unwrap_or(String::new());
+
+                let mut map = BTreeMap::new();
+                map.insert("status".to_string(), (Syntax::ValInt(status.into()), true));
+                map.insert("stdout".to_string(), (Syntax::ValStr(stdout), true));
+                map.insert("stderr".to_string(), (Syntax::ValStr(stderr), true));
+
+                Syntax::Map(map.into_iter().collect())
+            })
+            .unwrap_or(Syntax::ValAtom("error".to_string())),
             (syscall, expr) => Syntax::Call(
                 Box::new(Syntax::Id("syscall".to_string())),
                 Box::new(Syntax::Tuple(

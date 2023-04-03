@@ -1444,3 +1444,24 @@ async fn test_syscall_type() {
         .await
     );
 }
+
+#[tokio::test]
+async fn test_syscall_cmd() {
+    let mut ctx = ContextHandler::async_default().await;
+    let mut system = SystemHandler::async_default().await;
+
+    let result = if cfg!(target_os = "windows") {
+        parse_to_str("syscall (@cmd, \"dir\")", &mut ctx, &mut system).await
+    } else {
+        parse_to_str("syscall (@cmd, \"ls\")", &mut ctx, &mut system).await
+    };
+
+    assert!(result.is_ok());
+    let result = result.unwrap();
+    let test = regex::Regex::new(
+        r"\{ ((status: 0|stdout: .*|stderr: .*), ){2}(status: 0|stdout: .*|stderr: .*) \}",
+    )
+    .unwrap();
+    println!("{}", result);
+    assert!(test.is_match(result.as_str()));
+}

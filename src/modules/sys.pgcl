@@ -9,3 +9,10 @@ export type
 ##
 time expr = syscall (@time, expr)
 export time
+
+##
+# Executes a command in the native shell
+# (`cmd` on Windows, `sh` on other)
+##
+cmd cmd = syscall(@cmd, cmd)
+export cmd

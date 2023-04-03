@@ -1354,6 +1354,12 @@ async fn make_call(
                         .do_syscall(ctx, system, no_change, SystemCallType::MeasureTime, *expr)
                         .await
                 }
+                "cmd" => {
+                    system
+                        .clone()
+                        .do_syscall(ctx, system, no_change, SystemCallType::Cmd, *expr)
+                        .await
+                }
                 _ => Ok(original_expr),
             },
             _ => Ok(original_expr),
