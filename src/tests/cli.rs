@@ -58,3 +58,18 @@ fn test_import_fib() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_import_time_fib() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    println!("{:?}", std::env::current_dir());
+
+    cmd.write_stdin(
+        "time = (import sys).time\nfib = (import \"./examples/fib.pgcl\").fib\ntime (fib 10)",
+    )
+    .assert()
+    .success()
+    .stdout(predicate::str::is_match(r"^_\n_\n\([0-9]+\.[0-9]+, 55\)\n$").unwrap());
+
+    Ok(())
+}
