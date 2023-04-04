@@ -1,3 +1,6 @@
+str = import str
+export str
+
 ##
 # Return the identity of `x` (the same object)
 ##
@@ -58,3 +61,17 @@ export head
 tail [] = []
 tail [x:xs] = xs
 export tail
+
+##
+# Counts the length of a list or string
+##
+len [] = 0
+len [x:xs] = 1 + len xs
+export len
+
+##
+# Joins lists with a string or list
+##
+join _ [] = []
+join i [x:xs] = let lst = join i xs in if let [] = lst then x else x + i + lst
+export join

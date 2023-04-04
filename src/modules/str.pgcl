@@ -1,0 +1,11 @@
+std = import std
+
+##
+# Joins lists with a string or list
+##
+join _ [] = ""
+join i [x:xs] = let lst = join i xs in if let [] = lst then x else x + i + lst
+export join
+
+len = std.len
+export len

@@ -428,6 +428,7 @@ impl Syntax {
                 Box::new(Self::Contextual(ctx_id, system_id, lhs)),
                 Box::new(Self::Contextual(ctx_id, system_id, rhs)),
             ),
+            expr @ Self::Context(_, _, _) => expr,
             // If a contextual is in a contextual we can use just he inner contextual
             expr @ Self::Contextual(_, _, _) => expr,
             // Nothing can be done => revert to contextual
@@ -1278,7 +1279,7 @@ async fn import_lib(
             }
         } else if
         /* List all builtin libraries here -> */
-        ["std", "sys"].into_iter().any({
+        ["std", "sys", "str"].into_iter().any({
             let path = path.clone();
             move |p| p == path
         }) {
@@ -1302,6 +1303,7 @@ async fn import_lib(
     }
 }
 
+#[async_recursion]
 async fn make_call(
     ctx: &mut ContextHandler,
     system: &mut SystemHandler,
@@ -1328,6 +1330,22 @@ async fn make_call(
             ("import", Syntax::Id(id)) | ("import", Syntax::ValStr(id)) => {
                 import_lib(ctx, system, id, Default::default()).await
             }
+            ("import", Syntax::Contextual(ctx_id, system_id, body @ box Syntax::Id(_)))
+            | ("import", Syntax::Contextual(ctx_id, system_id, body @ box Syntax::ValStr(_))) => {
+                let mut ctx = ctx.get_holder().get_handler(ctx_id).await.unwrap();
+                let mut system = system.get_holder().get_handler(system_id).await.unwrap();
+
+                make_call(
+                    &mut ctx,
+                    &mut system,
+                    no_change,
+                    "import".to_string(),
+                    body,
+                    original_expr,
+                    values_defined_here,
+                )
+                .await
+            }
             ("import", Syntax::Tuple(box Syntax::Id(id), box Syntax::Map(map)))
             | ("import", Syntax::Tuple(box Syntax::ValStr(id), box Syntax::Map(map))) => {
                 import_lib(
@@ -1338,6 +1356,36 @@ async fn make_call(
                         .filter(|(_, (_, is_id))| *is_id)
                         .map(|(key, (value, _))| (key, value))
                         .collect(),
+                )
+                .await
+            }
+            (
+                "import",
+                Syntax::Contextual(
+                    ctx_id,
+                    system_id,
+                    body @ box Syntax::Tuple(box Syntax::Id(_), box Syntax::Map(_)),
+                ),
+            )
+            | (
+                "import",
+                Syntax::Contextual(
+                    ctx_id,
+                    system_id,
+                    body @ box Syntax::Tuple(box Syntax::ValStr(_), box Syntax::Map(_)),
+                ),
+            ) => {
+                let mut ctx = ctx.get_holder().get_handler(ctx_id).await.unwrap();
+                let mut system = system.get_holder().get_handler(system_id).await.unwrap();
+
+                make_call(
+                    &mut ctx,
+                    &mut system,
+                    no_change,
+                    "import".to_string(),
+                    body,
+                    original_expr,
+                    values_defined_here,
                 )
                 .await
             }
@@ -1380,6 +1428,8 @@ async fn import_std_lib(
             include_str!("./modules/std.pgcl")
         } else if path == "sys" {
             include_str!("./modules/sys.pgcl")
+        } else if path == "str" {
+            include_str!("./modules/str.pgcl")
         } else {
             ctx.push_error(format!("Expected {} to be a file", path))
                 .await;

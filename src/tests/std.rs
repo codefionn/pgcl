@@ -141,3 +141,37 @@ async fn test_tail() {
         parse_to_str(r"std.tail [2, 3, 4, 1]").await
     );
 }
+
+#[tokio::test]
+async fn test_len() {
+    assert_eq!(Ok(format!("4")), parse_to_str("std.len \"test\"").await);
+    assert_eq!(Ok(format!("4")), parse_to_str("std.str.len \"test\"").await);
+    assert_eq!(Ok(format!("0")), parse_to_str("std.len \"\"").await);
+    assert_eq!(Ok(format!("0")), parse_to_str("std.len []").await);
+    assert_eq!(Ok(format!("3")), parse_to_str("std.len [1, 1, 1]").await);
+    assert_eq!(Ok(format!("3")), parse_to_str("std.len [2, 5, 1]").await);
+}
+
+#[tokio::test]
+async fn test_join() {
+    assert_eq!(
+        Ok(format!("[1, 2, 3]")),
+        parse_to_str("std.join [] [[1], [2], [3]]").await
+    );
+    assert_eq!(
+        Ok(format!("[1, 1, 2, 1, 3]")),
+        parse_to_str("std.join [1] [[1], [2], [3]]").await
+    );
+}
+
+#[tokio::test]
+async fn test_join_str() {
+    assert_eq!(
+        Ok(format!("\"xyz\"")),
+        parse_to_str("std.str.join \"\" [\"x\", \"y\", \"z\"]").await
+    );
+    assert_eq!(
+        Ok(format!("\"x, y, z\"")),
+        parse_to_str("std.str.join \", \" [\"x\", \"y\", \"z\"]").await
+    );
+}
