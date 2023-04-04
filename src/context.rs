@@ -120,6 +120,20 @@ impl PrivateContext {
         result
     }
 
+    pub async fn replace_from_values(&mut self, id: &String, syntax: Syntax) -> bool {
+        if let Some(stack) = self.values.get_mut(id) {
+            if let Some(_) = stack.pop() {
+                stack.push(syntax);
+
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
     pub async fn get_from_values(
         &mut self,
         id: &String,
@@ -542,6 +556,10 @@ impl Context {
             .insert_into_values(id, syntax, values_defined_here)
     }
 
+    pub async fn replace_from_values(&mut self, id: &String, syntax: Syntax) -> bool {
+        self.ctx.lock().await.replace_from_values(id, syntax).await
+    }
+
     pub async fn get_errors(&self) -> Vec<String> {
         self.ctx.lock().await.get_errors()
     }
@@ -685,6 +703,15 @@ impl ContextHandler {
             .await
             .unwrap()
             .insert_into_values(id, syntax, values_defined_here)
+            .await
+    }
+
+    pub async fn replace_from_values(&mut self, id: &String, syntax: Syntax) -> bool {
+        self.holder
+            .get(self.id)
+            .await
+            .unwrap()
+            .replace_from_values(id, syntax)
             .await
     }
 

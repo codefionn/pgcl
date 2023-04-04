@@ -678,7 +678,17 @@ impl Syntax {
         let expr: Syntax = match self.clone().reduce().await {
             Self::Id(id) => Ok(
                 if let Some(obj) = ctx.get_from_values(&id, &mut values_defined_here).await {
-                    obj.clone()
+                    if first {
+                        if let Ok(obj) = obj.clone().execute(false, ctx, system).await {
+                            ctx.replace_from_values(&id, obj.clone()).await;
+
+                            obj
+                        } else {
+                            obj.clone()
+                        }
+                    } else {
+                        obj.clone()
+                    }
                 } else {
                     self
                 },
@@ -1265,10 +1275,6 @@ async fn import_lib(
                 )
                 .await?;
 
-                holder
-                    .set_path(&module_path_str, &holder.get(ctx.get_id()).await.unwrap())
-                    .await;
-
                 debug!("Imported {} as {}", module_path_str, ctx.get_id());
 
                 Ok(Syntax::Context(
@@ -1317,16 +1323,24 @@ async fn make_call(
         Ok(Syntax::Call(Box::new(value), body))
     } else {
         match (id.as_str(), body.reduce().await) {
-            ("export", Syntax::Id(id)) => Ok(if ctx.add_global(&id, values_defined_here).await {
-                Syntax::ValAny()
-            } else {
+            ("export", Syntax::Id(id)) => {
+                if let Some(val) = ctx.get_from_values(&id, values_defined_here).await {
+                    if let Ok(val) = val.execute(false, ctx, system).await {
+                        ctx.replace_from_values(&id, val).await;
+                    }
+
+                    if ctx.add_global(&id, values_defined_here).await {
+                        return Ok(Syntax::ValAny());
+                    }
+                }
+
                 ctx.push_error(format!("Cannot export symbol {}", id)).await;
 
-                Syntax::Call(
+                return Ok(Syntax::Call(
                     Box::new(Syntax::Id(format!("export"))),
                     Box::new(Syntax::Id(id)),
-                )
-            }),
+                ));
+            }
             ("import", Syntax::Id(id)) | ("import", Syntax::ValStr(id)) => {
                 import_lib(ctx, system, id, Default::default()).await
             }
@@ -1439,9 +1453,6 @@ async fn import_std_lib(
 
         let holder = &mut ctx.get_holder();
         let ctx = execute_code(&path, None, code, holder, system).await?;
-        holder
-            .set_path(&path, &holder.get(ctx.get_id()).await.unwrap())
-            .await;
 
         Ok(Syntax::Context(ctx.get_id(), system.get_id(), path))
     }
@@ -1466,6 +1477,9 @@ async fn execute_code(
         .create_context(name.clone(), path)
         .await
         .handler(holder.clone());
+    holder
+        .set_path(name, &holder.get(ctx.get_id()).await.unwrap())
+        .await;
 
     let toks: Vec<(SyntaxKind, String)> = Token::lex_for_rowan(code)
         .into_iter()
