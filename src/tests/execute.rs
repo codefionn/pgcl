@@ -1465,3 +1465,30 @@ async fn test_syscall_cmd() {
     println!("{}", result);
     assert!(test.is_match(result.as_str()));
 }
+
+#[tokio::test]
+async fn test_lst_str() {
+    let mut ctx = ContextHandler::async_default().await;
+    let mut system = SystemHandler::async_default().await;
+
+    assert!(parse_to_str("len [] = 0", &mut ctx, &mut system)
+        .await
+        .is_ok());
+    assert!(
+        parse_to_str("len [x:xs] = 1 + len xs", &mut ctx, &mut system)
+            .await
+            .is_ok()
+    );
+    assert_eq!(
+        Ok("0".to_string()),
+        parse_to_str("len \"\"", &mut ctx, &mut system).await
+    );
+    assert_eq!(
+        Ok("1".to_string()),
+        parse_to_str("len \"t\"", &mut ctx, &mut system).await
+    );
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str("len \"test\"", &mut ctx, &mut system).await
+    );
+}
