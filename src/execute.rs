@@ -10,6 +10,7 @@ use std::{
 use tailcall::tailcall;
 
 use crate::{
+    actor,
     context::{ContextHandler, ContextHolder},
     errors::InterpreterError,
     lexer::Token,
@@ -108,7 +109,13 @@ pub enum Syntax {
     ValFlt(/* num: */ BigRational),
     ValStr(/* str: */ String),
     ValAtom(/* atom: */ String),
+    Signal(SignalType, usize),
     UnexpectedArguments(),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SignalType {
+    Actor,
 }
 
 impl From<bool> for Syntax {
@@ -139,6 +146,7 @@ impl Syntax {
             Self::ValStr(_) => self,
             Self::ValAtom(_) => self,
             Self::Pipe(_) => self,
+            Self::Signal(_, _) => self,
             Self::Program(exprs) => Self::Program(
                 join_all(exprs.into_iter().map(|expr| async { expr.reduce().await })).await,
             ),
@@ -394,7 +402,8 @@ impl Syntax {
             | Self::ValInt(_)
             | Self::ValFlt(_)
             | Self::ValStr(_)
-            | Self::ValAtom(_)) => expr,
+            | Self::ValAtom(_)
+            | Self::Signal(_, _)) => expr,
             Self::Lst(lst) => Self::Lst(
                 lst.into_iter()
                     .map(|expr| Self::Contextual(ctx_id, system_id, Box::new(expr)))
@@ -560,6 +569,7 @@ impl Syntax {
             }
             expr @ Self::Contextual(_, _, _) => expr,
             expr @ Self::Context(_, _, _) => expr,
+            expr @ Self::Signal(_, _) => expr,
             Self::Pipe(expr) => Self::Pipe(Box::new(expr.replace_args(key, value).await)),
         }
     }
@@ -652,6 +662,7 @@ impl Syntax {
             Self::Pipe(expr) => result.extend(expr.get_args().await),
             Self::Context(_, _, _) => {}
             Self::Contextual(_, _, _) => {}
+            Self::Signal(_, _) => {}
         }
 
         result
@@ -739,6 +750,20 @@ impl Syntax {
 
                 Ok(*result)
             }
+            Self::Call(box Syntax::Signal(signal_type, signal_id), expr) => match signal_type {
+                SignalType::Actor => {
+                    if let Some(tx) = system.get_holder().get_actor(signal_id).await {
+                        if let Err(_) = tx.send(crate::actor::Message::Signal(*expr)).await {
+                            Ok(Syntax::ValAtom("false".to_string()))
+                        } else {
+                            Ok(Syntax::ValAtom("true".to_string()))
+                        }
+                    } else {
+                        Ok(Syntax::ValAtom("false".to_string()))
+                    }
+                }
+                _ => Ok(Syntax::ValAtom("false".to_string())),
+            },
             Self::Call(box Syntax::Id(id), body) => {
                 make_call(
                     ctx,
@@ -1121,6 +1146,7 @@ impl Syntax {
                 ))
             }
             expr @ Self::Context(_, _, _) => Ok(expr),
+            expr @ Self::Signal(_, _) => Ok(expr),
         }?;
 
         Ok(expr)
@@ -1422,6 +1448,18 @@ async fn make_call(
                         .do_syscall(ctx, system, no_change, SystemCallType::Cmd, *expr)
                         .await
                 }
+                "println" => {
+                    system
+                        .clone()
+                        .do_syscall(ctx, system, no_change, SystemCallType::Println, *expr)
+                        .await
+                }
+                "actor" => {
+                    system
+                        .clone()
+                        .do_syscall(ctx, system, no_change, SystemCallType::Actor, *expr)
+                        .await
+                }
                 _ => Ok(original_expr),
             },
             _ => Ok(original_expr),
@@ -1680,6 +1718,7 @@ impl std::fmt::Display for Syntax {
                 Self::ExplicitExpr(expr) => format!("{}", expr),
                 Self::Contextual(_, _, expr) => format!("@{}", expr),
                 Self::Context(_, _, id) => format!("{}", id),
+                Self::Signal(_, _) => format!("signal"),
             }
             .as_str(),
         )

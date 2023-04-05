@@ -189,7 +189,11 @@ impl InterpreterExecuteActor {
                         .send(())
                         .map_err(|err| anyhow::anyhow!("{:?}", err))?;
                 }
-                _ => break,
+                _ => {
+                    self.system.drop_actors().await;
+
+                    break;
+                }
             }
         }
 

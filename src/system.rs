@@ -3,11 +3,19 @@ use std::{
     sync::Arc,
 };
 
+use bigdecimal::BigDecimal;
 use num::FromPrimitive;
-use tokio::{process::Command, sync::Mutex, time::Instant};
+use tokio::{
+    process::Command,
+    sync::{mpsc, Mutex},
+    time::Instant,
+};
 
 use crate::{
-    context::ContextHandler, errors::InterpreterError, execute::Syntax, rational::BigRational,
+    context::ContextHandler,
+    errors::InterpreterError,
+    execute::{SignalType, Syntax},
+    rational::BigRational,
 };
 
 #[derive(Clone, Debug, PartialEq, Hash, Eq, PartialOrd, Ord, Copy)]
@@ -15,6 +23,8 @@ pub enum SystemCallType {
     Typeof,
     MeasureTime,
     Cmd,
+    Println,
+    Actor,
 }
 
 impl SystemCallType {
@@ -23,6 +33,8 @@ impl SystemCallType {
             Self::Typeof => "type",
             Self::MeasureTime => "time",
             Self::Cmd => "cmd",
+            Self::Println => "println",
+            Self::Actor => "actor",
         }
     }
 
@@ -116,6 +128,29 @@ impl PrivateSystem {
                 Syntax::Map(map.into_iter().collect())
             })
             .unwrap_or(Syntax::ValAtom("error".to_string())),
+            (SystemCallType::Println, Syntax::ValStr(s)) => {
+                println!("{}", s);
+
+                Syntax::ValAny()
+            }
+            (SystemCallType::Println, Syntax::ValInt(i)) => {
+                println!("{}", i);
+
+                Syntax::ValAny()
+            }
+            (SystemCallType::Println, Syntax::ValFlt(f)) => {
+                let f: BigDecimal = f.into();
+                println!("{}", f);
+
+                Syntax::ValAny()
+            }
+            (SystemCallType::Actor, Syntax::Tuple(init, actor_fn)) => {
+                let tx =
+                    crate::actor::create_actor(ctx.clone(), system.clone(), *init, *actor_fn).await;
+                let id = system.get_holder().create_actor(tx).await;
+
+                Syntax::Signal(SignalType::Actor, id)
+            }
             (syscall, expr) => Syntax::Call(
                 Box::new(Syntax::Id("syscall".to_string())),
                 Box::new(Syntax::Tuple(
@@ -165,6 +200,8 @@ impl System {
 struct PrivateSystemHolder {
     systems: HashMap<usize, Arc<Mutex<PrivateSystem>>>,
     last_id: usize,
+    actors: HashMap<usize, mpsc::Sender<crate::actor::Message>>,
+    last_actor_id: usize,
 }
 
 impl Default for PrivateSystemHolder {
@@ -180,6 +217,8 @@ impl Default for PrivateSystemHolder {
             .into_iter()
             .collect(),
             last_id: 0,
+            actors: Default::default(),
+            last_actor_id: 0,
         }
     }
 }
@@ -198,17 +237,40 @@ impl PrivateSystemHolder {
 
         id
     }
+
+    pub fn create_actor(&mut self, tx: mpsc::Sender<crate::actor::Message>) -> usize {
+        let id = self.last_actor_id;
+        self.last_actor_id += 1;
+
+        self.actors.insert(id, tx);
+
+        id
+    }
+
+    pub fn get_actor(&self, id: usize) -> Option<mpsc::Sender<crate::actor::Message>> {
+        self.actors.get(&id).map(|tx| tx.clone())
+    }
+
+    pub async fn drop_actors(&mut self) {
+        for (_, actor_tx) in &self.actors {
+            actor_tx.send(crate::actor::Message::Exit()).await.ok();
+        }
+
+        self.actors.clear();
+    }
 }
 
 #[derive(Clone)]
 pub struct SystemHolder {
     system: Arc<Mutex<PrivateSystemHolder>>,
+    actors: HashMap<usize, mpsc::Sender<crate::actor::Message>>,
 }
 
 impl Default for SystemHolder {
     fn default() -> Self {
         SystemHolder {
             system: Arc::new(Mutex::new(PrivateSystemHolder::default())),
+            actors: Default::default(),
         }
     }
 }
@@ -251,6 +313,33 @@ impl SystemHolder {
             system: self.clone(),
         }
     }
+
+    pub async fn create_actor(&mut self, tx: mpsc::Sender<crate::actor::Message>) -> usize {
+        let id = self.system.lock().await.create_actor(tx.clone());
+        self.actors.insert(id, tx);
+
+        id
+    }
+
+    pub async fn get_actor(&mut self, id: usize) -> Option<mpsc::Sender<crate::actor::Message>> {
+        if let Some(tx) = self.actors.get(&id) {
+            return Some(tx.clone());
+        }
+
+        if let Some(tx) = self.system.lock().await.get_actor(id) {
+            self.actors.insert(id, tx.clone());
+
+            Some(tx)
+        } else {
+            None
+        }
+    }
+
+    pub async fn drop_actors(&mut self) {
+        self.actors.clear();
+
+        self.system.lock().await.drop_actors();
+    }
 }
 
 #[derive(Clone)]
@@ -264,6 +353,7 @@ impl SystemHandler {
         let system_holder = PrivateSystemHolder::default();
         let system_holder = SystemHolder {
             system: Arc::new(Mutex::new(system_holder)),
+            actors: Default::default(),
         };
 
         SystemHandler {

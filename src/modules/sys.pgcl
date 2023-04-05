@@ -14,5 +14,17 @@ export time
 # Executes a command in the native shell
 # (`cmd` on Windows, `sh` on other)
 ##
-cmd cmd = syscall(@cmd, cmd)
+cmd cmd = syscall (@cmd, cmd)
 export cmd
+
+##
+# Print a string, float or integer to stdout
+##
+println val = syscall (@println, val)
+export println
+
+##
+# Spawn an actor
+##
+actor init fn = syscall (@actor, (init, fn))
+export actor
