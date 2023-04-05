@@ -1,3 +1,4 @@
+use anyhow::Context;
 use async_recursion::async_recursion;
 use bigdecimal::BigDecimal;
 use futures::future::{join_all, OptionFuture};
@@ -11,7 +12,7 @@ use tailcall::tailcall;
 
 use crate::{
     actor,
-    context::{ContextHandler, ContextHolder},
+    context::{ContextHandler, ContextHolder, PrivateContext},
     errors::InterpreterError,
     lexer::Token,
     parser::{print_ast, Parser, SyntaxKind},
@@ -685,6 +686,8 @@ impl Syntax {
         ctx: &mut ContextHandler,
         system: &mut SystemHandler,
     ) -> Result<Syntax, InterpreterError> {
+        let mut local_ctx = PrivateContext::new(usize::MAX, "local".to_string(), None);
+
         let mut values_defined_here = Vec::new();
         let expr: Syntax = match self.clone().reduce().await {
             Self::Id(id) => Ok(
@@ -725,7 +728,7 @@ impl Syntax {
             Self::IfLet(asgs, expr_true, expr_false) => {
                 for (lhs, rhs) in asgs {
                     let rhs = rhs.clone().execute(false, ctx, system).await?;
-                    if !ctx
+                    if !local_ctx
                         .set_values_in_context(
                             &mut ctx.get_holder(),
                             &lhs,
@@ -734,15 +737,14 @@ impl Syntax {
                         )
                         .await
                     {
-                        ctx.remove_values(&mut values_defined_here).await;
+                        local_ctx.remove_values(&mut values_defined_here);
                         return Ok(*expr_false);
                     }
                 }
 
                 let mut result = expr_true.clone();
-                for (key, value) in ctx
+                for (key, value) in local_ctx
                     .remove_values(&mut values_defined_here)
-                    .await
                     .into_iter()
                 {
                     result = Box::new(result.replace_args(&key, &value).await);
@@ -944,7 +946,7 @@ impl Syntax {
             }
             Self::Let((lhs, rhs), expr) => {
                 if no_change {
-                    if !ctx
+                    if !local_ctx
                         .set_values_in_context(
                             &mut ctx.get_holder(),
                             &lhs,
@@ -953,16 +955,15 @@ impl Syntax {
                         )
                         .await
                     {
-                        ctx.remove_values(&mut values_defined_here).await;
+                        local_ctx.remove_values(&mut values_defined_here);
                         ctx.push_error(format!("Let expression failed: {}", self))
                             .await;
 
                         Ok(Self::Let((lhs, rhs), expr))
                     } else {
                         let mut result = (*expr).clone();
-                        for (key, value) in ctx
+                        for (key, value) in local_ctx
                             .remove_values(&mut values_defined_here)
-                            .await
                             .into_iter()
                         {
                             result = result.replace_args(&key, &value).await;
