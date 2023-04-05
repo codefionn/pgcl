@@ -101,6 +101,7 @@ pub struct Parser<I: Iterator<Item = (SyntaxKind, String)>> {
     iter: Peekable<I>,
     tuple: Vec<bool>,
     line: usize,
+    is_let: Vec<bool>,
 }
 
 impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
@@ -111,6 +112,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             errors: Default::default(),
             tuple: Vec::new(),
             line: 1,
+            is_let: Vec::new(),
         }
     }
 }
@@ -366,6 +368,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
 
                 self.builder.start_node(SyntaxKind::KwLet.into());
                 self.parse_let_args(SyntaxKind::KwIn);
+
                 self.parse_expr(false);
                 self.builder.finish_node();
 
@@ -437,6 +440,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     ///
     /// - end: the terminating symbol of the assignments
     fn parse_let_args(&mut self, end: SyntaxKind) {
+        self.is_let.push(true);
         loop {
             self.builder.start_node(SyntaxKind::BiOp.into());
             self.parse_call(false);
@@ -475,6 +479,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             }
             break;
         }
+
+        self.is_let.pop();
     }
 
     /// Handle a binary operator expression (or just next)
@@ -570,7 +576,36 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     }
 
     fn parse_expr(&mut self, first: bool) -> bool {
-        self.parse_asg(first)
+        let checkpoint = self.builder.checkpoint();
+        let mut one_success = false;
+        let mut exprs_cnt = 0;
+        loop {
+            if !self.parse_asg(first) {
+                break;
+            }
+
+            one_success = true;
+
+            if !self.is_let.is_empty() {
+                break;
+            }
+
+            exprs_cnt += 1;
+            if self.peek() == Some(SyntaxKind::Semicolon) {
+                self.iter.next();
+                self.skip_newlines();
+            } else {
+                break;
+            }
+        }
+
+        if exprs_cnt > 1 {
+            self.builder
+                .start_node_at(checkpoint, SyntaxKind::Root.into());
+            self.builder.finish_node();
+        }
+
+        one_success
     }
 
     fn skip_newlines(&mut self) -> usize {

@@ -714,17 +714,23 @@ impl Syntax {
             Self::ValAtom(_) => Ok(self),
             Self::Lambda(_, _) => Ok(self),
             Self::Pipe(_) => Ok(self),
-            Self::Program(exprs) => Ok(Self::Program(
-                join_all(exprs.into_iter().map(|expr| {
+            Self::Program(exprs) => {
+                let mut exprs: Vec<_> = join_all(exprs.into_iter().map(|expr| {
                     let mut ctx = ctx.clone();
                     let mut system = system.clone();
 
-                    async move { expr.execute(true, &mut ctx, &mut system).await }
+                    async move { expr.execute(first, &mut ctx, &mut system).await }
                 }))
                 .await
                 .into_iter()
-                .try_collect()?,
-            )),
+                .try_collect()?;
+
+                if let Some(expr) = exprs.pop() {
+                    Ok(expr)
+                } else {
+                    Ok(Self::ValAny())
+                }
+            }
             Self::IfLet(asgs, expr_true, expr_false) => {
                 for (lhs, rhs) in asgs {
                     let rhs = rhs.clone().execute(false, ctx, system).await?;
@@ -1180,7 +1186,7 @@ impl Syntax {
                 haschanged = true;
             }
 
-            if first {
+            if first && this != Syntax::ValAny() {
                 debug!("{}", this);
             }
 
@@ -1535,7 +1541,7 @@ async fn execute_code(
         )
         .try_collect()?;
 
-    debug!("{:?}", toks);
+    //debug!("{:?}", toks);
 
     let typed = parse_to_typed(toks);
     debug!("{:?}", typed);

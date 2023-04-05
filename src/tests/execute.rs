@@ -822,7 +822,7 @@ async fn pattern_match_list() {
         .await
         .is_ok());
     assert!(
-        parse_to_str("len [x;xs] = 1 + len xs", &mut ctx, &mut system)
+        parse_to_str("len [x:xs] = 1 + len xs", &mut ctx, &mut system)
             .await
             .is_ok()
     );
@@ -851,7 +851,7 @@ async fn pattern_match_list() {
     assert!(parse_to_str("len [x] = 1 ", &mut ctx, &mut system)
         .await
         .is_ok());
-    assert!(parse_to_str("len [x;xs] = 2", &mut ctx, &mut system)
+    assert!(parse_to_str("len [x:xs] = 2", &mut ctx, &mut system)
         .await
         .is_ok());
     assert_eq!(

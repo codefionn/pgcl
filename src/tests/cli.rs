@@ -53,7 +53,7 @@ fn test_import_fib() -> anyhow::Result<()> {
     cmd.write_stdin("fib = import \"./examples/fib.pgcl\"\nfib.fib 10")
         .assert()
         .success()
-        .stdout(predicate::str::is_match(r"^_\n55\n$").unwrap());
+        .stdout(predicate::str::is_match(r"^55\n$").unwrap());
 
     Ok(())
 }
@@ -67,7 +67,7 @@ fn test_import_time_fib() -> anyhow::Result<()> {
     )
     .assert()
     .success()
-    .stdout(predicate::str::is_match(r"^_\n_\n\([0-9]+\.[0-9]+, 55\)\n$").unwrap());
+    .stdout(predicate::str::is_match(r"^\([0-9]+\.[0-9]+, 55\)\n$").unwrap());
 
     Ok(())
 }
@@ -79,7 +79,7 @@ fn test_import_id_with_map_match() -> anyhow::Result<()> {
     cmd.write_stdin("{ id } = import std\nid (12 + 10)")
         .assert()
         .success()
-        .stdout(predicate::str::is_match(r"^_\n22\n$").unwrap());
+        .stdout(predicate::str::is_match(r"^22\n$").unwrap());
 
     Ok(())
 }
@@ -92,6 +92,18 @@ fn test_sys_println() -> anyhow::Result<()> {
         .assert()
         .success()
         .stdout(predicate::str::is_match(r"Hello, world").unwrap());
+
+    Ok(())
+}
+
+#[test]
+fn test_sys_println_with_program() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin("sys = import sys;sys.println \"Hello, world\"")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^Hello, world\n$").unwrap());
 
     Ok(())
 }

@@ -174,7 +174,10 @@ impl InterpreterExecuteActor {
                         if let Ok(executed) =
                             reduced.execute(true, &mut main_ctx, &mut main_system).await
                         {
-                            println!("{}", executed);
+                            if executed != Syntax::ValAny() {
+                                println!("{}", executed);
+                            }
+
                             self.last_result = Some(executed);
                         }
 
