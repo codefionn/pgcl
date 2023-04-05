@@ -12,6 +12,7 @@ use tokio::{
 };
 
 use crate::{
+    actor,
     context::ContextHandler,
     errors::InterpreterError,
     execute::{SignalType, Syntax},
@@ -25,16 +26,18 @@ pub enum SystemCallType {
     Cmd,
     Println,
     Actor,
+    ExitActor,
 }
 
 impl SystemCallType {
-    pub fn to_systemcall(&self) -> &'static str {
+    pub const fn to_systemcall(&self) -> &'static str {
         match self {
             Self::Typeof => "type",
             Self::MeasureTime => "time",
             Self::Cmd => "cmd",
             Self::Println => "println",
             Self::Actor => "actor",
+            Self::ExitActor => "exitactor",
         }
     }
 
@@ -45,6 +48,7 @@ impl SystemCallType {
             Self::Cmd,
             Self::Println,
             Self::Actor,
+            Self::ExitActor,
         ]
     }
 }
@@ -156,6 +160,17 @@ impl PrivateSystem {
                 let id = system.get_holder().create_actor(tx).await;
 
                 Syntax::Signal(SignalType::Actor, id)
+            }
+            (SystemCallType::ExitActor, Syntax::Signal(signal_type, signal_id)) => {
+                match signal_type {
+                    SignalType::Actor => match system.get_holder().get_actor(signal_id).await {
+                        Some(tx) => match tx.send(actor::Message::Exit()).await {
+                            Ok(_) => Syntax::ValAtom("true".to_string()),
+                            Err(_) => Syntax::ValAtom("false".to_string()),
+                        },
+                        _ => Syntax::ValAtom("false".to_string()),
+                    },
+                }
             }
             (syscall, expr) => Syntax::Call(
                 Box::new(Syntax::Id("syscall".to_string())),

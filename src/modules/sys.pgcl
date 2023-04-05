@@ -28,3 +28,6 @@ export println
 ##
 actor init fn = syscall (@actor, (init, fn))
 export actor
+
+exit_actor signal = syscall (@exitactor, signal)
+export exit_actor

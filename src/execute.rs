@@ -755,7 +755,7 @@ impl Syntax {
             Self::Call(box Syntax::Signal(signal_type, signal_id), expr) => match signal_type {
                 SignalType::Actor => {
                     if let Some(tx) = system.get_holder().get_actor(signal_id).await {
-                        if let Err(_) = tx.send(crate::actor::Message::Signal(*expr)).await {
+                        if let Err(_) = tx.send(actor::Message::Signal(*expr)).await {
                             Ok(Syntax::ValAtom("false".to_string()))
                         } else {
                             Ok(Syntax::ValAtom("true".to_string()))
@@ -1459,6 +1459,12 @@ async fn make_call(
                     system
                         .clone()
                         .do_syscall(ctx, system, no_change, SystemCallType::Actor, *expr)
+                        .await
+                }
+                "exitactor" => {
+                    system
+                        .clone()
+                        .do_syscall(ctx, system, no_change, SystemCallType::ExitActor, *expr)
                         .await
                 }
                 _ => Ok(original_expr),

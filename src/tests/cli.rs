@@ -49,7 +49,6 @@ fn test_addition() -> anyhow::Result<()> {
 #[test]
 fn test_import_fib() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
-    println!("{:?}", std::env::current_dir());
 
     cmd.write_stdin("fib = import \"./examples/fib.pgcl\"\nfib.fib 10")
         .assert()
@@ -62,7 +61,6 @@ fn test_import_fib() -> anyhow::Result<()> {
 #[test]
 fn test_import_time_fib() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
-    println!("{:?}", std::env::current_dir());
 
     cmd.write_stdin(
         "time = (import sys).time\nfib = (import \"./examples/fib.pgcl\").fib\ntime (fib 10)",
@@ -77,12 +75,23 @@ fn test_import_time_fib() -> anyhow::Result<()> {
 #[test]
 fn test_import_id_with_map_match() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
-    println!("{:?}", std::env::current_dir());
 
     cmd.write_stdin("{ id } = import std\nid (12 + 10)")
         .assert()
         .success()
         .stdout(predicate::str::is_match(r"^_\n22\n$").unwrap());
+
+    Ok(())
+}
+
+#[test]
+fn test_sys_println() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin("sys = import sys\nsys.println \"Hello, world\"")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"Hello, world").unwrap());
 
     Ok(())
 }
