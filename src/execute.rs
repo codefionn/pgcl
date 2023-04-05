@@ -686,6 +686,7 @@ impl Syntax {
         ctx: &mut ContextHandler,
         system: &mut SystemHandler,
     ) -> Result<Syntax, InterpreterError> {
+        // This local context helps by not locking up the current context `ctx`
         let mut local_ctx = PrivateContext::new(usize::MAX, "local".to_string(), None);
 
         let mut values_defined_here = Vec::new();
@@ -725,6 +726,7 @@ impl Syntax {
                 .into_iter()
                 .try_collect()?;
 
+                // If the program has at least one expression => return the result of the last one
                 if let Some(expr) = exprs.pop() {
                     Ok(expr)
                 } else {
@@ -821,6 +823,8 @@ impl Syntax {
                 let mut ctx = ctx.get_holder().get_handler(ctx_id).await.unwrap();
                 let mut system = system.get_holder().get_handler(system_id).await.unwrap();
 
+                // Create a new contextual with the contents evaulated in the given context
+                // The contextual is reduced away if possible in the next execution step
                 Ok(Self::Contextual(
                     ctx_id,
                     system_id,
@@ -838,6 +842,8 @@ impl Syntax {
                 let old_lhs = lhs.clone();
                 let lhs = lhs.execute_once(false, no_change, ctx, system).await?;
                 if lhs == *old_lhs {
+                    // Executing the left side doesn't seem to do the trick anymore
+                    // => evaulate the right side (this can produces more desirable results)
                     Ok(Self::Call(
                         Box::new(lhs),
                         Box::new(rhs.execute_once(false, no_change, ctx, system).await?),
@@ -848,6 +854,7 @@ impl Syntax {
             }
             Self::Asg(box Self::Id(id), rhs) => {
                 if !first {
+                    // Assignments are only allowed on the top-level
                     Ok(self)
                 } else {
                     ctx.insert_into_values(&id, *rhs, &mut values_defined_here)
@@ -925,6 +932,8 @@ impl Syntax {
                         )
                         .await
                     } else {
+                        // This left-hand side isn't prepended by an identifier
+                        // => Maybe it's a normal assignment of a let expression?
                         let rhs = rhs.execute(false, ctx, system).await?;
                         if !ctx
                             .clone()
@@ -952,6 +961,8 @@ impl Syntax {
             }
             Self::Let((lhs, rhs), expr) => {
                 if no_change {
+                    // no changes happen in the RHS of the assignment
+                    // => evaulate the let expression
                     if !local_ctx
                         .set_values_in_context(
                             &mut ctx.get_holder(),
@@ -1054,10 +1065,13 @@ impl Syntax {
             }
             Self::If(cond, expr_true, expr_false) => {
                 if no_change {
+                    // the condition doesn't change anymore
+                    // => try to evaluate the condition
                     Ok(match *cond {
                         Self::ValAtom(id) if id == "true" => *expr_true,
                         Self::ValAtom(id) if id == "false" => *expr_false,
                         _ => {
+                            // That failed => try to evaluate the expression even more
                             let old_cond = cond.clone();
                             let cond = cond.execute_once(false, true, ctx, system).await?;
 
@@ -1159,6 +1173,7 @@ impl Syntax {
         Ok(expr)
     }
 
+    /// Execute the AST until no longer possible
     #[async_recursion]
     pub async fn execute(
         self,
@@ -1176,7 +1191,10 @@ impl Syntax {
                 .execute_once(first, !haschanged, ctx, system)
                 .await?;
 
+            // Execute as long there are changes
             if this == old {
+                // This is necessary, because some expressions are only evaluated if there aren't
+                // any changes happening (like the condition of an if expression)
                 if haschanged {
                     haschanged = false;
                 } else {
@@ -1186,7 +1204,7 @@ impl Syntax {
                 haschanged = true;
             }
 
-            if first && this != Syntax::ValAny() {
+            if first && this != Syntax::ValAny() && haschanged {
                 debug!("{}", this);
             }
 
@@ -1196,6 +1214,7 @@ impl Syntax {
         Ok(this)
     }
 
+    /// Evaluate, if both statements are equal with type-coercion
     pub async fn eval_equal(&self, other: &Self) -> bool {
         match (self, other) {
             (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => a0 == a1 && b0 == b1,

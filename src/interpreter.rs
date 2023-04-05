@@ -138,8 +138,13 @@ impl InterpreterExecuteActor {
 
         let mut main_system: SystemHandler = self.system.get_handler(0).await.unwrap();
 
+        // Save the length of the error vec in the main context
+        // This helps to only output current errors
         let mut last_error_len = 0;
 
+        // This saves tokens from a previous input line, that could not be parsed successfully.
+        // This is for trying to combine these with the new input line, if the user completed the
+        // statement from the previous line(s).
         let mut leftover_tokens: Vec<Vec<(SyntaxKind, String)>> = Vec::new();
 
         while let Some(msg) = self.rx.recv().await {
@@ -156,9 +161,13 @@ impl InterpreterExecuteActor {
                         .map_err(|err| anyhow::anyhow!("{:?}", err))?;
 
                     let mut success = false;
-                    leftover_tokens.push(toks);
+
+                    leftover_tokens.push(toks); // Push directly to the leftover tokens, this
+                                                // simplifies the algorithm
                     for i in 0..leftover_tokens.len() {
                         let typed = {
+                            // Combine the leftover tokens from i till the end
+                            // (the end is the latest input line)
                             let prepend = leftover_tokens[i..]
                                 .into_iter()
                                 .map(|toks| toks.clone().into_iter())
@@ -203,14 +212,17 @@ impl InterpreterExecuteActor {
                                 last_error_len = errors.len();
                             }
 
-                            break;
+                            break; // Success! (at least at parsing)
                         }
                     }
 
                     if success {
+                        // The parsing was done successfully => delete all leftover tokens, because
+                        // they are not required anymore/the previous ones may really be errors.
                         leftover_tokens.clear();
                     }
 
+                    // Confirm, that the parser has stopped => request a new input line
                     tx_confirm
                         .send(())
                         .map_err(|err| anyhow::anyhow!("{:?}", err))?;

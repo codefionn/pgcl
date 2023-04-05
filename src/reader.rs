@@ -26,27 +26,30 @@ impl CLIActor {
         rl.set_auto_add_history(true);
 
         loop {
-            let readline = rl.readline("> ");
+            let readline = rl.readline("> "); // Print '> ' on an interactive console
 
             match readline {
                 Ok(line) => {
                     let (tx_confirm, rx_confirm) = tokio::sync::oneshot::channel();
 
                     self.tx.send(LineMessage::Line(line, tx_confirm)).await?;
-                    self.tx.reserve().await?;
-                    rx_confirm.await?;
+                    self.tx.reserve().await?; // Flush the channel
+
+                    rx_confirm.await?; // Await the completion of execution process
                 }
                 Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+                    // Ignore the results, because the channel stops working afterwards
                     self.tx.send(LineMessage::Exit()).await.ok();
-                    self.tx.reserve().await.ok();
+                    self.tx.reserve().await.ok(); // Flush the channel
 
                     break;
                 }
                 Err(err) => {
-                    println!("Error: {:?}", err);
+                    eprintln!("Error: {:?}", err);
 
+                    // Ignore the results, because the channel stops working afterwards
                     self.tx.send(LineMessage::Exit()).await.ok();
-                    self.tx.reserve().await.ok();
+                    self.tx.reserve().await.ok(); // Flush the channel
 
                     break;
                 }
