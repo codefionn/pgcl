@@ -107,3 +107,15 @@ fn test_sys_println_with_program() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_sys_println_with_program_with_newline() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin("sys = import sys;\nsys.println \"Hello, world\"")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^Hello, world\n$").unwrap());
+
+    Ok(())
+}

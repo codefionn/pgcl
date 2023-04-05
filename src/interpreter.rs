@@ -140,11 +140,11 @@ impl InterpreterExecuteActor {
 
         let mut last_error_len = 0;
 
+        let mut leftover_tokens: Vec<Vec<(SyntaxKind, String)>> = Vec::new();
+
         while let Some(msg) = self.rx.recv().await {
             match msg {
                 LexerMessage::Line(lexer_result, tx_confirm) => {
-                    debug!("{:?}", lexer_result);
-
                     let toks: Vec<(SyntaxKind, String)> = lexer_result
                         .into_iter()
                         .map(
@@ -155,37 +155,60 @@ impl InterpreterExecuteActor {
                         .try_collect()
                         .map_err(|err| anyhow::anyhow!("{:?}", err))?;
 
-                    let typed = parse_to_typed(&self.args, toks);
+                    let mut success = false;
+                    leftover_tokens.push(toks);
+                    for i in 0..leftover_tokens.len() {
+                        let typed = {
+                            let prepend = leftover_tokens[i..]
+                                .into_iter()
+                                .map(|toks| toks.clone().into_iter())
+                                .flatten();
 
-                    debug!("{:?}", typed);
-                    if let Ok(typed) = typed {
-                        let typed = match typed {
-                            Syntax::Pipe(expr) if self.last_result.is_some() => Syntax::BiOp(
-                                BiOpType::OpPipe,
-                                Box::new(self.last_result.as_ref().unwrap().clone()),
-                                expr,
-                            ),
-                            _ => typed,
+                            parse_to_typed(
+                                &self.args,
+                                prepend.collect(),
+                                i != leftover_tokens.len() - 1,
+                            )
                         };
 
-                        let reduced: Syntax = typed.reduce().await;
+                        debug!("{:?}", typed);
+                        if let Ok(typed) = typed {
+                            success = true;
 
-                        debug!("{}", reduced);
-                        if let Ok(executed) =
-                            reduced.execute(true, &mut main_ctx, &mut main_system).await
-                        {
-                            if executed != Syntax::ValAny() {
-                                println!("{}", executed);
+                            let typed = match typed {
+                                Syntax::Pipe(expr) if self.last_result.is_some() => Syntax::BiOp(
+                                    BiOpType::OpPipe,
+                                    Box::new(self.last_result.as_ref().unwrap().clone()),
+                                    expr,
+                                ),
+                                _ => typed,
+                            };
+
+                            let reduced: Syntax = typed.reduce().await;
+
+                            debug!("{}", reduced);
+                            if let Ok(executed) =
+                                reduced.execute(true, &mut main_ctx, &mut main_system).await
+                            {
+                                if executed != Syntax::ValAny() {
+                                    println!("{}", executed);
+                                }
+
+                                self.last_result = Some(executed);
                             }
 
-                            self.last_result = Some(executed);
-                        }
+                            let errors = main_ctx.get_errors().await;
+                            if last_error_len < errors.len() {
+                                eprintln!("{:?}", &errors[last_error_len..]);
+                                last_error_len = errors.len();
+                            }
 
-                        let errors = main_ctx.get_errors().await;
-                        if last_error_len < errors.len() {
-                            println!("{:?}", &errors[last_error_len..]);
-                            last_error_len = errors.len();
+                            break;
                         }
+                    }
+
+                    if success {
+                        leftover_tokens.clear();
                     }
 
                     tx_confirm
@@ -207,11 +230,12 @@ impl InterpreterExecuteActor {
 fn parse_to_typed(
     args: &Args,
     toks: Vec<(SyntaxKind, String)>,
+    ignore_errors: bool,
 ) -> Result<Syntax, InterpreterError> {
     let (ast, errors) =
         Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse_main(true);
-    if !errors.is_empty() {
-        println!("{:?}", errors);
+    if !errors.is_empty() && !ignore_errors {
+        eprintln!("{:?}", errors);
     }
 
     if args.verbose {

@@ -1555,7 +1555,7 @@ fn parse_to_typed(toks: Vec<(SyntaxKind, String)>) -> Result<Syntax, Interpreter
     let (ast, errors) = Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse();
     //print_ast(0, &ast);
     if !errors.is_empty() {
-        println!("{:?}", errors);
+        eprintln!("{:?}", errors);
     }
 
     return (*ast).try_into();
