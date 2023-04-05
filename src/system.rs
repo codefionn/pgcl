@@ -39,7 +39,13 @@ impl SystemCallType {
     }
 
     pub fn all() -> &'static [SystemCallType] {
-        &[Self::Typeof, Self::MeasureTime, Self::Cmd]
+        &[
+            Self::Typeof,
+            Self::MeasureTime,
+            Self::Cmd,
+            Self::Println,
+            Self::Actor,
+        ]
     }
 }
 
