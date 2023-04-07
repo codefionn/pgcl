@@ -1,7 +1,6 @@
 ///! This module is for creating an untyped AST and creating an typed AST from it
 use std::{iter::Peekable, str::FromStr};
 
-use bigdecimal::BigDecimal;
 use log::warn;
 use num::Num;
 use rowan::{GreenNodeBuilder, NodeOrToken};
@@ -539,7 +538,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 SyntaxKind::OpGt,
                 SyntaxKind::OpLt,
             ],
-            Self::parse_call,
+            Self::parse_add,
         )
     }
 
@@ -547,7 +546,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         self.handle_operation(
             first,
             &[SyntaxKind::OpMul, SyntaxKind::OpDiv],
-            Self::parse_cmp,
+            Self::parse_call,
         )
     }
 
@@ -560,7 +559,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     }
 
     fn parse_pipe(&mut self, first: bool) -> bool {
-        self.handle_operation(first, &[SyntaxKind::OpPipe], Self::parse_add)
+        self.handle_operation(first, &[SyntaxKind::OpPipe], Self::parse_cmp)
     }
 
     fn parse_tuple(&mut self, first: bool) -> bool {
