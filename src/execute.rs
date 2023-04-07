@@ -406,37 +406,46 @@ impl Syntax {
             | Self::ValAtom(_)
             | Self::Signal(_, _)) => expr,
             Self::Lst(lst) => Self::Lst(
-                lst.into_iter()
-                    .map(|expr| Self::Contextual(ctx_id, system_id, Box::new(expr)))
-                    .collect(),
+                join_all(lst.into_iter().map(|expr| async move {
+                    Self::Contextual(ctx_id, system_id, Box::new(expr))
+                        .reduce()
+                        .await
+                }))
+                .await,
             ),
             Self::Map(map) => Self::Map(
-                map.into_iter()
-                    .map(|(key, (expr, is_id))| {
+                join_all(map.into_iter().map(|(key, (expr, is_id))| async move {
+                    (
+                        key,
                         (
-                            key,
-                            (Self::Contextual(ctx_id, system_id, Box::new(expr)), is_id),
-                        )
-                    })
-                    .collect(),
+                            Self::Contextual(ctx_id, system_id, Box::new(expr))
+                                .reduce()
+                                .await,
+                            is_id,
+                        ),
+                    )
+                }))
+                .await
+                .into_iter()
+                .collect(),
             ),
             Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => Self::BiOp(
                 BiOpType::OpPeriod,
-                Box::new(Self::Contextual(ctx_id, system_id, lhs)),
-                rhs,
+                Box::new(Self::Contextual(ctx_id, system_id, lhs).reduce().await),
+                Box::new(rhs.reduce().await),
             ),
             Self::BiOp(op, lhs, rhs) => Self::BiOp(
                 op,
-                Box::new(Self::Contextual(ctx_id, system_id, lhs)),
-                Box::new(Self::Contextual(ctx_id, system_id, rhs)),
+                Box::new(Self::Contextual(ctx_id, system_id, lhs).reduce().await),
+                Box::new(Self::Contextual(ctx_id, system_id, rhs).reduce().await),
             ),
             Self::Call(lhs, rhs) => Self::Call(
-                Box::new(Self::Contextual(ctx_id, system_id, lhs)),
-                Box::new(Self::Contextual(ctx_id, system_id, rhs)),
+                Box::new(Self::Contextual(ctx_id, system_id, lhs).reduce().await),
+                Box::new(Self::Contextual(ctx_id, system_id, rhs).reduce().await),
             ),
             Self::Tuple(lhs, rhs) => Self::Tuple(
-                Box::new(Self::Contextual(ctx_id, system_id, lhs)),
-                Box::new(Self::Contextual(ctx_id, system_id, rhs)),
+                Box::new(Self::Contextual(ctx_id, system_id, lhs).reduce().await),
+                Box::new(Self::Contextual(ctx_id, system_id, rhs).reduce().await),
             ),
             expr @ Self::Context(_, _, _) => expr,
             // If a contextual is in a contextual we can use just he inner contextual
@@ -1490,6 +1499,12 @@ async fn make_call(
                     system
                         .clone()
                         .do_syscall(ctx, system, no_change, SystemCallType::ExitActor, *expr)
+                        .await
+                }
+                "httprequest" => {
+                    system
+                        .clone()
+                        .do_syscall(ctx, system, no_change, SystemCallType::HttpRequest, *expr)
                         .await
                 }
                 _ => Ok(original_expr),

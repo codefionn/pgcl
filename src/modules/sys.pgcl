@@ -31,3 +31,10 @@ export actor
 
 exit_actor signal = syscall (@exitactor, signal)
 export exit_actor
+
+##
+# Makes a http request
+##
+fetch (url, request) = syscall (@httprequest, (url, request))
+fetch (url) = syscall (@httprequest, (url, {}))
+export fetch

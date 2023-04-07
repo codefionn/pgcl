@@ -4,6 +4,8 @@ use std::{
 };
 
 use bigdecimal::BigDecimal;
+use hyper::http::uri::Scheme;
+use log::debug;
 use num::FromPrimitive;
 use tokio::{
     process::Command,
@@ -27,6 +29,7 @@ pub enum SystemCallType {
     Println,
     Actor,
     ExitActor,
+    HttpRequest,
 }
 
 impl SystemCallType {
@@ -38,6 +41,7 @@ impl SystemCallType {
             Self::Println => "println",
             Self::Actor => "actor",
             Self::ExitActor => "exitactor",
+            Self::HttpRequest => "httprequest",
         }
     }
 
@@ -172,18 +176,166 @@ impl PrivateSystem {
                     },
                 }
             }
-            (syscall, expr) => Syntax::Call(
-                Box::new(Syntax::Id("syscall".to_string())),
-                Box::new(Syntax::Tuple(
-                    Box::new(Syntax::ValAtom(syscall.to_systemcall().to_string())),
-                    Box::new(expr.execute_once(false, no_change, ctx, system).await?),
-                )),
-            ),
+            (
+                SystemCallType::HttpRequest,
+                Syntax::Tuple(box Syntax::ValStr(uri), box Syntax::Map(mut settings)),
+            ) => {
+                let method = settings
+                    .remove("method")
+                    .map(|(method, _)| match method {
+                        Syntax::ValAtom(method) => match method.as_str() {
+                            "GET" => Some(hyper::Method::GET),
+                            "POST" => Some(hyper::Method::POST),
+                            "PUT" => Some(hyper::Method::PUT),
+                            "DELETE" => Some(hyper::Method::DELETE),
+                            "HEAD" => Some(hyper::Method::HEAD),
+                            "OPTIONS" => Some(hyper::Method::OPTIONS),
+                            "CONNECT" => Some(hyper::Method::CONNECT),
+                            "PATCH" => Some(hyper::Method::PATCH),
+                            "TRACE" => Some(hyper::Method::TRACE),
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                    .flatten()
+                    .unwrap_or(hyper::Method::GET);
+
+                let body = settings
+                    .remove("method")
+                    .map(|(body, _)| match body {
+                        Syntax::ValStr(body) => Some(body.into_bytes()),
+                        _ => None,
+                    })
+                    .flatten();
+
+                let headers: BTreeMap<String, String> = settings
+                    .remove("headers")
+                    .map(|(headers, _)| match headers {
+                        Syntax::Map(headers) => Some(
+                            headers
+                                .into_iter()
+                                .map(|(key, (val, _))| {
+                                    (
+                                        key,
+                                        match val {
+                                            Syntax::ValStr(val) => Some(val),
+                                            _ => None,
+                                        },
+                                    )
+                                })
+                                .filter(|(_, val)| val.is_some())
+                                .map(|(key, val)| (key, val.unwrap()))
+                                .collect(),
+                        ),
+                        _ => None,
+                    })
+                    .flatten()
+                    .unwrap_or(BTreeMap::new());
+
+                debug!("Trying HTTP Request for \"{}\"", uri);
+                if let Some(uri) = uri.parse::<hyper::Uri>().ok() {
+                    match uri.scheme_str() {
+                        Some("http") => {
+                            let client = hyper::Client::builder().build_http();
+                            do_http_request(uri, method, headers, body, client).await?
+                        }
+                        Some("https") => {
+                            let https = hyper_tls::HttpsConnector::new();
+                            let client = hyper::Client::builder().build(https);
+                            do_http_request(uri, method, headers, body, client).await?
+                        }
+                        Some(_) | None => {
+                            debug!("Unsupported scheme: {:?}", uri.scheme_str());
+
+                            false.into()
+                        }
+                    }
+                } else {
+                    Syntax::ValAtom("false".to_string())
+                }
+            }
+            (syscall, expr) => {
+                debug!("{:?}", expr);
+
+                Syntax::Call(
+                    Box::new(Syntax::Id("syscall".to_string())),
+                    Box::new(Syntax::Tuple(
+                        Box::new(Syntax::ValAtom(syscall.to_systemcall().to_string())),
+                        Box::new(expr.execute_once(false, no_change, ctx, system).await?),
+                    )),
+                )
+            }
         })
     }
 
     pub async fn get(&self, syscall: SystemCallType) -> Option<Syntax> {
         self.map.get(&syscall).map(|expr| expr.clone())
+    }
+}
+
+async fn do_http_request<Connector>(
+    uri: hyper::Uri,
+    method: hyper::Method,
+    headers: BTreeMap<String, String>,
+    body: Option<Vec<u8>>,
+    client: hyper::Client<Connector, hyper::Body>,
+) -> Result<Syntax, InterpreterError>
+where
+    Connector: hyper::client::connect::Connect + Clone + std::marker::Send + Sync + 'static,
+{
+    let mut req = hyper::Request::builder().method(method).uri(uri.clone());
+    for (key, val) in headers.into_iter() {
+        req = req.header(key, val);
+    }
+
+    let req: hyper::Request<hyper::Body> = if let Some(body) = body {
+        if let Ok(req) = req.body(hyper::Body::from(body)) {
+            req
+        } else {
+            debug!("Failed due to body");
+            return Ok(Syntax::ValAtom("false".to_string()));
+        }
+    } else {
+        if let Ok(req) = req.body(hyper::Body::empty()) {
+            req
+        } else {
+            debug!("Failed due to body");
+            return Ok(Syntax::ValAtom("false".to_string()));
+        }
+    };
+
+    match client.request(req).await {
+        Ok(resp) => {
+            let mut result: BTreeMap<&str, Syntax> = BTreeMap::new();
+            result.insert("ok", resp.status().is_success().into());
+            result.insert("status", Syntax::ValInt(resp.status().as_u16().into()));
+            let body = hyper::body::to_bytes(resp.into_body())
+                .await
+                .ok()
+                .map(|bytes| String::from_utf8(bytes.into_iter().collect()).ok())
+                .flatten();
+            if let Some(body) = body {
+                result.insert("body", Syntax::ValStr(body));
+            } else {
+                result.insert("body", false.into());
+            }
+
+            Ok(Syntax::Map(
+                result
+                    .into_iter()
+                    .map(|(key, val)| (key.to_string(), (val, true)))
+                    .collect(),
+            ))
+        }
+        Err(err) => {
+            debug!(
+                "HTTP Request to \"{}\" failed due to {}",
+                uri.to_string(),
+                err
+            );
+
+            Ok(Syntax::ValAtom("false".to_string()))
+        }
     }
 }
 
