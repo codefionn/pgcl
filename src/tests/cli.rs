@@ -119,3 +119,15 @@ fn test_sys_println_with_program_with_newline() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_httprequest() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin("((import sys).fetch \"https://github.com/codefionn/pgcl\").ok")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^@true\n$").unwrap());
+
+    Ok(())
+}
