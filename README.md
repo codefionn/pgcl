@@ -9,6 +9,8 @@ The interpreter uses
 [logos](https://github.com/maciejhirsz/logos) for lexing and
 [rowan](https://github.com/rust-analyzer/rowan) for parsing.
 
+And `0.1 + 0.2 == 0.3` is true here ...
+
 ## TODO
 
 * [x] List
