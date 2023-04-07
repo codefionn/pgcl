@@ -959,6 +959,24 @@ async fn test_map() {
         )
         .await
     );
+    assert_eq!(
+        Ok("0".to_string()),
+        parse_to_str(
+            "{ x: 0, y: 1}.x",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("1".to_string()),
+        parse_to_str(
+            "{ x: 0, y: 1}.y",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
 }
 
 #[tokio::test]

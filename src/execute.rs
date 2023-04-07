@@ -1007,6 +1007,13 @@ impl Syntax {
                     ))
                 }
             }
+            Self::BiOp(BiOpType::OpPeriod, box Self::Map(mut map), box Self::Id(id)) => {
+                if let Some((expr, _)) = map.remove(&id) {
+                    Ok(expr)
+                } else {
+                    Ok(self)
+                }
+            }
             Self::BiOp(
                 BiOpType::OpPeriod,
                 box Self::Context(ctx_id, system_id, ctx_name),
