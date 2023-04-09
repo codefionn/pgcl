@@ -1,5 +1,5 @@
-use log::error;
-use tokio::sync::mpsc;
+use log::{debug, error};
+use tokio::{sync::mpsc, task::JoinHandle};
 
 use crate::{context::ContextHandler, execute::Syntax, system::SystemHandler};
 
@@ -14,15 +14,16 @@ pub async fn create_actor(
     system: SystemHandler,
     init: Syntax,
     actor_fn: Syntax,
-) -> mpsc::Sender<Message> {
-    let (tx, mut rx) = mpsc::channel(1);
+) -> (JoinHandle<()>, mpsc::Sender<Message>) {
+    let (tx, mut rx) = mpsc::channel(256);
 
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         let mut ctx = ctx.clone();
         let mut system = system.clone();
         let mut init = init.clone();
 
         while let Some(msg) = rx.recv().await {
+            debug!("Actor received message: {:?}", msg);
             match msg {
                 Message::Signal(expr) => {
                     let expr = Syntax::Call(
@@ -35,19 +36,23 @@ pub async fn create_actor(
                     .execute(false, &mut ctx, &mut system)
                     .await;
 
-                    if let Ok(expr) = expr {
-                        init = expr;
-                    } else {
-                        error!("Actor failed");
-                        break;
+                    match expr {
+                        Ok(expr) => {
+                            init = expr;
+                            debug!("Successfully executed actor");
+                        }
+                        Err(err) => {
+                            error!("Actor failed: {:?}", err);
+                        }
                     }
                 }
                 Message::Exit() => {
+                    debug!("Actor quitting due to receiving exit signal");
                     break;
                 }
             }
         }
     });
 
-    return tx;
+    return (handle, tx);
 }

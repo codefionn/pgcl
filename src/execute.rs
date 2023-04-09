@@ -1,4 +1,3 @@
-use anyhow::Context;
 use async_recursion::async_recursion;
 use bigdecimal::BigDecimal;
 use futures::future::{join_all, OptionFuture};
@@ -15,7 +14,7 @@ use crate::{
     context::{ContextHandler, ContextHolder, PrivateContext},
     errors::InterpreterError,
     lexer::Token,
-    parser::{print_ast, Parser, SyntaxKind},
+    parser::{Parser, SyntaxKind},
     rational::BigRational,
     system::{SystemCallType, SystemHandler},
 };

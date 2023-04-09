@@ -143,3 +143,15 @@ fn test_execute_script() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_execute_script_with_actor() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.arg("examples/actor_fib10.pgcl")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^55\n$")?);
+
+    Ok(())
+}

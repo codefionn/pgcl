@@ -228,7 +228,7 @@ impl InterpreterExecuteActor {
                         .map_err(|err| anyhow::anyhow!("{:?}", err))?;
                 }
                 _ => {
-                    self.system.drop_actors().await;
+                    self.system.drop_actors().await?;
 
                     break;
                 }

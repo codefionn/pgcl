@@ -21,7 +21,7 @@ use anyhow::anyhow;
 use clap::Parser;
 use context::ContextHolder;
 use execute::execute_code;
-use log::LevelFilter;
+use log::{debug, LevelFilter};
 use system::SystemHandler;
 use tokio::sync::mpsc;
 
@@ -53,17 +53,21 @@ async fn main() -> anyhow::Result<()> {
         let code = std::fs::read_to_string(filepath.to_path_buf())?;
 
         let mut holder = ContextHolder::default();
-        let mut system = SystemHandler::async_default().await;
+        let mut systems = SystemHandler::async_default().await;
 
         execute_code(
             &filepath.to_string_lossy().to_string(),
             filepath.parent().map(|path| path.to_path_buf()),
             code.as_str(),
             &mut holder,
-            &mut system,
+            &mut systems,
         )
         .await
         .map_err(|err| anyhow!("{:?}", err))?;
+
+        systems.get_holder().drop_actors().await?;
+
+        debug!("Exiting main");
     } else {
         let (tx_cli, rx_cli) = mpsc::channel(1);
         let cli_actor = reader::CLIActor::new(tx_cli);

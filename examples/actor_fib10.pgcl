@@ -1,0 +1,6 @@
+sys = import sys
+fib = (import "fib.pgcl").fib
+
+myactor = sys.actor 0 (\x \y sys.println (fib 10) ; x + 1)
+myactor
+myactor @two

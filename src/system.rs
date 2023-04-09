@@ -1,15 +1,17 @@
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
+    time::Duration,
 };
 
 use bigdecimal::BigDecimal;
-use hyper::http::uri::Scheme;
+use futures::future::join_all;
 use log::debug;
 use num::FromPrimitive;
 use tokio::{
     process::Command,
     sync::{mpsc, Mutex},
+    task::JoinHandle,
     time::Instant,
 };
 
@@ -159,19 +161,23 @@ impl PrivateSystem {
                 Syntax::ValAny()
             }
             (SystemCallType::Actor, Syntax::Tuple(init, actor_fn)) => {
-                let tx =
+                let (handle, tx) =
                     crate::actor::create_actor(ctx.clone(), system.clone(), *init, *actor_fn).await;
-                let id = system.get_holder().create_actor(tx).await;
+                let id = system.get_holder().create_actor(handle, tx).await;
 
                 Syntax::Signal(SignalType::Actor, id)
             }
             (SystemCallType::ExitActor, Syntax::Signal(signal_type, signal_id)) => {
                 match signal_type {
                     SignalType::Actor => match system.get_holder().get_actor(signal_id).await {
-                        Some(tx) => match tx.send(actor::Message::Exit()).await {
-                            Ok(_) => Syntax::ValAtom("true".to_string()),
-                            Err(_) => Syntax::ValAtom("false".to_string()),
-                        },
+                        Some(tx) => {
+                            let result = match tx.send(actor::Message::Exit()).await {
+                                Ok(_) => Syntax::ValAtom("true".to_string()),
+                                Err(_) => Syntax::ValAtom("false".to_string()),
+                            };
+
+                            result
+                        }
                         _ => Syntax::ValAtom("false".to_string()),
                     },
                 }
@@ -374,6 +380,7 @@ struct PrivateSystemHolder {
     systems: HashMap<usize, Arc<Mutex<PrivateSystem>>>,
     last_id: usize,
     actors: HashMap<usize, mpsc::Sender<crate::actor::Message>>,
+    actors_handle: Vec<JoinHandle<()>>,
     last_actor_id: usize,
 }
 
@@ -391,6 +398,7 @@ impl Default for PrivateSystemHolder {
             .collect(),
             last_id: 0,
             actors: Default::default(),
+            actors_handle: Default::default(),
             last_actor_id: 0,
         }
     }
@@ -411,11 +419,16 @@ impl PrivateSystemHolder {
         id
     }
 
-    pub fn create_actor(&mut self, tx: mpsc::Sender<crate::actor::Message>) -> usize {
+    pub fn create_actor(
+        &mut self,
+        handle: JoinHandle<()>,
+        tx: mpsc::Sender<crate::actor::Message>,
+    ) -> usize {
         let id = self.last_actor_id;
         self.last_actor_id += 1;
 
         self.actors.insert(id, tx);
+        self.actors_handle.push(handle);
 
         id
     }
@@ -424,12 +437,21 @@ impl PrivateSystemHolder {
         self.actors.get(&id).map(|tx| tx.clone())
     }
 
-    pub async fn drop_actors(&mut self) {
+    pub async fn drop_actors(&mut self) -> Vec<JoinHandle<()>> {
+        if self.actors.is_empty() {
+            return Vec::new(); // Already dropping actors
+        }
+
+        debug!("Dropping actors");
+        // We have to return the actors, otherwise the runtime will be locked
+
         for (_, actor_tx) in &self.actors {
             actor_tx.send(crate::actor::Message::Exit()).await.ok();
         }
 
-        self.actors.clear();
+        debug!("Awaiting actor tasks");
+
+        self.actors_handle.drain(..).collect()
     }
 }
 
@@ -487,8 +509,12 @@ impl SystemHolder {
         }
     }
 
-    pub async fn create_actor(&mut self, tx: mpsc::Sender<crate::actor::Message>) -> usize {
-        let id = self.system.lock().await.create_actor(tx.clone());
+    pub async fn create_actor(
+        &mut self,
+        handle: JoinHandle<()>,
+        tx: mpsc::Sender<crate::actor::Message>,
+    ) -> usize {
+        let id = self.system.lock().await.create_actor(handle, tx.clone());
         self.actors.insert(id, tx);
 
         id
@@ -508,10 +534,15 @@ impl SystemHolder {
         }
     }
 
-    pub async fn drop_actors(&mut self) {
+    pub async fn drop_actors(&mut self) -> anyhow::Result<()> {
         self.actors.clear();
 
-        self.system.lock().await.drop_actors();
+        let actors_handle = self.system.lock().await.drop_actors().await;
+        for actor_handle in actors_handle {
+            actor_handle.await?;
+        }
+
+        Ok(())
     }
 }
 
