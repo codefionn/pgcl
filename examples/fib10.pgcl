@@ -1,0 +1,5 @@
+sys = import sys
+fib = (import "fib.pgcl").fib
+
+
+sys.println (fib 10)

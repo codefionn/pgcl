@@ -1558,7 +1558,7 @@ async fn import_std_lib(
 /// - `path`: The real path to the module
 /// - `code`: The code itself
 /// - `holder`: The context holder
-async fn execute_code(
+pub async fn execute_code(
     name: &String,
     path: Option<PathBuf>,
     code: &str,
