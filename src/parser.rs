@@ -317,6 +317,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             }
             Some(SyntaxKind::If) => {
                 self.iter.next(); // skip
+                self.skip_newlines();
+
                 if self
                     .peek()
                     .map(|tok| tok == SyntaxKind::KwLet)
@@ -337,6 +339,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                         .unwrap_or(false)
                     {
                         self.iter.next(); // skip
+                        self.skip_newlines();
                     } else {
                         self.errors.push(format!("Expected 'then'"));
                     }
@@ -351,6 +354,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     .unwrap_or(false)
                 {
                     self.iter.next(); // skip
+                    self.skip_newlines();
                 } else {
                     self.errors.push(format!("Expected 'else'"));
                 }
@@ -396,6 +400,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     self.iter.next(); // ignore
                 }
 
+                self.skip_newlines();
+
                 // parse the lambda expression
                 self.parse_expr(false);
                 self.builder.finish_node();
@@ -440,7 +446,15 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     /// - end: the terminating symbol of the assignments
     fn parse_let_args(&mut self, end: SyntaxKind) {
         self.is_let.push(true);
+        let mut count = 0;
         loop {
+            // Allow the 'then' or 'in' the next line
+            if count > 0 && self.peek().map(|tok| tok == end).unwrap_or(false) {
+                self.iter.next();
+                self.skip_newlines();
+                break;
+            }
+
             self.builder.start_node(SyntaxKind::BiOp.into());
             self.parse_call(false);
 
@@ -464,11 +478,14 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 .unwrap_or(false)
             {
                 self.iter.next();
+                self.skip_newlines();
+                count += 1;
                 continue;
             }
 
             if self.peek().map(|tok| tok == end).unwrap_or(false) {
                 self.iter.next();
+                self.skip_newlines();
                 break;
             }
 
@@ -476,6 +493,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 SyntaxKind::KwIn => self.errors.push(format!("Expected either ';' or 'in'")),
                 _ => self.errors.push(format!("Expected either ';' or 'then'")),
             }
+
             break;
         }
 
@@ -498,6 +516,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             self.builder
                 .start_node_at(checkpoint, SyntaxKind::BiOp.into());
             self.bump();
+            self.skip_newlines();
             next(self, false);
             self.builder.finish_node();
         }
