@@ -127,7 +127,19 @@ fn test_httprequest() -> anyhow::Result<()> {
     cmd.write_stdin("((import sys).fetch \"https://github.com/codefionn/pgcl\").ok")
         .assert()
         .success()
-        .stdout(predicate::str::is_match(r"^@true\n$").unwrap());
+        .stdout(predicate::str::is_match(r"^@true\n$")?);
+
+    Ok(())
+}
+
+#[test]
+fn test_execute_script() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.arg("examples/fib10.pgcl")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^55\n$")?);
 
     Ok(())
 }
