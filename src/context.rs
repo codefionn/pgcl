@@ -287,7 +287,6 @@ impl PrivateContext {
                         };
 
                         let c: String = str1.drain(0..len).collect();
-                        debug!("Rest: {}", c);
                         let expr_str1 = Syntax::ValStr(format!("{}", c));
 
                         if !self
