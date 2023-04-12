@@ -154,11 +154,11 @@ impl InterpreterExecuteActor {
                         .into_iter()
                         .map(
                             |(tok, slice)| -> Result<(SyntaxKind, String), InterpreterError> {
-                                Ok((tok.clone().try_into()?, slice.clone()))
+                                Ok((tok.try_into()?, slice))
                             },
                         )
                         .try_collect()
-                        .map_err(|err| anyhow::anyhow!("{:?}", err))?;
+                        .map_err(|err| anyhow::anyhow!("{err:?}"))?;
 
                     let mut success = false;
 
@@ -169,9 +169,8 @@ impl InterpreterExecuteActor {
                             // Combine the leftover tokens from i till the end
                             // (the end is the latest input line)
                             let prepend = leftover_tokens[i..]
-                                .into_iter()
-                                .map(|toks| toks.clone().into_iter())
-                                .flatten();
+                                .iter()
+                                .flat_map(|toks| toks.clone().into_iter());
 
                             parse_to_typed(
                                 &self.args,
@@ -200,7 +199,7 @@ impl InterpreterExecuteActor {
                                 reduced.execute(true, &mut main_ctx, &mut main_system).await
                             {
                                 if executed != Syntax::ValAny() {
-                                    println!("{}", executed);
+                                    println!("{executed}");
                                 }
 
                                 self.last_result = Some(executed);
@@ -225,7 +224,7 @@ impl InterpreterExecuteActor {
                     // Confirm, that the parser has stopped => request a new input line
                     tx_confirm
                         .send(())
-                        .map_err(|err| anyhow::anyhow!("{:?}", err))?;
+                        .map_err(|err| anyhow::anyhow!("{err:?}"))?;
                 }
                 _ => {
                     self.system.drop_actors().await?;
@@ -247,12 +246,12 @@ fn parse_to_typed(
     let (ast, errors) =
         Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse_main(true);
     if !errors.is_empty() && !ignore_errors {
-        eprintln!("{:?}", errors);
+        eprintln!("{errors:?}");
     }
 
     if args.verbose {
         print_ast(0, &ast);
     }
 
-    return (*ast).try_into();
+    (*ast).try_into()
 }

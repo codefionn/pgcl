@@ -205,7 +205,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     }
 
                     if Some(SyntaxKind::LstRight) != self.peek() {
-                        self.errors.push(format!("Expected ]"));
+                        self.errors.push("Expected ]".to_string());
                     }
                 } else {
                     self.builder
@@ -302,7 +302,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 {
                     self.iter.next(); // skip
                 } else {
-                    self.errors.push(format!("Expected )"));
+                    self.errors.push("Expected )".to_string());
                 }
 
                 self.builder.finish_node();
@@ -338,7 +338,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                         self.iter.next(); // skip
                         self.skip_newlines();
                     } else {
-                        self.errors.push(format!("Expected 'then'"));
+                        self.errors.push("Expected 'then'".to_string());
                     }
                 }
 
@@ -353,7 +353,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     self.iter.next(); // skip
                     self.skip_newlines();
                 } else {
-                    self.errors.push(format!("Expected 'else'"));
+                    self.errors.push("Expected 'else'".to_string());
                 }
 
                 // parse the else case
@@ -385,7 +385,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     .unwrap_or(false)
                 {
                     self.errors
-                        .push(format!("Expected identifier after lambda"));
+                        .push("Expected identifier after lambda".to_string());
                 }
 
                 self.bump(); // parse Id
@@ -425,7 +425,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             }
             _ => {
                 if !allow_empty {
-                    self.errors.push(format!("Expected primary expression"));
+                    self.errors.push("Expected primary expression".to_string());
 
                     self.builder.start_node(SyntaxKind::Error.into());
                     self.bump();
@@ -463,7 +463,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             {
                 self.bump();
             } else {
-                self.errors.push(format!("Expected = in let expression"));
+                self.errors.push("Expected = in let expression".to_string());
             }
 
             self.parse_expr(false);
@@ -488,8 +488,10 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             }
 
             match end {
-                SyntaxKind::KwIn => self.errors.push(format!("Expected either ';' or 'in'")),
-                _ => self.errors.push(format!("Expected either ';' or 'then'")),
+                SyntaxKind::KwIn => self.errors.push("Expected either ';' or 'in'".to_string()),
+                _ => self
+                    .errors
+                    .push("Expected either ';' or 'then'".to_string()),
             }
 
             break;
@@ -636,7 +638,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         lines
     }
 
-    pub fn parse(mut self) -> (Box<SyntaxElement>, Vec<String>) {
+    pub fn parse(self) -> (Box<SyntaxElement>, Vec<String>) {
         self.parse_main(false)
     }
 
@@ -644,10 +646,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         self.builder.start_node(SyntaxKind::Root.into());
         self.line += self.skip_newlines();
 
-        if !self.parse_expr(true) {
-            if print_error_lines {
-                warn!("Error in line {}", self.line);
-            }
+        if !self.parse_expr(true) && print_error_lines {
+            warn!("Error in line {}", self.line);
         }
 
         while self.peek() == Some(SyntaxKind::NewLine) {
@@ -655,12 +655,12 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             self.line += 1;
 
             let peeked = self.peek();
-            if !peeked.is_none() && peeked != Some(SyntaxKind::NewLine) {
-                if !self.parse_expr(true) {
-                    if print_error_lines {
-                        warn!("Error in line {}", self.line);
-                    }
-                }
+            if peeked.is_some()
+                && peeked != Some(SyntaxKind::NewLine)
+                && !self.parse_expr(true)
+                && print_error_lines
+            {
+                warn!("Error in line {}", self.line);
             }
         }
 
@@ -677,20 +677,20 @@ impl TryInto<Syntax> for SyntaxElement {
     type Error = InterpreterError;
 
     fn try_into(self) -> Result<Syntax, Self::Error> {
-        let kind: SyntaxKind = self.kind().into();
+        let kind: SyntaxKind = self.kind();
         match self {
             NodeOrToken::Node(node) => {
                 let mut children = node.children_with_tokens();
 
-                let expected_expr = || InterpreterError::ExpectedExpression();
+                let expected_expr = InterpreterError::ExpectedExpression;
 
                 match kind {
                     SyntaxKind::Root => {
                         let children: Vec<SyntaxElement> = children.collect();
-                        if children.len() == 0 {
-                            Err(InterpreterError::InternalError(format!(
-                                "Root must have at least one child"
-                            )))
+                        if children.is_empty() {
+                            Err(InterpreterError::InternalError(
+                                "Root must have at least one child".to_string(),
+                            ))
                         } else if children.len() == 1 {
                             children.into_iter().next().unwrap().try_into()
                         } else {
@@ -712,14 +712,13 @@ impl TryInto<Syntax> for SyntaxElement {
                     SyntaxKind::Lambda => {
                         let id = children
                             .next()
-                            .map(|x| {
+                            .and_then(|x| {
                                 if let NodeOrToken::Token(tok) = x {
                                     Some(tok)
                                 } else {
                                     None
                                 }
                             })
-                            .flatten()
                             .ok_or(InterpreterError::ExpectedIdentifier())?;
 
                         let expr = children.next().ok_or(expected_expr())?;
@@ -740,7 +739,7 @@ impl TryInto<Syntax> for SyntaxElement {
                     }
                     SyntaxKind::KwLet => {
                         let children: Vec<SyntaxElement> = children.collect();
-                        let asgs: Vec<(SyntaxElement, SyntaxElement)> = children.clone()
+                        let asgs: Vec<(SyntaxElement, SyntaxElement)> = children
                             [..children.len() - 1]
                             .iter()
                             .map(|child| {
@@ -761,7 +760,7 @@ impl TryInto<Syntax> for SyntaxElement {
                             asgs: &[(SyntaxElement, SyntaxElement)],
                             expr: SyntaxElement,
                         ) -> Result<Syntax, InterpreterError> {
-                            if asgs.len() == 0 {
+                            if asgs.is_empty() {
                                 expr.try_into()
                             } else {
                                 Ok(Syntax::Let(
@@ -781,14 +780,13 @@ impl TryInto<Syntax> for SyntaxElement {
                         let lhs = children.next().ok_or(expected_expr())?;
                         let op = children
                             .next()
-                            .map(|x| {
+                            .and_then(|x| {
                                 if let NodeOrToken::Token(tok) = x {
                                     Some(tok)
                                 } else {
                                     None
                                 }
                             })
-                            .flatten()
                             .ok_or(InterpreterError::ExpectedOperator())?;
                         let rhs = children.next().ok_or(expected_expr())?;
 
@@ -830,7 +828,7 @@ impl TryInto<Syntax> for SyntaxElement {
                     }
                     SyntaxKind::IfLet => {
                         let children: Vec<SyntaxElement> = children.collect();
-                        let asgs: Vec<(Syntax, Syntax)> = children.clone()[..children.len() - 2]
+                        let asgs: Vec<(Syntax, Syntax)> = children[..children.len() - 2]
                             .iter()
                             .map(|child| -> Result<(Syntax, Syntax), InterpreterError> {
                                 if let NodeOrToken::Node(node) = child {
@@ -898,16 +896,16 @@ impl TryInto<Syntax> for SyntaxElement {
                     }
                     SyntaxKind::Map => {
                         let mut map = Vec::new();
-                        let mut children = children.into_iter();
+                        let mut children = children;
                         while let Some(NodeOrToken::Node(map_element)) = children.next() {
-                            let mut children = map_element.children_with_tokens().into_iter();
+                            let mut children = map_element.children_with_tokens();
                             let id = children.next().unwrap().into_token().unwrap();
-                            let val: SyntaxElement = children.next().unwrap().into();
+                            let val: SyntaxElement = children.next().unwrap();
 
                             map.push((
                                 id.text().to_string(),
                                 (val.try_into()?, {
-                                    let id: SyntaxKind = id.kind().into();
+                                    let id: SyntaxKind = id.kind();
                                     id == SyntaxKind::Id
                                 }),
                             ));
@@ -917,7 +915,7 @@ impl TryInto<Syntax> for SyntaxElement {
                     }
                     SyntaxKind::MapMatch => {
                         let mut map = Vec::new();
-                        let mut children = children.into_iter();
+                        let mut children = children;
                         while let Some(NodeOrToken::Node(map_element)) = children.next() {
                             let mut children = map_element.children_with_tokens().peekable();
                             let key = children.next().unwrap().into_token().unwrap();
@@ -941,11 +939,7 @@ impl TryInto<Syntax> for SyntaxElement {
                                 None
                             };
 
-                            let val = children
-                                .next()
-                                .map(|x| -> SyntaxElement { x.into() })
-                                .map(|x| x.try_into())
-                                .transpose()?;
+                            let val = children.next().map(|x| x.try_into()).transpose()?;
                             map.push((
                                 key.text().to_string(),
                                 key_into,
@@ -987,16 +981,16 @@ impl TryInto<Syntax> for SyntaxElement {
 }
 
 pub fn print_ast(indent: usize, element: &SyntaxElement) {
-    let kind: SyntaxKind = element.kind().into();
+    let kind: SyntaxKind = element.kind();
     print!("{:indent$}", "", indent = indent);
     match element {
         NodeOrToken::Node(node) => {
-            println!("- {:?}", kind);
+            println!("- {kind:?}");
             for child in node.children_with_tokens() {
                 print_ast(indent + 2, &child);
             }
         }
 
-        NodeOrToken::Token(token) => println!("- {:?} {:?}", token.text(), kind),
+        NodeOrToken::Token(token) => println!("- {:?} {kind:?}", token.text()),
     }
 }

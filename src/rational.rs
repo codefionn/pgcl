@@ -1,11 +1,11 @@
-use std::str::FromStr;
+use std::{hash::Hash, str::FromStr};
 
 use bigdecimal::{
     num_bigint::ToBigInt, BigDecimal, FromPrimitive, One, ParseBigDecimalError, Zero,
 };
 use num::{BigInt, Integer};
 
-#[derive(Clone, Eq, Hash)]
+#[derive(Clone)]
 pub struct BigRational {
     quotient: BigDecimal,
     fraction: BigDecimal,
@@ -162,11 +162,20 @@ impl From<BigInt> for BigRational {
     }
 }
 
-impl Into<BigDecimal> for BigRational {
-    fn into(self) -> BigDecimal {
-        self.quotient / self.fraction
+impl From<BigRational> for BigDecimal {
+    fn from(value: BigRational) -> Self {
+        value.quotient / value.fraction
     }
 }
+
+impl Hash for BigRational {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.quotient.hash(state);
+        self.fraction.hash(state);
+    }
+}
+
+impl Eq for BigRational {}
 
 impl PartialEq for BigRational {
     fn eq(&self, other: &Self) -> bool {
@@ -174,13 +183,6 @@ impl PartialEq for BigRational {
         let b = other.clone().reduce();
 
         a.quotient == b.quotient && a.fraction == b.fraction
-    }
-
-    fn ne(&self, other: &Self) -> bool {
-        let a = self.clone().reduce();
-        let b = other.clone().reduce();
-
-        a.fraction != b.fraction && a.quotient != b.quotient
     }
 }
 

@@ -121,8 +121,8 @@ pub enum SignalType {
 impl From<bool> for Syntax {
     fn from(value: bool) -> Self {
         match value {
-            true => Self::ValAtom(format!("true")),
-            false => Self::ValAtom(format!("false")),
+            true => Self::ValAtom("true".to_string()),
+            false => Self::ValAtom("false".to_string()),
         }
     }
 }
@@ -552,7 +552,7 @@ impl Syntax {
                 let map = join_all(
                     map.into_iter()
                         .map(|(map_key, (map_val, is_id))| async move {
-                            (map_key, (map_val.replace_args(&key, value).await, is_id))
+                            (map_key, (map_val.replace_args(key, value).await, is_id))
                         }),
                 )
                 .await;
@@ -563,7 +563,7 @@ impl Syntax {
                 let map = join_all(map.into_iter().map(
                     |(map_key, map_into_key, map_val, is_id)| async move {
                         let map_val: OptionFuture<_> = map_val
-                            .map(|x| async { x.replace_args(&key, value).await })
+                            .map(|x| async { x.replace_args(key, value).await })
                             .into();
 
                         (map_key, map_into_key, map_val.await, is_id)
@@ -613,7 +613,7 @@ impl Syntax {
             }
             Self::IfLet(asgs, expr_true, expr_false) => {
                 result.extend(
-                    join_all(asgs.into_iter().map(|(lhs, rhs)| async {
+                    join_all(asgs.iter().map(|(lhs, rhs)| async {
                         let mut result = lhs.get_args().await;
                         result.extend(rhs.get_args().await);
 
@@ -635,7 +635,7 @@ impl Syntax {
             | Self::ValAtom(_) => {}
             Self::Lst(lst) => {
                 result.extend(
-                    join_all(lst.into_iter().map(|expr| async { expr.get_args().await }))
+                    join_all(lst.iter().map(|expr| async { expr.get_args().await }))
                         .await
                         .into_iter()
                         .flatten(),
@@ -643,7 +643,7 @@ impl Syntax {
             }
             Self::LstMatch(lst) => {
                 result.extend(
-                    join_all(lst.into_iter().map(|expr| async { expr.get_args().await }))
+                    join_all(lst.iter().map(|expr| async { expr.get_args().await }))
                         .await
                         .into_iter()
                         .flatten(),
@@ -771,7 +771,7 @@ impl Syntax {
             Self::Call(box Syntax::Signal(signal_type, signal_id), expr) => match signal_type {
                 SignalType::Actor => {
                     if let Some(tx) = system.get_holder().get_actor(signal_id).await {
-                        if let Err(_) = tx.send(actor::Message::Signal(*expr)).await {
+                        if tx.send(actor::Message::Signal(*expr)).await.is_err() {
                             Ok(Syntax::ValAtom("false".to_string()))
                         } else {
                             Ok(Syntax::ValAtom("true".to_string()))
@@ -954,10 +954,9 @@ impl Syntax {
                             .await
                         {
                             ctx.remove_values(&mut values_defined_here).await;
-                            ctx.push_error(format!(
-                                "{} must be assignable to {} but is not",
-                                lhs, rhs
-                            ))
+                            ctx.push_error(
+                                format!("{lhs} must be assignable to {rhs} but is not",),
+                            )
                             .await;
                         } else {
                             values_defined_here.clear();
@@ -981,7 +980,7 @@ impl Syntax {
                         .await
                     {
                         local_ctx.remove_values(&mut values_defined_here);
-                        ctx.push_error(format!("Let expression failed: {}", self))
+                        ctx.push_error(format!("Let expression failed: {self}"))
                             .await;
 
                         Ok(Self::Let((lhs, rhs), expr))
@@ -1091,8 +1090,10 @@ impl Syntax {
                             let cond = cond.execute_once(false, true, ctx, system).await?;
 
                             if cond == *old_cond {
-                                ctx.push_error(format!("Expected :true or :false in if-condition"))
-                                    .await;
+                                ctx.push_error(
+                                    "Expected :true or :false in if-condition".to_string(),
+                                )
+                                .await;
                                 self
                             } else {
                                 Self::If(Box::new(cond), expr_true, expr_false)
@@ -1114,7 +1115,7 @@ impl Syntax {
                 Ok(Self::Tuple(Box::new(lhs), Box::new(rhs)))
             }
             Self::UnexpectedArguments() => {
-                ctx.push_error(format!("Unexpected arguments")).await;
+                ctx.push_error("Unexpected arguments".to_string()).await;
                 Ok(self)
             }
             Self::Lst(lst) => {
@@ -1296,10 +1297,10 @@ async fn import_lib(
 
         if has_restrict {
             for syscall_type in all_syscalls {
-                if !new_builtins_map.contains_key(&syscall_type) {
-                    debug!("{:?}", syscall_type);
-                    new_builtins_map.insert(syscall_type, Syntax::ValAtom("error".to_string()));
-                }
+                new_builtins_map.entry(syscall_type).or_insert_with(|| {
+                    debug!("{syscall_type:?}");
+                    Syntax::ValAtom("error".to_string())
+                });
             }
         }
 
@@ -1335,7 +1336,7 @@ async fn import_lib(
 
                 let ctx = execute_code(
                     &module_path_str,
-                    module_path.parent().clone().map(|path| path.to_path_buf()),
+                    module_path.parent().map(|path| path.to_path_buf()),
                     code.as_str(),
                     holder,
                     &mut system,
@@ -1358,7 +1359,7 @@ async fn import_lib(
         }) {
             import_std_lib(ctx, &mut system, path).await
         } else {
-            ctx.push_error(format!("Expected {} to be a file", module_path_str))
+            ctx.push_error(format!("Expected {module_path_str} to be a file"))
                 .await;
 
             Err(InterpreterError::ImportFileDoesNotExist(module_path_str))
@@ -1401,12 +1402,12 @@ async fn make_call(
                     }
                 }
 
-                ctx.push_error(format!("Cannot export symbol {}", id)).await;
+                ctx.push_error(format!("Cannot export symbol {id}")).await;
 
-                return Ok(Syntax::Call(
-                    Box::new(Syntax::Id(format!("export"))),
+                Ok(Syntax::Call(
+                    Box::new(Syntax::Id("export".to_string())),
                     Box::new(Syntax::Id(id)),
-                ));
+                ))
             }
             ("import", Syntax::Id(id)) | ("import", Syntax::ValStr(id)) => {
                 import_lib(ctx, system, id, Default::default()).await
@@ -1536,7 +1537,7 @@ async fn import_std_lib(
         } else if path == "str" {
             include_str!("./modules/str.pgcl")
         } else {
-            ctx.push_error(format!("Expected {} to be a file", path))
+            ctx.push_error(format!("Expected {path} to be a file"))
                 .await;
 
             return Err(InterpreterError::ImportFileDoesNotExist(path));
@@ -1558,14 +1559,14 @@ async fn import_std_lib(
 /// - `code`: The code itself
 /// - `holder`: The context holder
 pub async fn execute_code(
-    name: &String,
+    name: &str,
     path: Option<PathBuf>,
     code: &str,
     holder: &mut ContextHolder,
     system: &mut SystemHandler,
 ) -> Result<ContextHandler, InterpreterError> {
     let mut ctx = holder
-        .create_context(name.clone(), path)
+        .create_context(name.to_owned(), path)
         .await
         .handler(holder.clone());
     holder
@@ -1576,7 +1577,7 @@ pub async fn execute_code(
         .into_iter()
         .map(
             |(tok, slice)| -> Result<(SyntaxKind, String), InterpreterError> {
-                Ok((tok.clone().try_into()?, slice.clone()))
+                Ok((tok.try_into()?, slice))
             },
         )
         .try_collect()?;
@@ -1595,10 +1596,10 @@ fn parse_to_typed(toks: Vec<(SyntaxKind, String)>) -> Result<Syntax, Interpreter
     let (ast, errors) = Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse();
     //print_ast(0, &ast);
     if !errors.is_empty() {
-        eprintln!("{:?}", errors);
+        eprintln!("{errors:?}");
     }
 
-    return (*ast).try_into();
+    (*ast).try_into()
 }
 
 impl std::fmt::Display for BiOpType {
@@ -1624,19 +1625,18 @@ impl std::fmt::Display for BiOpType {
 
 impl std::fmt::Display for Syntax {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fn val_str(x: &String) -> String {
+        fn val_str(x: &str) -> String {
             format!(
                 "\"{}\"",
                 x.chars()
-                    .into_iter()
                     .map(|c| match c {
-                        '\\' => format!("\\"),
-                        '\n' => format!("\\n"),
-                        '\r' => format!("\\r"),
-                        '\t' => format!("\\t"),
-                        '\0' => format!("\\0"),
-                        '\"' => format!("\\\""),
-                        c => format!("{}", c),
+                        '\\' => "\\".to_string(),
+                        '\n' => "\\n".to_string(),
+                        '\r' => "\\r".to_string(),
+                        '\t' => "\\t".to_string(),
+                        '\0' => "\\0".to_string(),
+                        '\"' => "\\\"".to_string(),
+                        c => format!("{c}"),
                     })
                     .collect::<String>()
             )
@@ -1647,75 +1647,72 @@ impl std::fmt::Display for Syntax {
                 Self::Program(exprs) => {
                     exprs
                         .iter()
-                        .map(|expr| format!("{}", expr))
+                        .map(|expr| format!("{expr}"))
                         .fold(String::new(), |a, b| {
                             if a.is_empty() {
                                 b
                             } else {
-                                format!("{}\n{}", a, b)
+                                format!("{a}\n{b}")
                             }
                         })
                 }
-                Self::Lambda(id, expr) => format!("(\\{} {})", id, expr.to_string()),
-                Self::Call(lhs, rhs) => format!("({} {})", lhs, rhs),
-                Self::Asg(lhs, rhs) => format!("({} = {})", lhs.to_string(), rhs.to_string()),
-                Self::Tuple(lhs, rhs) => format!("({}, {})", lhs.to_string(), rhs.to_string()),
-                Self::Let((lhs, rhs), expr) => format!("(let {} = {} in {})", lhs, rhs, expr),
-                Self::Pipe(expr) => format!("| {}", expr),
-                Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => format!("({}.{})", lhs, rhs),
-                Self::BiOp(op, lhs, rhs) => format!("({} {} {})", lhs, op, rhs),
+                Self::Lambda(id, expr) => format!("(\\{id} {expr})"),
+                Self::Call(lhs, rhs) => format!("({lhs} {rhs})"),
+                Self::Asg(lhs, rhs) => format!("({lhs} = {rhs})"),
+                Self::Tuple(lhs, rhs) => format!("({lhs}, {rhs})"),
+                Self::Let((lhs, rhs), expr) => format!("(let {lhs} = {rhs} in {expr})"),
+                Self::Pipe(expr) => format!("| {expr}"),
+                Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => format!("({lhs}.{rhs})"),
+                Self::BiOp(op, lhs, rhs) => format!("({lhs} {op} {rhs})"),
                 Self::IfLet(asgs, expr_true, expr_false) => format!(
                     "if let {} then {} else {}",
-                    asgs.iter()
-                        .map(|(lhs, rhs)| format!("{} = {}", lhs, rhs))
-                        .fold(String::new(), |x, y| if x.is_empty() {
-                            format!("{}", y)
-                        } else {
-                            format!("{}; {}", x, y)
-                        }),
+                    asgs.iter().map(|(lhs, rhs)| format!("{lhs} = {rhs}")).fold(
+                        String::new(),
+                        |x, y| if x.is_empty() { y } else { format!("{x}; {y}") }
+                    ),
                     expr_true,
                     expr_false
                 ),
-                Self::If(cond, lhs, rhs) => format!("if {} then {} else {}", cond, lhs, rhs),
-                Self::Id(id) => format!("{}", id),
-                Self::UnexpectedArguments() => format!("UnexpectedArguments"),
-                Self::ValAny() => format!("_"),
+                Self::If(cond, lhs, rhs) => format!("if {cond} then {lhs} else {rhs}"),
+                Self::Id(id) => id.to_string(),
+                Self::UnexpectedArguments() => "UnexpectedArguments".to_string(),
+                Self::ValAny() => "_".to_string(),
                 Self::ValInt(x) => x.to_string(),
                 Self::ValFlt(x) => {
                     let x: BigDecimal = x.clone().into();
-                    format!("{}", x)
+                    format!("{x}")
                 }
                 .trim_end_matches(|c| c == '0' || c == '.')
                 .to_string(),
                 Self::ValStr(x) => val_str(x),
-                Self::ValAtom(x) => format!("@{}", x),
+                Self::ValAtom(x) => format!("@{x}"),
                 Self::Lst(lst) => format!(
                     "[{}]",
                     lst.iter()
-                        .map(|x| format!("{}", x))
+                        .map(|x| format!("{x}"))
                         .fold(String::new(), |x, y| {
                             if x.is_empty() {
-                                format!("{}", y)
+                                y
                             } else {
-                                format!("{}, {}", x, y)
+                                format!("{x}, {y}")
                             }
                         })
                 ),
                 Self::LstMatch(lst) => format!(
                     "[{}]",
                     lst.iter()
-                        .map(|x| format!("{}", x))
+                        .map(|x| format!("{x}"))
                         .fold(String::new(), |x, y| {
                             if x.is_empty() {
-                                format!("{}", y)
+                                y
                             } else {
-                                format!("{}:{}", x, y)
+                                format!("{x}:{y}")
                             }
                         })
                 ),
                 Self::Map(map) => {
                     if map.is_empty() {
-                        format!("{{}}")
+                        "{}".to_string()
                     } else {
                         format!(
                             "{{ {} }}",
@@ -1729,7 +1726,7 @@ impl std::fmt::Display for Syntax {
                                     if x.is_empty() {
                                         y
                                     } else {
-                                        format!("{}, {}", x, y)
+                                        format!("{x}, {y}")
                                     }
                                 })
                         )
@@ -1737,7 +1734,7 @@ impl std::fmt::Display for Syntax {
                 }
                 Self::MapMatch(map) => {
                     if map.is_empty() {
-                        format!("{{}}")
+                        "{}".to_string()
                     } else {
                         format!(
                             "{{ {} }}",
@@ -1745,15 +1742,14 @@ impl std::fmt::Display for Syntax {
                                 .map(|(key, key_into, val, is_id)| {
                                     let key = if let Some(key_into) = key_into {
                                         format!("{} {}", val_str(key), key_into)
+                                    } else if *is_id {
+                                        key.clone()
                                     } else {
-                                        format!(
-                                            "{}",
-                                            if *is_id { key.clone() } else { val_str(key) }
-                                        )
+                                        val_str(key)
                                     };
 
                                     if let Some(val) = val {
-                                        format!("{}: {}", key, val)
+                                        format!("{key}: {val}")
                                     } else {
                                         key
                                     }
@@ -1762,16 +1758,16 @@ impl std::fmt::Display for Syntax {
                                     if x.is_empty() {
                                         y
                                     } else {
-                                        format!("{}, {}", x, y)
+                                        format!("{x}, {y}")
                                     }
                                 })
                         )
                     }
                 }
-                Self::ExplicitExpr(expr) => format!("{}", expr),
-                Self::Contextual(_, _, expr) => format!("@{}", expr),
-                Self::Context(_, _, id) => format!("{}", id),
-                Self::Signal(_, _) => format!("signal"),
+                Self::ExplicitExpr(expr) => format!("{expr}"),
+                Self::Contextual(_, _, expr) => format!("{expr}"),
+                Self::Context(_, _, id) => id.to_string(),
+                Self::Signal(_, _) => "signal".to_string(),
             }
             .as_str(),
         )

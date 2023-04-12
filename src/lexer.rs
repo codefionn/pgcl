@@ -137,7 +137,7 @@ pub enum Token {
 }
 
 impl Token {
-    pub fn lex_for_rowan<'a>(text: &'a str) -> Vec<(Token, String)> {
+    pub fn lex_for_rowan(text: &str) -> Vec<(Token, String)> {
         let mut lex = Token::lexer(text);
         let mut result = Vec::new();
 
@@ -229,8 +229,8 @@ fn parse_string(mystr: &str) -> Option<String> {
     let mut result = String::with_capacity(mystr.len());
     let mut idx = 0;
     let chars: Vec<char> = mystr.chars().collect();
-    while let Some(idx_bsl) = mystr.get(idx..).map(|mystr| mystr.find("\\")).flatten() {
-        println!("{}, {}", idx, idx_bsl);
+    while let Some(idx_bsl) = mystr.get(idx..).and_then(|mystr| mystr.find('\\')) {
+        println!("{idx}, {idx_bsl}");
         result += &mystr[idx..(idx + idx_bsl)];
         match chars.get(idx + idx_bsl + 1) {
             Some('n') => result += "\n",
@@ -241,13 +241,13 @@ fn parse_string(mystr: &str) -> Option<String> {
             Some('\"') => result += "\"",
             Some('\'') => result += "\'",
             _ => {
-                println!("{}", mystr);
+                println!("{mystr}");
                 return None;
             }
         }
 
         idx += idx_bsl + 2;
-        println!("=> {}, {}", idx, idx_bsl);
+        println!("=> {idx}, {idx_bsl}");
     }
 
     if idx < mystr.len() {

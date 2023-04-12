@@ -33,7 +33,7 @@ pub enum SystemCallType {
 }
 
 impl SystemCallType {
-    pub const fn to_systemcall(&self) -> &'static str {
+    pub const fn to_systemcall(self) -> &'static str {
         match self {
             Self::Typeof => "type",
             Self::MeasureTime => "time",
@@ -106,7 +106,7 @@ impl PrivateSystem {
                         )),
                     ),
                     expr @ _ => {
-                        ctx.push_error(format!("Cannot infer type from: {}", expr))
+                        ctx.push_error(format!("Cannot infer type from: {expr}"))
                             .await;
 
                         Syntax::UnexpectedArguments()
@@ -143,18 +143,18 @@ impl PrivateSystem {
             })
             .unwrap_or(Syntax::ValAtom("error".to_string())),
             (SystemCallType::Println, Syntax::ValStr(s)) => {
-                println!("{}", s);
+                println!("{s}");
 
                 Syntax::ValAny()
             }
             (SystemCallType::Println, Syntax::ValInt(i)) => {
-                println!("{}", i);
+                println!("{i}");
 
                 Syntax::ValAny()
             }
             (SystemCallType::Println, Syntax::ValFlt(f)) => {
                 let f: BigDecimal = f.into();
-                println!("{}", f);
+                println!("{f}");
 
                 Syntax::ValAny()
             }
@@ -168,14 +168,10 @@ impl PrivateSystem {
             (SystemCallType::ExitActor, Syntax::Signal(signal_type, signal_id)) => {
                 match signal_type {
                     SignalType::Actor => match system.get_holder().get_actor(signal_id).await {
-                        Some(tx) => {
-                            let result = match tx.send(actor::Message::Exit()).await {
-                                Ok(_) => Syntax::ValAtom("true".to_string()),
-                                Err(_) => Syntax::ValAtom("false".to_string()),
-                            };
-
-                            result
-                        }
+                        Some(tx) => match tx.send(actor::Message::Exit()).await {
+                            Ok(_) => Syntax::ValAtom("true".to_string()),
+                            Err(_) => Syntax::ValAtom("false".to_string()),
+                        },
                         _ => Syntax::ValAtom("false".to_string()),
                     },
                 }
@@ -186,7 +182,7 @@ impl PrivateSystem {
             ) => {
                 let method = settings
                     .remove("method")
-                    .map(|(method, _)| match method {
+                    .and_then(|(method, _)| match method {
                         Syntax::ValAtom(method) => match method.as_str() {
                             "GET" => Some(hyper::Method::GET),
                             "POST" => Some(hyper::Method::POST),
@@ -201,20 +197,16 @@ impl PrivateSystem {
                         },
                         _ => None,
                     })
-                    .flatten()
                     .unwrap_or(hyper::Method::GET);
 
-                let body = settings
-                    .remove("method")
-                    .map(|(body, _)| match body {
-                        Syntax::ValStr(body) => Some(body.into_bytes()),
-                        _ => None,
-                    })
-                    .flatten();
+                let body = settings.remove("method").and_then(|(body, _)| match body {
+                    Syntax::ValStr(body) => Some(body.into_bytes()),
+                    _ => None,
+                });
 
                 let headers: BTreeMap<String, String> = settings
                     .remove("headers")
-                    .map(|(headers, _)| match headers {
+                    .and_then(|(headers, _)| match headers {
                         Syntax::Map(headers) => Some(
                             headers
                                 .into_iter()
@@ -233,11 +225,10 @@ impl PrivateSystem {
                         ),
                         _ => None,
                     })
-                    .flatten()
                     .unwrap_or(BTreeMap::new());
 
                 debug!("Trying HTTP Request for \"{}\"", uri);
-                if let Some(uri) = uri.parse::<hyper::Uri>().ok() {
+                if let Ok(uri) = uri.parse::<hyper::Uri>() {
                     match uri.scheme_str() {
                         Some("http") => {
                             let client = hyper::Client::builder().build_http();
@@ -273,7 +264,7 @@ impl PrivateSystem {
     }
 
     pub async fn get(&self, syscall: SystemCallType) -> Option<Syntax> {
-        self.map.get(&syscall).map(|expr| expr.clone())
+        self.map.get(&syscall).cloned()
     }
 }
 
@@ -299,13 +290,11 @@ where
             debug!("Failed due to body");
             return Ok(Syntax::ValAtom("false".to_string()));
         }
+    } else if let Ok(req) = req.body(hyper::Body::empty()) {
+        req
     } else {
-        if let Ok(req) = req.body(hyper::Body::empty()) {
-            req
-        } else {
-            debug!("Failed due to body");
-            return Ok(Syntax::ValAtom("false".to_string()));
-        }
+        debug!("Failed due to body");
+        return Ok(Syntax::ValAtom("false".to_string()));
     };
 
     match client.request(req).await {
@@ -316,8 +305,7 @@ where
             let body = hyper::body::to_bytes(resp.into_body())
                 .await
                 .ok()
-                .map(|bytes| String::from_utf8(bytes.into_iter().collect()).ok())
-                .flatten();
+                .and_then(|bytes| String::from_utf8(bytes.into_iter().collect()).ok());
             if let Some(body) = body {
                 result.insert("body", Syntax::ValStr(body));
             } else {
@@ -432,7 +420,7 @@ impl PrivateSystemHolder {
     }
 
     pub fn get_actor(&self, id: usize) -> Option<mpsc::Sender<crate::actor::Message>> {
-        self.actors.get(&id).map(|tx| tx.clone())
+        self.actors.get(&id).cloned()
     }
 
     pub async fn drop_actors(&mut self) -> Vec<JoinHandle<()>> {
@@ -443,7 +431,7 @@ impl PrivateSystemHolder {
         debug!("Dropping actors");
         // We have to return the actors, otherwise the runtime will be locked
 
-        for (_, actor_tx) in &self.actors {
+        for actor_tx in self.actors.values() {
             actor_tx.send(crate::actor::Message::Exit()).await.ok();
         }
 
@@ -470,18 +458,14 @@ impl Default for SystemHolder {
 
 impl SystemHolder {
     pub async fn get(&mut self, id: usize) -> Option<System> {
-        if let Some(system) = self.system.lock().await.get(id) {
-            Some(System {
-                id,
-                private_system: system,
-            })
-        } else {
-            None
-        }
+        self.system.lock().await.get(id).map(|system| System {
+            id,
+            private_system: system,
+        })
     }
 
     pub async fn get_handler(&mut self, id: usize) -> Option<SystemHandler> {
-        if let Some(_) = self.get(id).await {
+        if self.get(id).await.is_some() {
             Some(SystemHandler {
                 id,
                 system: self.clone(),

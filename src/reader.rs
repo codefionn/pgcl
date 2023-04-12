@@ -45,7 +45,7 @@ impl CLIActor {
                     break;
                 }
                 Err(err) => {
-                    eprintln!("Error: {:?}", err);
+                    eprintln!("Error: {err:?}");
 
                     // Ignore the results, because the channel stops working afterwards
                     self.tx.send(LineMessage::Exit()).await.ok();

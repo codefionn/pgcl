@@ -51,7 +51,7 @@ impl PrivateContext {
             return false;
         }
 
-        if let Some(expr) = self.get_from_values(&id, values_defined_here).await {
+        if let Some(expr) = self.get_from_values(id, values_defined_here).await {
             self.globals.insert(id.clone(), expr);
 
             true
@@ -61,7 +61,7 @@ impl PrivateContext {
     }
 
     pub async fn get_global(&mut self, id: &String) -> Option<Syntax> {
-        self.globals.get(id).map(|expr| expr.clone())
+        self.globals.get(id).cloned()
     }
 
     pub fn insert_into_values(
@@ -122,7 +122,7 @@ impl PrivateContext {
 
     pub async fn replace_from_values(&mut self, id: &String, syntax: Syntax) -> bool {
         if let Some(stack) = self.values.get_mut(id) {
-            if let Some(_) = stack.pop() {
+            if stack.pop().is_some() {
                 stack.push(syntax);
 
                 true
@@ -140,15 +140,13 @@ impl PrivateContext {
         values_defined_here: &mut Vec<String>,
     ) -> Option<Syntax> {
         if let Some(stack) = self.values.get(id) {
-            stack.last().map(|syntax| syntax.clone())
+            stack.last().cloned()
+        } else if let Some(fns) = self.fns.get(id) {
+            let compiled_fn = build_fn(id, fns).await;
+            self.insert_into_values(id, compiled_fn.clone(), values_defined_here);
+            Some(compiled_fn)
         } else {
-            if let Some(fns) = self.fns.get(id) {
-                let compiled_fn = build_fn(id, fns).await;
-                self.insert_into_values(id, compiled_fn.clone(), values_defined_here);
-                Some(compiled_fn)
-            } else {
-                None
-            }
+            None
         }
     }
 
@@ -226,7 +224,7 @@ impl PrivateContext {
             (Syntax::LstMatch(lst0), Syntax::Lst(lst1))
                 if lst0.len() >= 2 && lst1.len() + 1 >= lst0.len() =>
             {
-                let mut lst1: &[Syntax] = &lst1;
+                let mut lst1: &[Syntax] = lst1;
                 for i in 0..lst0.len() {
                     if i == lst0.len() - 1 {
                         let lst1 = Syntax::Lst(lst1.into());
@@ -242,7 +240,7 @@ impl PrivateContext {
                         let lst1_val = &lst1[0];
                         lst1 = &lst1[1..];
                         if !self
-                            .set_values_in_context(holder, &lst0[i], &lst1_val, values_defined_here)
+                            .set_values_in_context(holder, &lst0[i], lst1_val, values_defined_here)
                             .await
                         {
                             return false;
@@ -257,12 +255,12 @@ impl PrivateContext {
             {
                 let mut str1: Vec<char> = str1.chars().collect();
                 let end_idx = lst0.len() - 1;
-                for i in 0..lst0.len() {
+                for (i, expr) in lst0.iter().enumerate() {
                     if i == end_idx {
                         let str1: String = str1.into_iter().collect();
                         let str1 = Syntax::ValStr(str1);
                         if !self
-                            .set_values_in_context(holder, &lst0[i], &str1, values_defined_here)
+                            .set_values_in_context(holder, expr, &str1, values_defined_here)
                             .await
                         {
                             return false;
@@ -274,7 +272,7 @@ impl PrivateContext {
                             return false;
                         }
 
-                        let len = match &lst0[i] {
+                        let len = match &expr {
                             Syntax::ValStr(s) => {
                                 let len = s.len();
                                 if str1.len() < len {
@@ -287,15 +285,10 @@ impl PrivateContext {
                         };
 
                         let c: String = str1.drain(0..len).collect();
-                        let expr_str1 = Syntax::ValStr(format!("{}", c));
+                        let expr_str1 = Syntax::ValStr(c);
 
                         if !self
-                            .set_values_in_context(
-                                holder,
-                                &lst0[i],
-                                &expr_str1,
-                                values_defined_here,
-                            )
+                            .set_values_in_context(holder, expr, &expr_str1, values_defined_here)
                             .await
                         {
                             return false;
@@ -319,7 +312,7 @@ impl PrivateContext {
                         }
 
                         if !self
-                            .set_values_in_context(holder, &val, &rhs, values_defined_here)
+                            .set_values_in_context(holder, val, rhs, values_defined_here)
                             .await
                         {
                             return false;
@@ -354,7 +347,7 @@ impl PrivateContext {
 
                         if let Some(val) = val {
                             if !self
-                                .set_values_in_context(holder, &val, &rhs, values_defined_here)
+                                .set_values_in_context(holder, val, rhs, values_defined_here)
                                 .await
                             {
                                 return false;
@@ -393,7 +386,7 @@ impl PrivateContext {
 
                         if let Some(val) = val {
                             if !self
-                                .set_values_in_context(holder, &val, &rhs, values_defined_here)
+                                .set_values_in_context(holder, val, &rhs, values_defined_here)
                                 .await
                             {
                                 return false;
@@ -419,9 +412,9 @@ impl PrivateContext {
     }
 }
 
-async fn build_fn(name: &String, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
+async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
     let arg_name = {
-        let name = name.clone();
+        let name = name.to_owned();
         move |arg: usize| format!("{}{}_{}", name.len(), name, arg)
     };
 
@@ -462,9 +455,9 @@ async fn build_fn(name: &String, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
         }
     }
 
-    let params: Vec<String> = (0..fns[0].0.len()).map(|i| arg_name(i)).collect();
+    let params: Vec<String> = (0..fns[0].0.len()).map(arg_name).collect();
 
-    let mut fns: Vec<(Vec<Syntax>, Syntax)> = fns.iter().map(|x| x.clone()).collect();
+    let mut fns: Vec<(Vec<Syntax>, Syntax)> = fns.to_vec();
     fns.reverse();
 
     build_fn_with_args(&params, &params, &fns).reduce().await
@@ -476,11 +469,11 @@ impl PartialEq for PrivateContext {
     }
 }
 
-impl Into<Context> for PrivateContext {
-    fn into(self) -> Context {
+impl From<PrivateContext> for Context {
+    fn from(val: PrivateContext) -> Self {
         Context {
-            id: self.id,
-            ctx: Arc::new(Mutex::new(self)),
+            id: val.id,
+            ctx: Arc::new(Mutex::new(val)),
         }
     }
 }
@@ -594,11 +587,11 @@ struct PrivateContextHandler {
 
 impl PrivateContextHandler {
     pub fn get(&self, id: usize) -> Option<Context> {
-        self.id_to_ctx.get(&id).map(|ctx| ctx.clone())
+        self.id_to_ctx.get(&id).cloned()
     }
 
     pub fn create_context(&mut self, name: String, path: Option<PathBuf>) -> Context {
-        let id = self.last_id.clone();
+        let id = self.last_id;
         let ctx: Context = PrivateContext::new(id, name, path).into();
         self.last_id += 1;
 
@@ -607,12 +600,12 @@ impl PrivateContextHandler {
         ctx
     }
 
-    pub fn set_path(&mut self, name: &String, ctx: &Context) {
-        self.path_to_ctx.insert(name.clone(), ctx.clone());
+    pub fn set_path(&mut self, name: &str, ctx: &Context) {
+        self.path_to_ctx.insert(name.to_owned(), ctx.clone());
     }
 
     pub fn get_path(&mut self, name: &String) -> Option<Context> {
-        self.path_to_ctx.get(name).map(|ctx| ctx.clone())
+        self.path_to_ctx.get(name).cloned()
     }
 }
 
@@ -765,7 +758,7 @@ impl ContextHolder {
     }
 
     pub async fn get_handler(&self, id: usize) -> Option<ContextHandler> {
-        if let Some(_) = self.handler.lock().await.get(id) {
+        if self.handler.lock().await.get(id).is_some() {
             Some(ContextHandler {
                 id,
                 holder: self.clone(),
@@ -779,7 +772,7 @@ impl ContextHolder {
         self.handler.lock().await.create_context(name, path)
     }
 
-    pub async fn set_path(&mut self, name: &String, ctx: &Context) {
+    pub async fn set_path(&mut self, name: &str, ctx: &Context) {
         self.handler.lock().await.set_path(name, ctx);
     }
 

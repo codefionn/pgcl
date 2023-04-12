@@ -50,13 +50,13 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     if let Some(filepath) = args.file {
-        let code = std::fs::read_to_string(filepath.to_path_buf())?;
+        let code = std::fs::read_to_string(&filepath)?;
 
         let mut holder = ContextHolder::default();
         let mut systems = SystemHandler::async_default().await;
 
         execute_code(
-            &filepath.to_string_lossy().to_string(),
+            &filepath.to_string_lossy(),
             filepath.parent().map(|path| path.to_path_buf()),
             code.as_str(),
             &mut holder,

@@ -54,5 +54,5 @@ pub async fn create_actor(
         }
     });
 
-    return (handle, tx);
+    (handle, tx)
 }
