@@ -192,9 +192,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                             self.iter.next();
                             self.parse_expr(false);
                         }
-                    } else if Some(SyntaxKind::Semicolon) == self.peek()
-                        || Some(SyntaxKind::OpMap) == self.peek()
-                    {
+                    } else if Some(SyntaxKind::OpMap) == self.peek() {
                         self.builder
                             .start_node_at(checkpoint, SyntaxKind::LstMatch.into());
                         while Some(SyntaxKind::OpMap) == self.peek() {
