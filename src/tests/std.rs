@@ -38,8 +38,12 @@ async fn parse_to_str(line: &str) -> Result<String, InterpreterError> {
     let mut ctx = ContextHandler::async_default().await;
     let mut system = SystemHandler::async_default().await;
 
-    parse("std = import std", &mut ctx, &mut system).await?;
-    let typed = parse(line, &mut ctx, &mut system).await?;
+    let typed = parse(
+        format!("std = import std;{}", line).as_str(),
+        &mut ctx,
+        &mut system,
+    )
+    .await?;
     Ok(format!("{}", typed))
 }
 
@@ -162,6 +166,10 @@ async fn test_join() {
         Ok(format!("[1, 1, 2, 1, 3]")),
         parse_to_str("std.join [1] [[1], [2], [3]]").await
     );
+    assert_eq!(
+        Ok(format!("[1, 1, 2, 1, 3, 4]")),
+        parse_to_str("std.join [1] [[1], [2], [3, 4]]").await
+    );
 }
 
 #[tokio::test]
@@ -173,5 +181,34 @@ async fn test_join_str() {
     assert_eq!(
         Ok(format!("\"x, y, z\"")),
         parse_to_str("std.str.join \", \" [\"x\", \"y\", \"z\"]").await
+    );
+}
+
+#[tokio::test]
+async fn test_offset() {
+    assert_eq!(
+        Ok(format!("[2, 3]")),
+        parse_to_str("std.offset 1 [1, 2, 3]").await
+    );
+    assert_eq!(
+        Ok(format!("[2, 1]")),
+        parse_to_str("std.offset 1 [4, 2, 1]").await
+    );
+}
+
+#[tokio::test]
+async fn test_limit() {
+    assert_eq!(
+        Ok(format!("[1, 2, 3]")),
+        parse_to_str("std.limit 3 [1, 2, 3]").await
+    );
+    assert_eq!(
+        Ok(format!("[1, 2, 3]")),
+        parse_to_str("std.limit 4 [1, 2, 3]").await
+    );
+    assert_eq!(Ok(format!("[]")), parse_to_str("std.limit 4 []").await);
+    assert_eq!(
+        Ok(format!("[1, 2]")),
+        parse_to_str("std.limit 2 [1, 2, 3]").await
     );
 }

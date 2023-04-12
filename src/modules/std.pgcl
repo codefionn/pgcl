@@ -75,3 +75,19 @@ export len
 join _ [] = []
 join i [x:xs] = let lst = join i xs in if let [] = lst then x else x + i + lst
 export join
+
+##
+# Offset (start from a specified index)
+##
+offset 0 lst    = lst
+offset _ []     = []
+offset n [x:xs] = offset (n-1) xs
+export offset
+
+##
+# Limit the number of elements of a list
+##
+limit 0 _ = []
+limit _ [] = []
+limit n [x:xs] = [x] + limit (n-1) xs
+export limit

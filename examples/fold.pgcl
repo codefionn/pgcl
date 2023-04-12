@@ -1,0 +1,4 @@
+std = import std
+sys = import sys
+sys.println (std.foldr (\x \y if y == 0 then x else y - x) 0 [1, 2, 3, 4, 5])
+sys.println (std.foldl (\x \y if x == 0 then y else y - x) 0 [1, 2, 3, 4, 5])
