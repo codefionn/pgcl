@@ -224,7 +224,7 @@ impl PrivateContext {
                 true
             }
             (Syntax::LstMatch(lst0), Syntax::Lst(lst1))
-                if lst0.len() >= 2 && lst1.len() + 1 > lst0.len() =>
+                if lst0.len() >= 2 && lst1.len() + 1 >= lst0.len() =>
             {
                 let mut lst1: &[Syntax] = &lst1;
                 for i in 0..lst0.len() {
@@ -253,7 +253,7 @@ impl PrivateContext {
                 true
             }
             (Syntax::LstMatch(lst0), Syntax::ValStr(str1))
-                if lst0.len() >= 2 && str1.chars().count() + 1 > lst0.len() =>
+                if lst0.len() >= 2 && str1.chars().count() + 1 >= lst0.len() =>
             {
                 let str1: Vec<char> = str1.chars().collect();
                 for i in 0..lst0.len() {
@@ -280,58 +280,6 @@ impl PrivateContext {
                 }
 
                 true
-            }
-            (Syntax::LstMatch(lst0), Syntax::Lst(lst1))
-                if lst0.len() >= 2 && lst1.len() + 1 == lst0.len() =>
-            {
-                let mut lst1 = lst1.clone();
-                for i in (0..lst0.len() - 1).rev() {
-                    if !self
-                        .set_values_in_context(
-                            holder,
-                            &lst0[i],
-                            &lst1.pop().unwrap(),
-                            values_defined_here,
-                        )
-                        .await
-                    {
-                        return false;
-                    }
-                }
-
-                self.set_values_in_context(
-                    holder,
-                    &lst0.last().unwrap(),
-                    &Syntax::Lst(Vec::default()),
-                    values_defined_here,
-                )
-                .await
-            }
-            (Syntax::LstMatch(lst0), Syntax::ValStr(str1))
-                if lst0.len() >= 2 && str1.chars().count() + 1 == lst0.len() =>
-            {
-                let mut str1: Vec<char> = str1.chars().collect();
-                for i in (0..lst0.len() - 1).rev() {
-                    if !self
-                        .set_values_in_context(
-                            holder,
-                            &lst0[i],
-                            &Syntax::ValStr(format!("{}", str1.pop().unwrap())),
-                            values_defined_here,
-                        )
-                        .await
-                    {
-                        return false;
-                    }
-                }
-
-                self.set_values_in_context(
-                    holder,
-                    &lst0.last().unwrap(),
-                    &Syntax::Lst(Vec::default()),
-                    values_defined_here,
-                )
-                .await
             }
             (Syntax::Map(lhs), Syntax::Map(rhs)) => {
                 for (key, (val, is_id)) in lhs.iter() {

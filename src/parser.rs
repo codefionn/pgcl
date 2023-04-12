@@ -197,9 +197,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     {
                         self.builder
                             .start_node_at(checkpoint, SyntaxKind::LstMatch.into());
-                        while Some(SyntaxKind::Semicolon) == self.peek()
-                            || Some(SyntaxKind::OpMap) == self.peek()
-                        {
+                        while Some(SyntaxKind::OpMap) == self.peek() {
                             self.iter.next();
                             self.parse_expr(false);
                         }
