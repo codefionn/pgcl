@@ -1510,3 +1510,88 @@ async fn test_lst_str() {
         parse_to_str("len \"test\"", &mut ctx, &mut system).await
     );
 }
+
+#[tokio::test]
+async fn test_str_starts_with() {
+    assert_eq!(
+        Ok("\"est\"".to_string()),
+        parse_to_str(
+            "if let [\"t\":x] = \"test\" then x else 0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("0".to_string()),
+        parse_to_str(
+            "if let [\"x\":x] = \"test\" then x else 0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("\"st\"".to_string()),
+        parse_to_str(
+            "if let [\"te\":x] = \"test\" then x else 0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("0".to_string()),
+        parse_to_str(
+            "if let [\"tx\":x] = \"test\" then x else 0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("\"t\"".to_string()),
+        parse_to_str(
+            "if let [\"tes\":x] = \"test\" then x else 0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("\"\"".to_string()),
+        parse_to_str(
+            "if let [\"test\":x] = \"test\" then x else 0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("0".to_string()),
+        parse_to_str(
+            "if let [\"testx\":x] = \"test\" then x else 0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(\"s\" \"\")".to_string()),
+        parse_to_str(
+            "if let [\"te\":y:\"t\":x] = \"test\" then y x else 0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("\"tt\"".to_string()),
+        parse_to_str(
+            "if let [x:\"es\":y] = \"test\" then x + y else 0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+}

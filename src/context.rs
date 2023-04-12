@@ -255,10 +255,11 @@ impl PrivateContext {
             (Syntax::LstMatch(lst0), Syntax::ValStr(str1))
                 if lst0.len() >= 2 && str1.chars().count() + 1 >= lst0.len() =>
             {
-                let str1: Vec<char> = str1.chars().collect();
+                let mut str1: Vec<char> = str1.chars().collect();
+                let end_idx = lst0.len() - 1;
                 for i in 0..lst0.len() {
-                    if i == lst0.len() - 1 {
-                        let str1: String = str1[i..].iter().collect();
+                    if i == end_idx {
+                        let str1: String = str1.into_iter().collect();
                         let str1 = Syntax::ValStr(str1);
                         if !self
                             .set_values_in_context(holder, &lst0[i], &str1, values_defined_here)
@@ -269,9 +270,33 @@ impl PrivateContext {
 
                         break;
                     } else {
-                        let str1 = Syntax::ValStr(format!("{}", str1[i]));
+                        if str1.is_empty() {
+                            return false;
+                        }
+
+                        let len = match &lst0[i] {
+                            Syntax::ValStr(s) => {
+                                let len = s.len();
+                                if str1.len() < len {
+                                    return false;
+                                }
+
+                                len
+                            }
+                            _ => 1,
+                        };
+
+                        let c: String = str1.drain(0..len).collect();
+                        debug!("Rest: {}", c);
+                        let expr_str1 = Syntax::ValStr(format!("{}", c));
+
                         if !self
-                            .set_values_in_context(holder, &lst0[i], &str1, values_defined_here)
+                            .set_values_in_context(
+                                holder,
+                                &lst0[i],
+                                &expr_str1,
+                                values_defined_here,
+                            )
                             .await
                         {
                             return false;

@@ -1709,7 +1709,7 @@ impl std::fmt::Display for Syntax {
                             if x.is_empty() {
                                 format!("{}", y)
                             } else {
-                                format!("{};{}", x, y)
+                                format!("{}:{}", x, y)
                             }
                         })
                 ),
