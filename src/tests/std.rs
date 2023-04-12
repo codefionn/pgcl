@@ -51,12 +51,12 @@ async fn parse_to_str(line: &str) -> Result<String, InterpreterError> {
 async fn test_let_map_from_std() {
     assert_eq!(
         Ok(format!("@atom")),
-        parse_to_str("let { id } = std in id @atom").await
+        parse_to_str("let { \"id\" as_id } = std in as_id @atom").await
     );
 
     assert_eq!(
         Ok(format!("@atom")),
-        parse_to_str("let { \"id\" as_id } = std in as_id @atom").await
+        parse_to_str("let { id } = std in id @atom").await
     );
 }
 
@@ -89,13 +89,13 @@ async fn test_map() {
 #[tokio::test]
 async fn test_foldl() {
     assert_eq!(
-        Ok(format!("15")),
-        parse_to_str(r"std.foldl (\x \y x + y) 0 [1, 2, 3, 4, 5]").await
+        Ok(format!("3")),
+        parse_to_str(r"std.foldl (\x \y if x == 0 then y else y - x) 0 [1, 2, 3, 4, 5]").await
     );
 
     assert_eq!(
-        Ok(format!("-15")),
-        parse_to_str(r"std.foldl (\x \y x - y) 0 [1, 2, 3, 4, 5]").await
+        Ok(format!("15")),
+        parse_to_str(r"std.foldl (\x \y x + y) 0 [1, 2, 3, 4, 5]").await
     );
 
     assert_eq!(
@@ -104,8 +104,8 @@ async fn test_foldl() {
     );
 
     assert_eq!(
-        Ok(format!("3")),
-        parse_to_str(r"std.foldl (\x \y if x == 0 then y else y - x) 0 [1, 2, 3, 4, 5]").await
+        Ok(format!("-15")),
+        parse_to_str(r"std.foldl (\x \y x - y) 0 [1, 2, 3, 4, 5]").await
     );
 }
 

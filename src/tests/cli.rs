@@ -155,3 +155,15 @@ fn test_execute_script_with_actor() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_foldr() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin(r"(import std).foldl (\x \y x - y) 0 [1, 2, 3, 4, 5]")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^-15\n$")?);
+
+    Ok(())
+}

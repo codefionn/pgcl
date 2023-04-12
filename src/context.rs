@@ -598,7 +598,7 @@ impl PrivateContextHandler {
     }
 
     pub fn create_context(&mut self, name: String, path: Option<PathBuf>) -> Context {
-        let id = self.last_id;
+        let id = self.last_id.clone();
         let ctx: Context = PrivateContext::new(id, name, path).into();
         self.last_id += 1;
 

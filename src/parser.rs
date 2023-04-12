@@ -322,6 +322,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 {
                     // parse an if-let statement
                     self.iter.next(); // skip
+                    self.skip_newlines();
                     self.builder.start_node(SyntaxKind::IfLet.into());
                     self.parse_let_args(SyntaxKind::KwThen);
                 } else {
@@ -364,6 +365,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             }
             Some(SyntaxKind::KwLet) => {
                 self.iter.next(); // Skip let
+                self.skip_newlines();
 
                 self.builder.start_node(SyntaxKind::KwLet.into());
                 self.parse_let_args(SyntaxKind::KwIn);
