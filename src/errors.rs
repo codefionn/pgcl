@@ -18,6 +18,7 @@ pub enum InterpreterError {
     ExpectedInteger(),
     ExpectedFloat(),
     ExpectedCall(),
+    LetDoesMatch(String),
     ContextNotInFile(String),
     ImportFileDoesNotExist(String),
 }

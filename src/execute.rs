@@ -1,10 +1,13 @@
 use async_recursion::async_recursion;
 use bigdecimal::BigDecimal;
-use futures::future::{join_all, OptionFuture};
+use futures::{
+    future::{join_all, OptionFuture},
+    StreamExt, TryStreamExt,
+};
 use log::debug;
 use rowan::GreenNodeBuilder;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     path::PathBuf,
 };
 use tailcall::tailcall;
@@ -148,7 +151,10 @@ impl Syntax {
             Self::Pipe(_) => self,
             Self::Signal(_, _) => self,
             Self::Program(exprs) => Self::Program(
-                join_all(exprs.into_iter().map(|expr| async { expr.reduce().await })).await,
+                futures::stream::iter(exprs.into_iter().map(|expr| async { expr.reduce().await }))
+                    .buffered(4)
+                    .collect()
+                    .await,
             ),
             Self::Lambda(id, expr) => Self::Lambda(id, Box::new(expr.reduce().await)),
             Self::IfLet(asgs, expr_true, expr_false) => {
@@ -364,24 +370,25 @@ impl Syntax {
             }
             Self::Map(map) => {
                 let map =
-                    join_all(map.into_iter().map(|(key, (val, is_id))| async move {
+                    futures::stream::iter(map.into_iter().map(|(key, (val, is_id))| async move {
                         (key, (val.reduce().await, is_id))
                     }))
-                    .await
-                    .into_iter()
-                    .collect();
+                    .buffer_unordered(4)
+                    .collect()
+                    .await;
 
                 Self::Map(map)
             }
             Self::MapMatch(map) => {
-                let map = join_all(
-                    map.into_iter()
-                        .map(|(key, into_key, val, is_id)| async move {
-                            let val: OptionFuture<_> =
-                                val.map(|expr| async { expr.reduce().await }).into();
-                            (key, into_key, val.await, is_id)
-                        }),
-                )
+                let map = futures::stream::iter(map.into_iter().map(
+                    |(key, into_key, val, is_id)| async move {
+                        let val: OptionFuture<_> =
+                            val.map(|expr| async { expr.reduce().await }).into();
+                        (key, into_key, val.await, is_id)
+                    },
+                ))
+                .buffer_unordered(4)
+                .collect()
                 .await;
                 Self::MapMatch(map)
             }
@@ -724,15 +731,15 @@ impl Syntax {
             Self::Lambda(_, _) => Ok(self),
             Self::Pipe(_) => Ok(self),
             Self::Program(exprs) => {
-                let mut exprs: Vec<_> = join_all(exprs.into_iter().map(|expr| {
+                let mut exprs: Vec<_> = futures::stream::iter(exprs.into_iter().map(|expr| {
                     let mut ctx = ctx.clone();
                     let mut system = system.clone();
 
                     async move { expr.execute(first, &mut ctx, &mut system).await }
                 }))
-                .await
-                .into_iter()
-                .try_collect()?;
+                .buffered(1)
+                .try_collect()
+                .await?;
 
                 // If the program has at least one expression => return the result of the last one
                 if let Some(expr) = exprs.pop() {
@@ -980,10 +987,21 @@ impl Syntax {
                         .await
                     {
                         local_ctx.remove_values(&mut values_defined_here);
-                        ctx.push_error(format!("Let expression failed: {self}"))
-                            .await;
 
-                        Ok(Self::Let((lhs, rhs), expr))
+                        let new_rhs = rhs
+                            .clone()
+                            .execute_once(first, no_change, ctx, system)
+                            .await?;
+                        if *rhs == new_rhs {
+                            ctx.push_error(format!("Let expression failed: {self}"))
+                                .await;
+
+                            Err(InterpreterError::LetDoesMatch(format!(
+                                "{lhs} = {rhs} does not match"
+                            )))
+                        } else {
+                            Ok(Self::Let((lhs, Box::new(new_rhs)), expr))
+                        }
                     } else {
                         let mut result = (*expr).clone();
                         for (key, value) in local_ctx
@@ -1253,13 +1271,13 @@ impl Syntax {
     }
 }
 
-/// Imports the specified library (including builtin libraries)
-async fn import_lib(
-    ctx: &mut ContextHandler,
-    system: &mut SystemHandler,
-    path: String,
+/// Depending on the code, this creates a new system (depending on the current system) or copies
+/// the old system.
+async fn build_system(
+    ctx: ContextHandler,
+    mut system: SystemHandler,
     builtins_map: BTreeMap<String, Syntax>,
-) -> Result<Syntax, InterpreterError> {
+) -> SystemHandler {
     let has_restrict = builtins_map.get("restrict") == Some(&Syntax::ValAtom("true".to_string()));
     debug!("has_restrict: {}", has_restrict);
 
@@ -1277,7 +1295,7 @@ async fn import_lib(
     let old_ctx_id = ctx.get_id();
     let old_system_id = system.get_id();
 
-    let mut system = if builtins_map.is_empty() && !has_restrict {
+    if builtins_map.is_empty() && !has_restrict {
         system.clone()
     } else {
         let mut new_builtins_map = BTreeMap::<SystemCallType, Syntax>::new();
@@ -1308,14 +1326,43 @@ async fn import_lib(
             .get_holder()
             .new_system_handler(new_builtins_map)
             .await
+    }
+}
+
+const BUILTIN_MODULES: &[&'static str] = &["std", "sys", "str"];
+
+/// Imports the specified library (including builtin libraries)
+async fn import_lib(
+    ctx: &mut ContextHandler,
+    system: &mut SystemHandler,
+    path: String,
+    builtins_map: BTreeMap<String, Syntax>,
+) -> Result<Syntax, InterpreterError> {
+    let system = {
+        let ctx = ctx.clone();
+        let system = system.clone();
+
+        let handle = tokio::spawn(async { build_system(ctx, system, builtins_map).await });
+
+        async {
+            handle
+                .await
+                .map_err(|err| InterpreterError::InternalError(err.to_string()))
+        }
     };
 
     if let Some(ctx) = ctx.get_holder().get_path(&path).await {
-        Ok(Syntax::Context(ctx.get_id(), system.get_id(), path))
+        Ok(Syntax::Context(ctx.get_id(), system.await?.get_id(), path))
+    } else if
+    /* List all builtin libraries here -> */
+    BUILTIN_MODULES.iter().any({
+        let path = path.clone();
+        move |&p| p == path
+    }) {
+        import_std_lib(ctx, &mut system.await?, path).await
     } else if let Some(ctx_path) = ctx.get_path().await {
-        let mut module_path = ctx_path.clone();
-        module_path.push(path.clone());
-
+        let mut module_path = ctx_path.join(path.clone());
+        // Normalize the path
         module_path = std::fs::canonicalize(module_path.clone()).unwrap_or(module_path.clone());
 
         let module_path_str = module_path.to_string_lossy().to_string();
@@ -1323,10 +1370,11 @@ async fn import_lib(
             if let Some(ctx) = ctx.get_holder().get_path(&module_path_str).await {
                 Ok(Syntax::Context(
                     ctx.get_id(),
-                    system.get_id(),
+                    system.await?.get_id(),
                     module_path_str,
                 ))
             } else {
+                let mut system = system.await?;
                 let code = std::fs::read_to_string(&module_path).map_err({
                     let module_path_str = module_path_str.clone();
                     move |_| InterpreterError::ImportFileDoesNotExist(module_path_str)
@@ -1351,13 +1399,6 @@ async fn import_lib(
                     module_path_str,
                 ))
             }
-        } else if
-        /* List all builtin libraries here -> */
-        ["std", "sys", "str"].into_iter().any({
-            let path = path.clone();
-            move |p| p == path
-        }) {
-            import_std_lib(ctx, &mut system, path).await
         } else {
             ctx.push_error(format!("Expected {module_path_str} to be a file"))
                 .await;
@@ -1368,7 +1409,7 @@ async fn import_lib(
         ctx.push_error("Import can only be done in real modules".to_string())
             .await;
 
-        let result = import_std_lib(ctx, &mut system, path).await;
+        let result = import_std_lib(ctx, &mut system.await?, path).await;
         if let Err(InterpreterError::ImportFileDoesNotExist(_)) = result {
             Err(InterpreterError::ContextNotInFile(ctx.get_name().await))
         } else {
@@ -1581,8 +1622,6 @@ pub async fn execute_code(
             },
         )
         .try_collect()?;
-
-    //debug!("{:?}", toks);
 
     let typed = parse_to_typed(toks);
     debug!("{:?}", typed);

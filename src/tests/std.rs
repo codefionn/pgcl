@@ -1,7 +1,9 @@
+use std::time::Duration;
+
 use rowan::GreenNodeBuilder;
 
 use crate::{
-    context::{ContextHandler, ContextHolder},
+    context::ContextHandler,
     errors::InterpreterError,
     execute::Syntax,
     lexer::Token,
@@ -44,7 +46,7 @@ async fn parse_to_str(line: &str) -> Result<String, InterpreterError> {
         &mut system,
     )
     .await?;
-    Ok(format!("{}", typed))
+    Ok(format!("{typed}"))
 }
 
 #[tokio::test]
