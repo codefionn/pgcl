@@ -1194,6 +1194,11 @@ async fn test_int_div() {
         Ok("2.5".to_string()),
         parse_to_str("5 / 2", &mut ctx, &mut system).await
     );
+
+    assert_eq!(
+        Ok("4000".to_string()),
+        parse_to_str("48000 / 12", &mut ctx, &mut system).await
+    );
 }
 
 #[tokio::test]

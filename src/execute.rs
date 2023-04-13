@@ -1751,9 +1751,16 @@ impl std::fmt::Display for Syntax {
                 Self::ValInt(x) => x.to_string(),
                 Self::ValFlt(x) => {
                     let x: BigDecimal = x.clone().into();
-                    format!("{x}")
+                    let result = format!("{x}");
+                    if result.contains(".") {
+                        result
+                            .trim_end_matches(|c| c == '0')
+                            .trim_end_matches(|c| c == '.')
+                            .to_owned()
+                    } else {
+                        result
+                    }
                 }
-                .trim_end_matches(|c| c == '0' || c == '.')
                 .to_string(),
                 Self::ValStr(x) => val_str(x),
                 Self::ValAtom(x) => format!("@{x}"),

@@ -47,12 +47,12 @@ impl BigRational {
         let (_, quotient_pow) = self.quotient.as_bigint_and_exponent();
         let (_, fraction_pow) = self.fraction.as_bigint_and_exponent();
 
-        let pow = quotient_pow.max(fraction_pow);
-        if pow < 0 {
+        let pow = quotient_pow.min(fraction_pow);
+        if pow > 0 {
             return;
         }
 
-        let mul_pow: BigDecimal = BigInt::from_i64(10).unwrap().pow(pow as u32).into();
+        let mul_pow: BigDecimal = BigInt::from_i64(10).unwrap().pow(-pow as u32).into();
         self.quotient *= mul_pow.clone();
         self.fraction *= mul_pow;
     }
