@@ -151,10 +151,14 @@ impl Syntax {
             Self::Pipe(_) => self,
             Self::Signal(_, _) => self,
             Self::Program(exprs) => Self::Program(
-                futures::stream::iter(exprs.into_iter().map(|expr| async { expr.reduce().await }))
-                    .buffered(4)
-                    .collect()
-                    .await,
+                futures::stream::iter(
+                    exprs
+                        .into_iter()
+                        .map(|expr| async { expr.reduce_all().await }),
+                )
+                .buffered(4)
+                .collect()
+                .await,
             ),
             Self::Lambda(id, expr) => Self::Lambda(id, Box::new(expr.reduce().await)),
             Self::IfLet(asgs, expr_true, expr_false) => {
@@ -362,12 +366,18 @@ impl Syntax {
             Self::BiOp(op, a, b) => {
                 Self::BiOp(op, Box::new(a.reduce().await), Box::new(b.reduce().await))
             }
-            Self::Lst(lst) => {
-                Self::Lst(join_all(lst.into_iter().map(|expr| async { expr.reduce().await })).await)
-            }
-            Self::LstMatch(lst) => {
-                Self::LstMatch(join_all(lst.into_iter().map(|expr| expr.reduce())).await)
-            }
+            Self::Lst(lst) => Self::Lst(
+                futures::stream::iter(lst.into_iter().map(|expr| async { expr.reduce().await }))
+                    .buffered(4)
+                    .collect()
+                    .await,
+            ),
+            Self::LstMatch(lst) => Self::LstMatch(
+                futures::stream::iter(lst.into_iter().map(|expr| expr.reduce()))
+                    .buffered(4)
+                    .collect()
+                    .await,
+            ),
             Self::Map(map) => {
                 let map =
                     futures::stream::iter(map.into_iter().map(|(key, (val, is_id))| async move {
@@ -412,15 +422,17 @@ impl Syntax {
             | Self::ValAtom(_)
             | Self::Signal(_, _)) => expr,
             Self::Lst(lst) => Self::Lst(
-                join_all(lst.into_iter().map(|expr| async move {
+                futures::stream::iter(lst.into_iter().map(|expr| async move {
                     Self::Contextual(ctx_id, system_id, Box::new(expr))
                         .reduce()
                         .await
                 }))
+                .buffered(4)
+                .collect()
                 .await,
             ),
             Self::Map(map) => Self::Map(
-                join_all(map.into_iter().map(|(key, (expr, is_id))| async move {
+                futures::stream::iter(map.into_iter().map(|(key, (expr, is_id))| async move {
                     (
                         key,
                         (
@@ -431,9 +443,9 @@ impl Syntax {
                         ),
                     )
                 }))
-                .await
-                .into_iter()
-                .collect(),
+                .buffer_unordered(4)
+                .collect()
+                .await,
             ),
             Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => Self::BiOp(
                 BiOpType::OpPeriod,
@@ -459,6 +471,20 @@ impl Syntax {
             // Nothing can be done => revert to contextual
             expr @ _ => Self::Contextual(ctx_id, system_id, Box::new(expr)),
         }
+    }
+
+    async fn reduce_all(self) -> Self {
+        let mut expr = self;
+        loop {
+            let old_expr = expr.clone();
+            expr = expr.reduce().await;
+
+            if old_expr == expr {
+                break;
+            }
+        }
+
+        expr
     }
 
     #[async_recursion]
@@ -515,24 +541,23 @@ impl Syntax {
                 )
             }
             Self::IfLet(asgs, expr_true, expr_false) => {
-                let asgs: Vec<(Syntax, Syntax)> = join_all(
+                let asgs: Vec<(Syntax, Syntax)> = futures::stream::iter(
                     asgs.into_iter()
                         .map(|(lhs, rhs)| async { (lhs, rhs.replace_args(key, value).await) }),
                 )
+                .buffered(4)
+                .collect()
                 .await;
 
-                let expr_false = expr_false.replace_args(key, value).await;
-                if join_all(asgs.iter().map(|(_, rhs)| rhs.get_args()))
+                let expr_false = expr_false.replace_args(key, value);
+                if futures::stream::iter(asgs.iter().map(|(_, rhs)| rhs.get_args()))
+                    .any(|args| async { args.await.contains(key) })
                     .await
-                    .into_iter()
-                    .flatten()
-                    .collect::<HashSet<String>>()
-                    .contains(key)
                 {
-                    Self::IfLet(asgs, expr_true, Box::new(expr_false))
+                    Self::IfLet(asgs, expr_true, Box::new(expr_false.await))
                 } else {
                     let expr_true = expr_true.replace_args(key, value);
-                    Self::IfLet(asgs, Box::new(expr_true.await), Box::new(expr_false))
+                    Self::IfLet(asgs, Box::new(expr_true.await), Box::new(expr_false.await))
                 }
             }
             Self::UnexpectedArguments() => self,
@@ -542,32 +567,37 @@ impl Syntax {
             Self::ValStr(_) => self,
             Self::ValAtom(_) => self,
             Self::Lst(lst) => Self::Lst(
-                join_all(
+                futures::stream::iter(
                     lst.into_iter()
                         .map(|expr| async { expr.replace_args(key, value).await }),
                 )
+                .buffered(4)
+                .collect()
                 .await,
             ),
             Self::LstMatch(lst) => Self::LstMatch(
-                join_all(
+                futures::stream::iter(
                     lst.into_iter()
                         .map(|expr| async { expr.replace_args(key, value).await }),
                 )
+                .buffered(4)
+                .collect()
                 .await,
             ),
             Self::Map(map) => {
-                let map = join_all(
-                    map.into_iter()
-                        .map(|(map_key, (map_val, is_id))| async move {
-                            (map_key, (map_val.replace_args(key, value).await, is_id))
-                        }),
-                )
+                let map = futures::stream::iter(map.into_iter().map(
+                    |(map_key, (map_val, is_id))| async move {
+                        (map_key, (map_val.replace_args(key, value).await, is_id))
+                    },
+                ))
+                .buffer_unordered(4)
+                .collect()
                 .await;
 
-                Self::Map(map.into_iter().collect())
+                Self::Map(map)
             }
             Self::MapMatch(map) => {
-                let map = join_all(map.into_iter().map(
+                let map = futures::stream::iter(map.into_iter().map(
                     |(map_key, map_into_key, map_val, is_id)| async move {
                         let map_val: OptionFuture<_> = map_val
                             .map(|x| async { x.replace_args(key, value).await })
@@ -576,6 +606,8 @@ impl Syntax {
                         (map_key, map_into_key, map_val.await, is_id)
                     },
                 ))
+                .buffer_unordered(4)
+                .collect()
                 .await;
 
                 Self::MapMatch(map)
