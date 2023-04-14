@@ -232,10 +232,12 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     let has_errors = false;
                     let mut is_match = false;
 
-                    while [SyntaxKind::Id, SyntaxKind::Str]
-                        .iter()
-                        .any(|x| Some(*x) == self.peek())
-                    {
+                    while {
+                        let peeked = self.peek();
+                        [SyntaxKind::Id, SyntaxKind::Str]
+                            .iter()
+                            .any(|x| Some(*x) == peeked)
+                    } {
                         self.builder.start_node(SyntaxKind::MapElement.into());
                         if Some(SyntaxKind::Str) == self.peek() {
                             self.bump();
