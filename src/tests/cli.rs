@@ -167,3 +167,39 @@ fn test_foldr() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_exit_0() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin(r"sys = import sys; sys.exit 0")
+        .assert()
+        .code(predicate::eq(0))
+        .stdout(predicate::str::is_match(r"^$")?);
+
+    Ok(())
+}
+
+#[test]
+fn test_exit_1() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin(r"sys = import sys; sys.exit 1")
+        .assert()
+        .code(predicate::eq(1))
+        .stdout(predicate::str::is_match(r"^$")?);
+
+    Ok(())
+}
+
+#[test]
+fn test_exit_2() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin(r"sys = import sys; sys.exit 2")
+        .assert()
+        .code(predicate::eq(2))
+        .stdout(predicate::str::is_match(r"^$")?);
+
+    Ok(())
+}

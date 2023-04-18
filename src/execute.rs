@@ -1544,51 +1544,19 @@ async fn make_call(
                 )
                 .await
             }
-            ("syscall", Syntax::Tuple(box Syntax::ValAtom(id), expr)) => match id.as_str() {
-                "type" => {
-                    system
-                        .clone()
-                        .do_syscall(ctx, system, no_change, SystemCallType::Typeof, *expr)
-                        .await
+            ("syscall", Syntax::Tuple(box Syntax::ValAtom(id), expr)) => {
+                let syscall: Result<SystemCallType, _> = id.as_str().try_into();
+
+                match syscall {
+                    Ok(syscall) => {
+                        system
+                            .clone()
+                            .do_syscall(ctx, system, no_change, syscall, *expr)
+                            .await
+                    }
+                    Err(_) => Ok(original_expr),
                 }
-                "time" => {
-                    system
-                        .clone()
-                        .do_syscall(ctx, system, no_change, SystemCallType::MeasureTime, *expr)
-                        .await
-                }
-                "cmd" => {
-                    system
-                        .clone()
-                        .do_syscall(ctx, system, no_change, SystemCallType::Cmd, *expr)
-                        .await
-                }
-                "println" => {
-                    system
-                        .clone()
-                        .do_syscall(ctx, system, no_change, SystemCallType::Println, *expr)
-                        .await
-                }
-                "actor" => {
-                    system
-                        .clone()
-                        .do_syscall(ctx, system, no_change, SystemCallType::Actor, *expr)
-                        .await
-                }
-                "exitactor" => {
-                    system
-                        .clone()
-                        .do_syscall(ctx, system, no_change, SystemCallType::ExitActor, *expr)
-                        .await
-                }
-                "httprequest" => {
-                    system
-                        .clone()
-                        .do_syscall(ctx, system, no_change, SystemCallType::HttpRequest, *expr)
-                        .await
-                }
-                _ => Ok(original_expr),
-            },
+            }
             _ => Ok(original_expr),
         }
     }

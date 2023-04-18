@@ -78,8 +78,12 @@ async fn main() -> anyhow::Result<()> {
             tokio::spawn(interpreter_actor.run())
         );
 
-        h0??;
+        let exit_code = h0??;
         h1??;
+
+        if exit_code != 0 {
+            std::process::exit(exit_code);
+        }
     }
 
     Ok(())

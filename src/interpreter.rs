@@ -8,7 +8,7 @@ use crate::{
     execute::{BiOpType, Syntax},
     lexer::Token,
     parser::{print_ast, Parser, SyntaxKind},
-    reader::LineMessage,
+    reader::{ExecutedMessage, LineMessage},
     system::{SystemHandler, SystemHolder},
     Args,
 };
@@ -70,7 +70,7 @@ impl InterpreterLexerActor {
                 LineMessage::Line(line, tx_confirm) => {
                     if line.trim().is_empty() {
                         tx_confirm
-                            .send(())
+                            .send(ExecutedMessage::Continue())
                             .map_err(|err| anyhow::anyhow!("{:?}", err))?;
 
                         continue;
@@ -99,7 +99,10 @@ impl InterpreterLexerActor {
 
 #[derive(Debug)]
 pub enum LexerMessage {
-    Line(Vec<(Token, String)>, tokio::sync::oneshot::Sender<()>),
+    Line(
+        Vec<(Token, String)>,
+        tokio::sync::oneshot::Sender<ExecutedMessage>,
+    ),
     Exit(),
 }
 
@@ -161,6 +164,7 @@ impl InterpreterExecuteActor {
                         .map_err(|err| anyhow::anyhow!("{err:?}"))?;
 
                     let mut success = false;
+                    let mut exit_code = None;
 
                     leftover_tokens.push(toks); // Push directly to the leftover tokens, this
                                                 // simplifies the algorithm
@@ -195,14 +199,18 @@ impl InterpreterExecuteActor {
                             let reduced: Syntax = typed.reduce().await;
 
                             debug!("{}", reduced);
-                            if let Ok(executed) =
-                                reduced.execute(true, &mut main_ctx, &mut main_system).await
-                            {
-                                if executed != Syntax::ValAny() {
-                                    println!("{executed}");
-                                }
+                            match reduced.execute(true, &mut main_ctx, &mut main_system).await {
+                                Ok(executed) => {
+                                    if executed != Syntax::ValAny() {
+                                        println!("{executed}");
+                                    }
 
-                                self.last_result = Some(executed);
+                                    self.last_result = Some(executed);
+                                }
+                                Err(InterpreterError::ProgramTerminatedByUser(id)) => {
+                                    exit_code = Some(id);
+                                }
+                                Err(_) => {}
                             }
 
                             let errors = main_ctx.get_errors().await;
@@ -223,7 +231,10 @@ impl InterpreterExecuteActor {
 
                     // Confirm, that the parser has stopped => request a new input line
                     tx_confirm
-                        .send(())
+                        .send(match exit_code {
+                            None => ExecutedMessage::Continue(),
+                            Some(id) => ExecutedMessage::Exit(id),
+                        })
                         .map_err(|err| anyhow::anyhow!("{err:?}"))?;
                 }
                 _ => {

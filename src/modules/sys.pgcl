@@ -38,3 +38,9 @@ export exit_actor
 fetch (url, request) = syscall (@httprequest, (url, request))
 fetch (url) = syscall (@httprequest, (url, {}))
 export fetch
+
+##
+# Exit the program
+##
+exit code = syscall (@exit, code)
+export exit

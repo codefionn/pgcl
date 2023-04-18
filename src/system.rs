@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use log::debug;
 use num::FromPrimitive;
 use tokio::{
@@ -30,6 +30,7 @@ pub enum SystemCallType {
     Actor,
     ExitActor,
     HttpRequest,
+    ExitThisProgram,
 }
 
 impl SystemCallType {
@@ -42,6 +43,7 @@ impl SystemCallType {
             Self::Actor => "actor",
             Self::ExitActor => "exitactor",
             Self::HttpRequest => "httprequest",
+            Self::ExitThisProgram => "exit",
         }
     }
 
@@ -52,8 +54,25 @@ impl SystemCallType {
             Self::Cmd,
             Self::Println,
             Self::Actor,
+            Self::HttpRequest,
             Self::ExitActor,
+            Self::ExitThisProgram,
         ]
+    }
+}
+
+impl TryFrom<&str> for SystemCallType {
+    type Error = InterpreterError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let all_syscalls = Self::all();
+        for syscall in all_syscalls {
+            if syscall.to_systemcall() == value {
+                return Ok(*syscall);
+            }
+        }
+
+        Err(InterpreterError::UnknownError())
     }
 }
 
@@ -79,7 +98,7 @@ impl PrivateSystem {
             return Ok(expr.clone());
         }
 
-        Ok(match (syscall, expr) {
+        match (syscall, expr) {
             (SystemCallType::Typeof, expr) => {
                 fn create_syscall_type(expr: Box<Syntax>) -> Syntax {
                     Syntax::Call(
@@ -91,7 +110,7 @@ impl PrivateSystem {
                     )
                 }
 
-                match expr {
+                Ok(match expr {
                     Syntax::ValInt(_) => Syntax::ValAtom("int".to_string()),
                     Syntax::ValFlt(_) => Syntax::ValAtom("float".to_string()),
                     Syntax::ValStr(_) => Syntax::ValAtom("string".to_string()),
@@ -111,7 +130,7 @@ impl PrivateSystem {
 
                         Syntax::UnexpectedArguments()
                     }
-                }
+                })
             }
             (SystemCallType::MeasureTime, expr) => {
                 let now = Instant::now();
@@ -121,7 +140,10 @@ impl PrivateSystem {
                 let diff = now.elapsed().as_secs_f64();
                 let diff: BigRational = BigRational::from_f64(diff).unwrap();
 
-                Syntax::Tuple(Box::new(Syntax::ValFlt(diff)), Box::new(expr))
+                Ok(Syntax::Tuple(
+                    Box::new(Syntax::ValFlt(diff)),
+                    Box::new(expr),
+                ))
             }
             (SystemCallType::Cmd, Syntax::ValStr(cmd)) => if cfg!(target_os = "windows") {
                 Command::new("cmd").args(["/C", cmd.as_str()]).output()
@@ -139,40 +161,40 @@ impl PrivateSystem {
                 map.insert("stdout".to_string(), (Syntax::ValStr(stdout), true));
                 map.insert("stderr".to_string(), (Syntax::ValStr(stderr), true));
 
-                Syntax::Map(map.into_iter().collect())
+                Ok(Syntax::Map(map.into_iter().collect()))
             })
-            .unwrap_or(Syntax::ValAtom("error".to_string())),
+            .unwrap_or(Ok(Syntax::ValAtom("error".to_string()))),
             (SystemCallType::Println, Syntax::ValStr(s)) => {
                 println!("{s}");
 
-                Syntax::ValAny()
+                Ok(Syntax::ValAny())
             }
             (SystemCallType::Println, Syntax::ValInt(i)) => {
                 println!("{i}");
 
-                Syntax::ValAny()
+                Ok(Syntax::ValAny())
             }
             (SystemCallType::Println, Syntax::ValFlt(f)) => {
                 let f: BigDecimal = f.into();
                 println!("{f}");
 
-                Syntax::ValAny()
+                Ok(Syntax::ValAny())
             }
             (SystemCallType::Actor, Syntax::Tuple(init, actor_fn)) => {
                 let (handle, tx) =
                     crate::actor::create_actor(ctx.clone(), system.clone(), *init, *actor_fn).await;
                 let id = system.get_holder().create_actor(handle, tx).await;
 
-                Syntax::Signal(SignalType::Actor, id)
+                Ok(Syntax::Signal(SignalType::Actor, id))
             }
             (SystemCallType::ExitActor, Syntax::Signal(signal_type, signal_id)) => {
                 match signal_type {
                     SignalType::Actor => match system.get_holder().get_actor(signal_id).await {
                         Some(tx) => match tx.send(actor::Message::Exit()).await {
-                            Ok(_) => Syntax::ValAtom("true".to_string()),
-                            Err(_) => Syntax::ValAtom("false".to_string()),
+                            Ok(_) => Ok(Syntax::ValAtom("true".to_string())),
+                            Err(_) => Ok(Syntax::ValAtom("false".to_string())),
                         },
-                        _ => Syntax::ValAtom("false".to_string()),
+                        _ => Ok(Syntax::ValAtom("false".to_string())),
                     },
                 }
             }
@@ -229,7 +251,7 @@ impl PrivateSystem {
 
                 debug!("Trying HTTP Request for \"{}\"", uri);
                 if let Ok(uri) = uri.parse::<hyper::Uri>() {
-                    match uri.scheme_str() {
+                    Ok(match uri.scheme_str() {
                         Some("http") => {
                             let client = hyper::Client::builder().build_http();
                             do_http_request(uri, method, headers, body, client).await?
@@ -244,23 +266,26 @@ impl PrivateSystem {
 
                             false.into()
                         }
-                    }
+                    })
                 } else {
-                    Syntax::ValAtom("false".to_string())
+                    Ok(Syntax::ValAtom("false".to_string()))
                 }
             }
+            (SystemCallType::ExitThisProgram, Syntax::ValInt(id)) => Err(
+                InterpreterError::ProgramTerminatedByUser(id.to_i32().unwrap_or(1)),
+            ),
             (syscall, expr) => {
                 debug!("{:?}", expr);
 
-                Syntax::Call(
+                Ok(Syntax::Call(
                     Box::new(Syntax::Id("syscall".to_string())),
                     Box::new(Syntax::Tuple(
                         Box::new(Syntax::ValAtom(syscall.to_systemcall().to_string())),
                         Box::new(expr.execute_once(false, no_change, ctx, system).await?),
                     )),
-                )
+                ))
             }
-        })
+        }
     }
 
     pub async fn get(&self, syscall: SystemCallType) -> Option<Syntax> {
