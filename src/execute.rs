@@ -806,22 +806,32 @@ impl Syntax {
                 }
             }
             Self::IfLet(asgs, expr_true, expr_false) => {
+                async fn execute_asgs(
+                    asgs: Vec<(Syntax, Syntax)>,
+                    no_change: bool,
+                    ctx: &mut ContextHandler,
+                    system: &mut SystemHandler,
+                ) -> Result<Vec<(Syntax, Syntax)>, InterpreterError> {
+                    futures::stream::iter(asgs.into_iter().map(|(lhs, rhs)| {
+                        let mut ctx = ctx.clone();
+                        let mut system = system.clone();
+                        async move {
+                            Ok((
+                                lhs.execute_once(false, no_change, &mut ctx, &mut system)
+                                    .await?,
+                                rhs.execute_once(false, no_change, &mut ctx, &mut system)
+                                    .await?,
+                            ))
+                        }
+                    }))
+                    .buffered(1)
+                    .try_collect()
+                    .await
+                }
+
                 if no_change {
                     let old_asgs = asgs.clone();
-                    let asgs: Vec<(Syntax, Syntax)> =
-                        futures::stream::iter(asgs.into_iter().map(|(lhs, rhs)| {
-                            let mut ctx = ctx.clone();
-                            let mut system = system.clone();
-                            async move {
-                                Ok((
-                                    lhs.execute_once(false, true, &mut ctx, &mut system).await?,
-                                    rhs.execute_once(false, true, &mut ctx, &mut system).await?,
-                                ))
-                            }
-                        }))
-                        .buffered(1)
-                        .try_collect()
-                        .await?;
+                    let asgs = execute_asgs(asgs, true, ctx, system).await?;
 
                     if old_asgs == asgs {
                         for (lhs, rhs) in asgs {
@@ -853,21 +863,7 @@ impl Syntax {
                         Ok(Self::IfLet(asgs, expr_true, expr_false))
                     }
                 } else {
-                    let asgs = futures::stream::iter(asgs.into_iter().map(|(lhs, rhs)| {
-                        let mut ctx = ctx.clone();
-                        let mut system = system.clone();
-                        async move {
-                            Ok((
-                                lhs.execute_once(false, false, &mut ctx, &mut system)
-                                    .await?,
-                                rhs.execute_once(false, false, &mut ctx, &mut system)
-                                    .await?,
-                            ))
-                        }
-                    }))
-                    .buffered(1)
-                    .try_collect()
-                    .await?;
+                    let asgs = execute_asgs(asgs, false, ctx, system).await?;
 
                     Ok(Self::IfLet(asgs, expr_true, expr_false))
                 }
