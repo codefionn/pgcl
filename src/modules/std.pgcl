@@ -94,3 +94,39 @@ limit 0 _ = []
 limit _ [] = []
 limit n [x:xs] = [x] + limit (n-1) xs
 export limit
+
+##
+# Logical **and** operation on two booleans.
+#
+# ## Parameters
+#
+# - @true|@false
+# - @true|@false
+##
+and @true @true = @true
+and _     _     = @false
+export and
+
+##
+# Logical **or** operation on two booleans.
+#
+# ## Parameters
+#
+# - @true|@false
+# - @true|@false
+##
+or @true _     = @true
+or _     @true = @true
+or _     _     = @false
+export or
+
+##
+# Logical **not** operation on one booleans
+#
+# ## Parameters
+# 
+# - @true|@false
+##
+not @true = @false
+not _     = @true
+export not

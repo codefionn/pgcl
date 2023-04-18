@@ -214,3 +214,49 @@ async fn test_limit() {
         parse_to_str("std.limit 2 [1, 2, 3]").await
     );
 }
+
+#[tokio::test]
+async fn test_and() {
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.and @true @true").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and @true @false").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and @false @true").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and @false @false").await
+    );
+}
+
+#[tokio::test]
+async fn test_or() {
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or @true @true").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or @true @false").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or @false @true").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.or @false @false").await
+    );
+}
+
+#[tokio::test]
+async fn test_not() {
+    assert_eq!(Ok(format!("@true")), parse_to_str("std.not @false").await);
+    assert_eq!(Ok(format!("@false")), parse_to_str("std.not @true").await);
+}
