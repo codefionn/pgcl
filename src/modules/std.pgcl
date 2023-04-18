@@ -130,3 +130,23 @@ export or
 not @true = @false
 not _     = @true
 export not
+
+##
+# Returns `@true`, if all elements in the given list are `@true`, otherwise
+# `@false`. Returns `@false` if the given list is empty.
+## 
+and_all [] = @false
+and_all [x] = x
+and_all [@false:xs] = @false
+and_all [_:xs] = and_all xs
+export and_all
+
+##
+# Returns `@true`, if any element in the given list is `@true`, otherwise
+# `@false`. Returns `@false` if the given list is empty.
+## 
+or_all [] = @false
+or_all [x] = x
+or_all [@true:xs] = @true
+or_all [_:xs] = or_all xs
+export or_all

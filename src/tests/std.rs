@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use rowan::GreenNodeBuilder;
 
 use crate::{
@@ -259,4 +257,126 @@ async fn test_or() {
 async fn test_not() {
     assert_eq!(Ok(format!("@true")), parse_to_str("std.not @false").await);
     assert_eq!(Ok(format!("@false")), parse_to_str("std.not @true").await);
+}
+
+#[tokio::test]
+async fn test_and_all() {
+    assert_eq!(Ok(format!("@false")), parse_to_str("std.and_all []").await);
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.and_all [@true]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.and_all [@true, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.and_all [@true, @true, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and_all [@false]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and_all [@true, @false]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and_all [@false, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and_all [@false, @false]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and_all [@true, @true, @false]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and_all [@true, @false, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and_all [@false, @true, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and_all [@true, @false, @false]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and_all [@false, @true, @false]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and_all [@false, @false, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.and_all [@false, @false, @false]").await
+    );
+}
+
+#[tokio::test]
+async fn test_or_all() {
+    assert_eq!(Ok(format!("@false")), parse_to_str("std.or_all []").await);
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or_all [@true]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or_all [@true, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or_all [@true, @true, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.or_all [@false]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or_all [@true, @false]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or_all [@false, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.or_all [@false, @false]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or_all [@true, @true, @false]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or_all [@true, @false, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or_all [@false, @true, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or_all [@true, @false, @false]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or_all [@false, @true, @false]").await
+    );
+    assert_eq!(
+        Ok(format!("@true")),
+        parse_to_str("std.or_all [@false, @false, @true]").await
+    );
+    assert_eq!(
+        Ok(format!("@false")),
+        parse_to_str("std.or_all [@false, @false, @false]").await
+    );
 }
