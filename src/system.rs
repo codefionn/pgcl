@@ -47,7 +47,7 @@ impl SystemCallType {
         }
     }
 
-    pub fn all() -> &'static [SystemCallType] {
+    pub const fn all() -> &'static [SystemCallType] {
         &[
             Self::Typeof,
             Self::MeasureTime,
@@ -58,6 +58,18 @@ impl SystemCallType {
             Self::ExitActor,
             Self::ExitThisProgram,
         ]
+    }
+
+    pub const fn is_secure(&self) -> bool {
+        match self {
+            Self::Typeof
+            | Self::MeasureTime
+            | Self::Cmd
+            | Self::Println
+            | Self::Actor
+            | Self::ExitActor => true,
+            _ => false,
+        }
     }
 }
 

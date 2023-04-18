@@ -71,6 +71,36 @@ async fn parse_to_str_restrict(line: &str) -> Result<String, InterpreterError> {
     Ok(format!("{}", typed))
 }
 
+async fn parse_to_str_restrict_and_restrict_insecure(
+    line: &str,
+) -> Result<String, InterpreterError> {
+    let mut ctx = ContextHandler::async_default().await;
+    let mut system = SystemHandler::async_default().await;
+
+    parse(
+        "sys = import (sys, { restrict_insecure: @true, restrict: @true })",
+        &mut ctx,
+        &mut system,
+    )
+    .await?;
+    let typed = parse(line, &mut ctx, &mut system).await?;
+    Ok(format!("{}", typed))
+}
+
+async fn parse_to_str_restrict_insecure(line: &str) -> Result<String, InterpreterError> {
+    let mut ctx = ContextHandler::async_default().await;
+    let mut system = SystemHandler::async_default().await;
+
+    parse(
+        "sys = import (sys, { restrict_insecure: @true })",
+        &mut ctx,
+        &mut system,
+    )
+    .await?;
+    let typed = parse(line, &mut ctx, &mut system).await?;
+    Ok(format!("{}", typed))
+}
+
 #[tokio::test]
 async fn test_typeof() {
     assert_eq!(
@@ -88,5 +118,21 @@ async fn test_typeof_intentionally_broken() {
     assert_eq!(
         Ok("@error".to_string()),
         parse_to_str_restrict(r"sys.type 2.0").await
+    );
+}
+
+#[tokio::test]
+async fn test_typeof_intentionally_broken_test_override() {
+    assert_eq!(
+        Ok("@error".to_string()),
+        parse_to_str_restrict_and_restrict_insecure(r"sys.type 2.0").await
+    );
+}
+
+#[tokio::test]
+async fn test_typeof_restrict_insecure() {
+    assert_eq!(
+        Ok("@float".to_string()),
+        parse_to_str_restrict_insecure(r"sys.type 2.0").await
     );
 }

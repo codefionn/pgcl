@@ -1311,7 +1311,11 @@ async fn build_system(
     builtins_map: BTreeMap<String, Syntax>,
 ) -> SystemHandler {
     let has_restrict = builtins_map.get("restrict") == Some(&Syntax::ValAtom("true".to_string()));
-    debug!("has_restrict: {}", has_restrict);
+    debug!("has_restrict: {has_restrict}");
+
+    let has_restrict_insecure =
+        builtins_map.get("restrict_insecure") == Some(&Syntax::ValAtom("true".to_string()));
+    debug!("has_restrict_insecure: {has_restrict_insecure}");
 
     // List all systemcalls here
     let mut builtins_map: BTreeMap<String, Syntax> = builtins_map
@@ -1347,6 +1351,16 @@ async fn build_system(
 
         if has_restrict {
             for syscall_type in all_syscalls {
+                new_builtins_map.entry(syscall_type).or_insert_with(|| {
+                    debug!("{syscall_type:?}");
+                    Syntax::ValAtom("error".to_string())
+                });
+            }
+        } else if has_restrict_insecure {
+            for syscall_type in all_syscalls
+                .into_iter()
+                .filter(|syscall| syscall.is_secure())
+            {
                 new_builtins_map.entry(syscall_type).or_insert_with(|| {
                     debug!("{syscall_type:?}");
                     Syntax::ValAtom("error".to_string())
