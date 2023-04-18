@@ -806,31 +806,71 @@ impl Syntax {
                 }
             }
             Self::IfLet(asgs, expr_true, expr_false) => {
-                for (lhs, rhs) in asgs {
-                    let rhs = rhs.clone().execute(false, ctx, system).await?;
-                    if !local_ctx
-                        .set_values_in_context(
-                            &mut ctx.get_holder(),
-                            &lhs,
-                            &rhs,
-                            &mut values_defined_here,
-                        )
-                        .await
-                    {
-                        local_ctx.remove_values(&mut values_defined_here);
-                        return Ok(*expr_false);
+                if no_change {
+                    let old_asgs = asgs.clone();
+                    let asgs: Vec<(Syntax, Syntax)> =
+                        futures::stream::iter(asgs.into_iter().map(|(lhs, rhs)| {
+                            let mut ctx = ctx.clone();
+                            let mut system = system.clone();
+                            async move {
+                                Ok((
+                                    lhs.execute_once(false, true, &mut ctx, &mut system).await?,
+                                    rhs.execute_once(false, true, &mut ctx, &mut system).await?,
+                                ))
+                            }
+                        }))
+                        .buffered(1)
+                        .try_collect()
+                        .await?;
+
+                    if old_asgs == asgs {
+                        for (lhs, rhs) in asgs {
+                            let rhs = rhs.clone().execute(false, ctx, system).await?;
+                            if !local_ctx
+                                .set_values_in_context(
+                                    &mut ctx.get_holder(),
+                                    &lhs,
+                                    &rhs,
+                                    &mut values_defined_here,
+                                )
+                                .await
+                            {
+                                local_ctx.remove_values(&mut values_defined_here);
+                                return Ok(*expr_false);
+                            }
+                        }
+
+                        let mut result = expr_true.clone();
+                        for (key, value) in local_ctx
+                            .remove_values(&mut values_defined_here)
+                            .into_iter()
+                        {
+                            result = Box::new(result.replace_args(&key, &value).await);
+                        }
+
+                        Ok(*result)
+                    } else {
+                        Ok(Self::IfLet(asgs, expr_true, expr_false))
                     }
-                }
+                } else {
+                    let asgs = futures::stream::iter(asgs.into_iter().map(|(lhs, rhs)| {
+                        let mut ctx = ctx.clone();
+                        let mut system = system.clone();
+                        async move {
+                            Ok((
+                                lhs.execute_once(false, false, &mut ctx, &mut system)
+                                    .await?,
+                                rhs.execute_once(false, false, &mut ctx, &mut system)
+                                    .await?,
+                            ))
+                        }
+                    }))
+                    .buffered(1)
+                    .try_collect()
+                    .await?;
 
-                let mut result = expr_true.clone();
-                for (key, value) in local_ctx
-                    .remove_values(&mut values_defined_here)
-                    .into_iter()
-                {
-                    result = Box::new(result.replace_args(&key, &value).await);
+                    Ok(Self::IfLet(asgs, expr_true, expr_false))
                 }
-
-                Ok(*result)
             }
             Self::Call(box Syntax::Signal(signal_type, signal_id), expr) => match signal_type {
                 SignalType::Actor => {
