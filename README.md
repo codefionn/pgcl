@@ -9,9 +9,9 @@ Fundamentally this programming language reduces expressions. Expressions are
 reduced as long as they cannot be reduced any longer. This means that the ``5 +
 2`` reduced is ``7``, but also that ``3 + x`` is still ``3 + x``.
 
-The interpreter is designed in a way, that in debug mode (command line options:
-``-v``), each reduce step can be seen granulary. This should better help
-understanding the execution steps.
+The interpreter is designed in a way, that in debug mode (command line option:
+``-v``) each reduce step can be seen granulary. This should help understand the
+execution steps that are being done.
 
 And `0.1 + 0.2 == 0.3` is true here ...
 
