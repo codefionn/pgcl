@@ -23,7 +23,7 @@ rowan = { version = "0.15.10", features = [ "serde" ] }
 rustyline = { version = "10.1.1", features = [ "case_insensitive_history_search" ] }
 serde = { version = "1.0.152", features = [ "derive", "alloc" ] }
 tailcall = "0.1.6"
-tokio = { version = "1.26.0", features = [ "full" ] }
+tokio = { version = "1.26.0", features = [ "full", "rt-multi-thread" ] }
 
 [dev-dependencies]
 assert_cmd = "2.0.10"

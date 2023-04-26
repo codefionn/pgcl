@@ -165,10 +165,34 @@ impl Syntax {
                 let mut expr_true = expr_true;
                 let mut new_asgs = Vec::new();
                 for asg in asgs.into_iter() {
-                    if let (Self::Id(lhs), Self::Id(rhs)) = asg {
-                        expr_true = Box::new(expr_true.replace_args(&lhs, &Self::Id(rhs)).await);
-                    } else {
-                        new_asgs.push(asg);
+                    match asg {
+                        (Self::Id(lhs), Self::Id(rhs)) => {
+                            expr_true =
+                                Box::new(expr_true.replace_args(&lhs, &Self::Id(rhs)).await);
+                        }
+                        (Self::ValInt(x), Self::ValInt(y)) => {
+                            if x != y {
+                                return *expr_false;
+                            }
+                        }
+                        (Self::ValFlt(x), Self::ValFlt(y)) => {
+                            if x != y {
+                                return *expr_false;
+                            }
+                        }
+                        (Self::ValAtom(x), Self::ValAtom(y)) => {
+                            if x != y {
+                                return *expr_false;
+                            }
+                        }
+                        (Self::ValStr(x), Self::ValStr(y)) => {
+                            if x != y {
+                                return *expr_false;
+                            }
+                        }
+                        _ => {
+                            new_asgs.push(asg);
+                        }
                     }
                 }
 
