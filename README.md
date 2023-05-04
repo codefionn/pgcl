@@ -1,7 +1,7 @@
 # PGCL
 
 ```
-This interpreter and programming language is subject to huge change.
+This interpreter and programming language are subject to huge change.
 ```
 
 PGCL - *pretty good calculator language* - is a language for basic
@@ -32,10 +32,12 @@ The interpreter uses
 * [ ] Optimizations for groups with floating point numbers
 * [x] Import (modules)
 * [ ] Standard library
-* [ ] System call
+* [x] System call
 * [x] Customize builtin function in imported modules (e.g. restrict access)
 * [ ] Write documentation
 * [ ] Message passing (broadcast?)
+* [ ] File system access
+* [ ] Networking (Server/Client)
 
 ## Structures
 
