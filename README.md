@@ -1,5 +1,9 @@
 # PGCL
 
+```
+This interpreter and programming language is subject to huge change.
+```
+
 PGCL - *pretty good calculator language* - is a language for basic
 calculations. Designed for (*my*) rapid success doing calculations.
 
@@ -31,6 +35,7 @@ The interpreter uses
 * [ ] System call
 * [x] Customize builtin function in imported modules (e.g. restrict access)
 * [ ] Write documentation
+* [ ] Message passing (broadcast?)
 
 ## Structures
 
