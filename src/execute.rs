@@ -801,7 +801,11 @@ impl Syntax {
                         obj.clone()
                     }
                 } else {
-                    self
+                    match id.as_str() {
+                        "false" => false.into(),
+                        "true" => true.into(),
+                        _ => self,
+                    }
                 },
             ),
             Self::ValAny() => Ok(self),

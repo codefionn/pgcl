@@ -1600,3 +1600,43 @@ async fn test_str_starts_with() {
         .await
     );
 }
+
+#[tokio::test]
+async fn test_js_bool() {
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str(
+            "false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            "true",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("{ y: @false }".to_string()),
+        parse_to_str(
+            "{ y: false }",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("{ x: @true }".to_string()),
+        parse_to_str(
+            "{ x: true }",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+}
