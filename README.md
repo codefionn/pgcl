@@ -35,7 +35,7 @@ The interpreter uses
 * [x] System call
 * [x] Customize builtin function in imported modules (e.g. restrict access)
 * [ ] Write documentation
-* [ ] Message passing (broadcast?)
+* [x] Message passing
 * [ ] File system access
 * [ ] Networking (Server/Client)
 

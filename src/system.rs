@@ -31,6 +31,8 @@ pub enum SystemCallType {
     ExitActor,
     HttpRequest,
     ExitThisProgram,
+    CreateMsg,
+    RecvMsg,
 }
 
 impl SystemCallType {
@@ -44,6 +46,8 @@ impl SystemCallType {
             Self::ExitActor => "exitactor",
             Self::HttpRequest => "httprequest",
             Self::ExitThisProgram => "exit",
+            Self::CreateMsg => "createmsg",
+            Self::RecvMsg => "recvmsg",
         }
     }
 
@@ -57,6 +61,8 @@ impl SystemCallType {
             Self::HttpRequest,
             Self::ExitActor,
             Self::ExitThisProgram,
+            Self::CreateMsg,
+            Self::RecvMsg,
         ]
     }
 
@@ -67,7 +73,9 @@ impl SystemCallType {
             | Self::Cmd
             | Self::Println
             | Self::Actor
-            | Self::ExitActor => true,
+            | Self::ExitActor
+            | Self::CreateMsg
+            | Self::RecvMsg => true,
             _ => false,
         }
     }
@@ -208,6 +216,7 @@ impl PrivateSystem {
                         },
                         _ => Ok(Syntax::ValAtom("false".to_string())),
                     },
+                    _ => Ok(false.into()),
                 }
             }
             (
@@ -286,6 +295,15 @@ impl PrivateSystem {
             (SystemCallType::ExitThisProgram, Syntax::ValInt(id)) => Err(
                 InterpreterError::ProgramTerminatedByUser(id.to_i32().unwrap_or(1)),
             ),
+            (SystemCallType::CreateMsg, Syntax::ValAny()) => {
+                let handle = system.get_holder().create_message().await;
+                Ok(Syntax::Signal(SignalType::Message, handle))
+            }
+            (SystemCallType::RecvMsg, Syntax::Signal(SignalType::Message, id)) => system
+                .get_holder()
+                .recv_message(id)
+                .await
+                .map_err(|err| InterpreterError::InternalError(format!("{}", err))),
             (syscall, expr) => {
                 debug!("{:?}", expr);
 
@@ -405,6 +423,14 @@ struct PrivateSystemHolder {
     actors: HashMap<usize, mpsc::Sender<crate::actor::Message>>,
     actors_handle: Vec<JoinHandle<()>>,
     last_actor_id: usize,
+    messages: HashMap<
+        usize,
+        (
+            mpsc::Sender<crate::actor::Message>,
+            mpsc::Receiver<crate::actor::Message>,
+        ),
+    >,
+    last_message_id: usize,
 }
 
 impl Default for PrivateSystemHolder {
@@ -423,6 +449,8 @@ impl Default for PrivateSystemHolder {
             actors: Default::default(),
             actors_handle: Default::default(),
             last_actor_id: 0,
+            messages: Default::default(),
+            last_message_id: 0,
         }
     }
 }
@@ -460,6 +488,32 @@ impl PrivateSystemHolder {
         self.actors.get(&id).cloned()
     }
 
+    pub fn create_message(&mut self) -> (usize, mpsc::Sender<crate::actor::Message>) {
+        let id = self.last_message_id;
+        self.last_message_id += 1;
+
+        let (tx, rx) = mpsc::channel(128);
+        self.messages.insert(id, (tx.clone(), rx));
+
+        (id, tx)
+    }
+
+    pub async fn recv_message(&mut self, id: usize) -> Option<Syntax> {
+        let (_, rx) = self.messages.get_mut(&id)?;
+
+        rx.recv()
+            .await
+            .map(|msg| match msg {
+                actor::Message::Signal(expr) => Some(expr),
+                _ => None,
+            })
+            .flatten()
+    }
+
+    pub fn get_message_sender(&self, id: usize) -> Option<mpsc::Sender<crate::actor::Message>> {
+        self.messages.get(&id).map(|(tx, _)| tx.clone())
+    }
+
     pub async fn drop_actors(&mut self) -> Vec<JoinHandle<()>> {
         if self.actors.is_empty() {
             return Vec::new(); // Already dropping actors
@@ -482,6 +536,7 @@ impl PrivateSystemHolder {
 pub struct SystemHolder {
     system: Arc<Mutex<PrivateSystemHolder>>,
     actors: HashMap<usize, mpsc::Sender<crate::actor::Message>>,
+    messages: HashMap<usize, mpsc::Sender<crate::actor::Message>>,
 }
 
 impl Default for SystemHolder {
@@ -489,6 +544,7 @@ impl Default for SystemHolder {
         SystemHolder {
             system: Arc::new(Mutex::new(PrivateSystemHolder::default())),
             actors: Default::default(),
+            messages: Default::default(),
         }
     }
 }
@@ -563,6 +619,39 @@ impl SystemHolder {
 
         Ok(())
     }
+
+    pub async fn create_message(&mut self) -> usize {
+        let (id, tx) = self.system.lock().await.create_message();
+        self.messages.insert(id, tx);
+
+        id
+    }
+
+    pub async fn send_message(&mut self, id: usize, expr: Syntax) -> anyhow::Result<()> {
+        if let Some(tx) = self.messages.get(&id) {
+            tx.send(crate::actor::Message::Signal(expr)).await?;
+
+            Ok(())
+        } else {
+            if let Some(tx) = self.system.lock().await.get_message_sender(id) {
+                self.messages.insert(id, tx.clone());
+
+                tx.send(crate::actor::Message::Signal(expr)).await?;
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("Message {} does not exist", id))
+            }
+        }
+    }
+
+    pub async fn recv_message(&mut self, id: usize) -> anyhow::Result<Syntax> {
+        self.system
+            .lock()
+            .await
+            .recv_message(id)
+            .await
+            .ok_or(anyhow::anyhow!("Message {} does not exist", id))
+    }
 }
 
 #[derive(Clone)]
@@ -577,6 +666,7 @@ impl SystemHandler {
         let system_holder = SystemHolder {
             system: Arc::new(Mutex::new(system_holder)),
             actors: Default::default(),
+            messages: Default::default(),
         };
 
         SystemHandler {

@@ -136,3 +136,11 @@ async fn test_typeof_restrict_insecure() {
         parse_to_str_restrict_insecure(r"sys.type 2.0").await
     );
 }
+
+#[tokio::test]
+async fn test_msg_channel() {
+    assert_eq!(
+        Ok("42".to_string()),
+        parse_to_str("msg = sys.channel\nmsg\nmsg 42\nsys.recv_channel msg").await
+    );
+}

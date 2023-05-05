@@ -119,6 +119,7 @@ pub enum Syntax {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SignalType {
     Actor,
+    Message,
 }
 
 impl From<bool> for Syntax {
@@ -899,7 +900,15 @@ impl Syntax {
             Self::Call(box Syntax::Signal(signal_type, signal_id), expr) => match signal_type {
                 SignalType::Actor => {
                     if let Some(tx) = system.get_holder().get_actor(signal_id).await {
-                        if tx.send(actor::Message::Signal(*expr)).await.is_err() {
+                        if tx
+                            .send(actor::Message::Signal(Syntax::Contextual(
+                                ctx.get_id(),
+                                system.get_id(),
+                                expr,
+                            )))
+                            .await
+                            .is_err()
+                        {
                             Ok(Syntax::ValAtom("false".to_string()))
                         } else {
                             Ok(Syntax::ValAtom("true".to_string()))
@@ -908,7 +917,22 @@ impl Syntax {
                         Ok(Syntax::ValAtom("false".to_string()))
                     }
                 }
-                _ => Ok(Syntax::ValAtom("false".to_string())),
+                SignalType::Message => Ok(
+                    match system
+                        .get_holder()
+                        .send_message(
+                            signal_id,
+                            Syntax::Contextual(ctx.get_id(), system.get_id(), expr),
+                        )
+                        .await
+                    {
+                        Ok(()) => Syntax::ValAtom("success".to_string()),
+                        Err(err) => Syntax::Tuple(
+                            Box::new(Syntax::ValAtom("error".to_string())),
+                            Box::new(Syntax::ValStr(format!("{}", err))),
+                        ),
+                    },
+                ),
             },
             Self::Call(box Syntax::Id(id), body) => {
                 make_call(
@@ -1569,9 +1593,8 @@ async fn make_call(
         match (id.as_str(), body.reduce().await) {
             ("export", Syntax::Id(id)) => {
                 if let Some(val) = ctx.get_from_values(&id, values_defined_here).await {
-                    if let Ok(val) = val.execute(false, ctx, system).await {
-                        ctx.replace_from_values(&id, val).await;
-                    }
+                    let val = val.reduce_all().await;
+                    ctx.replace_from_values(&id, val).await;
 
                     if ctx.add_global(&id, values_defined_here).await {
                         return Ok(Syntax::ValAny());

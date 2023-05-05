@@ -44,3 +44,15 @@ export fetch
 ##
 exit code = syscall (@exit, code)
 export exit
+
+##
+# Spawn a message channel
+##
+channel = syscall (@createmsg, _)
+export channel
+
+##
+# Receive a message from a channel
+##
+recv_channel handle = syscall (@recvmsg, handle)
+export recv_channel
