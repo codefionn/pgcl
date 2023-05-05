@@ -38,6 +38,7 @@ The interpreter uses
 * [x] Message passing
 * [ ] File system access
 * [ ] Networking (Server/Client)
+* [ ] Immediate execution
 
 ## Structures
 
