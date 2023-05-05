@@ -39,6 +39,7 @@ The interpreter uses
 * [ ] File system access
 * [ ] Networking (Server/Client)
 * [ ] Immediate execution
+* [ ] Make lists and maps more lazy
 
 ## Structures
 
