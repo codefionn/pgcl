@@ -18,6 +18,7 @@ use crate::{
     context::ContextHandler,
     errors::InterpreterError,
     execute::{SignalType, Syntax},
+    executor::Executor,
     rational::BigRational,
 };
 
@@ -155,7 +156,7 @@ impl PrivateSystem {
             (SystemCallType::MeasureTime, expr) => {
                 let now = Instant::now();
 
-                let expr = expr.execute(false, ctx, system).await?;
+                let expr = Executor::new(ctx, system).execute(expr, false).await?;
 
                 let diff = now.elapsed().as_secs_f64();
                 let diff: BigRational = BigRational::from_f64(diff).unwrap();
@@ -311,7 +312,11 @@ impl PrivateSystem {
                     Box::new(Syntax::Id("syscall".to_string())),
                     Box::new(Syntax::Tuple(
                         Box::new(Syntax::ValAtom(syscall.to_systemcall().to_string())),
-                        Box::new(expr.execute_once(false, no_change, ctx, system).await?),
+                        Box::new(
+                            Executor::new(ctx, system)
+                                .execute_once(expr, false, no_change)
+                                .await?,
+                        ),
                     )),
                 ))
             }

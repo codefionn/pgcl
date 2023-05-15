@@ -6,7 +6,7 @@ use crate::{
     execute::Syntax,
     lexer::Token,
     parser::{Parser, SyntaxKind},
-    system::SystemHandler,
+    system::SystemHandler, executor::Executor,
 };
 
 async fn parse(
@@ -30,7 +30,7 @@ async fn parse(
         Err(InterpreterError::UnknownError())
     } else {
         let ast: Syntax = (*ast).try_into()?;
-        ast.execute(true, ctx, system).await
+        Executor::new(ctx, system).execute(ast, true).await
     }
 }
 

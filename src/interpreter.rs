@@ -10,7 +10,7 @@ use crate::{
     parser::{print_ast, Parser, SyntaxKind},
     reader::{ExecutedMessage, LineMessage},
     system::{SystemHandler, SystemHolder},
-    Args,
+    Args, executor::Executor,
 };
 
 /// Actor for interpreting input lines from the CLI
@@ -140,6 +140,7 @@ impl InterpreterExecuteActor {
         );
 
         let mut main_system: SystemHandler = self.system.get_handler(0).await.unwrap();
+        let mut executor = Executor::new(&mut main_ctx, &mut main_system);
 
         // Save the length of the error vec in the main context
         // This helps to only output current errors
@@ -199,7 +200,7 @@ impl InterpreterExecuteActor {
                             let reduced: Syntax = typed.reduce().await;
 
                             debug!("{}", reduced);
-                            match reduced.execute(true, &mut main_ctx, &mut main_system).await {
+                            match executor.execute(reduced, true).await {
                                 Ok(executed) => {
                                     if executed != Syntax::ValAny() {
                                         println!("{executed}");
@@ -213,7 +214,7 @@ impl InterpreterExecuteActor {
                                 Err(_) => {}
                             }
 
-                            let errors = main_ctx.get_errors().await;
+                            let errors = executor.get_ctx().get_errors().await;
                             if last_error_len < errors.len() {
                                 eprintln!("{:?}", &errors[last_error_len..]);
                                 last_error_len = errors.len();

@@ -5,6 +5,7 @@ mod actor;
 mod context;
 mod errors;
 mod execute;
+mod executor;
 mod interpreter;
 mod lexer;
 mod parser;
@@ -20,7 +21,6 @@ use std::path::PathBuf;
 use anyhow::anyhow;
 use clap::Parser;
 use context::ContextHolder;
-use execute::execute_code;
 use log::{debug, LevelFilter};
 use system::SystemHandler;
 use tokio::sync::mpsc;
@@ -55,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
         let mut holder = ContextHolder::default();
         let mut systems = SystemHandler::async_default().await;
 
-        execute_code(
+        crate::executor::execute_code(
             &filepath.to_string_lossy(),
             filepath.parent().map(|path| path.to_path_buf()),
             code.as_str(),
