@@ -1283,16 +1283,44 @@ impl Syntax {
             }
             Self::Lst(lst) => {
                 let mut result = Vec::with_capacity(lst.len());
+                let mut should_execute = true;
                 for e in lst {
-                    result.push(e.execute_once(false, no_change, ctx, system).await?);
+                    if should_execute {
+                        let previous = e.clone();
+                        let executed = e.execute_once(false, no_change, ctx, system).await?;
+                        let changed = previous != executed;
+
+                        result.push(executed);
+
+                        if changed {
+                            should_execute = false;
+                            break;
+                        }
+                    } else {
+                        result.push(e);
+                    }
                 }
 
                 Ok(Self::Lst(result))
             }
             Self::LstMatch(lst) => {
                 let mut result = Vec::new();
+                let mut should_execute = true;
                 for e in lst {
-                    result.push(e.execute_once(false, no_change, ctx, system).await?);
+                    if should_execute {
+                        let previous = e.clone();
+                        let executed = e.execute_once(false, no_change, ctx, system).await?;
+                        let changed = previous != executed;
+
+                        result.push(executed);
+
+                        if changed {
+                            should_execute = false;
+                            break;
+                        }
+                    } else {
+                        result.push(e);
+                    }
                 }
 
                 Ok(Self::LstMatch(result))
