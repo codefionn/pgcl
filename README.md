@@ -23,6 +23,12 @@ The interpreter uses
 [logos](https://github.com/maciejhirsz/logos) for lexing and
 [rowan](https://github.com/rust-analyzer/rowan) for parsing.
 
+> To be honest im pretty torn on what to do with this project. I could either:
+>
+> 1. optimize for performance
+> 2. optimize the output of the intermidiate steps, so that this interpreter is
+>    a better learning tool for functional programming languages
+
 ## TODO
 
 * [x] List
