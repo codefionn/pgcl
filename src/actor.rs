@@ -1,7 +1,7 @@
 use log::{debug, error};
 use tokio::{sync::mpsc, task::JoinHandle};
 
-use crate::{context::ContextHandler, execute::Syntax, system::SystemHandler, executor::Executor};
+use crate::{context::ContextHandler, execute::{Syntax, Executor}, system::SystemHandler};
 
 #[derive(Debug, Clone)]
 pub enum Message {

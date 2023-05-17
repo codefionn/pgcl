@@ -10,7 +10,7 @@ use crate::{
     parser::{print_ast, Parser, SyntaxKind},
     reader::{ExecutedMessage, LineMessage},
     system::{SystemHandler, SystemHolder},
-    Args, executor::Executor,
+    Args, execute::Executor,
 };
 
 /// Actor for interpreting input lines from the CLI

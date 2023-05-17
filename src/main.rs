@@ -1,11 +1,10 @@
 #![feature(box_patterns)]
 #![feature(iterator_try_collect)]
 
+mod execute;
 mod actor;
 mod context;
 mod errors;
-mod execute;
-mod executor;
 mod interpreter;
 mod lexer;
 mod parser;
@@ -55,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
         let mut holder = ContextHolder::default();
         let mut systems = SystemHandler::async_default().await;
 
-        crate::executor::execute_code(
+        crate::execute::execute_code(
             &filepath.to_string_lossy(),
             filepath.parent().map(|path| path.to_path_buf()),
             code.as_str(),

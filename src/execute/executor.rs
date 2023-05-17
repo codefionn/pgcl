@@ -956,11 +956,11 @@ async fn import_std_lib(
         Ok(Syntax::Context(ctx.get_id(), system.get_id(), path))
     } else {
         let code = if path == "std" {
-            include_str!("./modules/std.pgcl")
+            include_str!("../modules/std.pgcl")
         } else if path == "sys" {
-            include_str!("./modules/sys.pgcl")
+            include_str!("../modules/sys.pgcl")
         } else if path == "str" {
-            include_str!("./modules/str.pgcl")
+            include_str!("../modules/str.pgcl")
         } else {
             ctx.push_error(format!("Expected {path} to be a file"))
                 .await;
