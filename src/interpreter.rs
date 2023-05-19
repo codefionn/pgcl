@@ -5,12 +5,13 @@ use tokio::sync::mpsc;
 use crate::{
     context::{ContextHandler, ContextHolder},
     errors::InterpreterError,
+    execute::Executor,
     execute::{BiOpType, Syntax},
     lexer::Token,
     parser::{print_ast, Parser, SyntaxKind},
     reader::{ExecutedMessage, LineMessage},
     system::{SystemHandler, SystemHolder},
-    Args, execute::Executor,
+    Args,
 };
 
 /// Actor for interpreting input lines from the CLI

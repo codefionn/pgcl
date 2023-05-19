@@ -2,7 +2,7 @@ use async_recursion::async_recursion;
 use bigdecimal::BigDecimal;
 use futures::{
     future::{join_all, OptionFuture},
-    StreamExt
+    StreamExt,
 };
 use log::debug;
 use std::collections::{BTreeMap, HashSet};

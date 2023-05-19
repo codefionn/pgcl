@@ -1,7 +1,13 @@
-use std::{path::PathBuf, collections::BTreeMap};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use crate::{
-    context::{ContextHandler, ContextHolder, PrivateContext}, errors::InterpreterError, execute::{Syntax, BiOpType, SignalType}, system::{SystemHandler, SystemCallType}, parser::{Parser, SyntaxKind}, lexer::Token, actor,
+    actor,
+    context::{ContextHandler, ContextHolder, PrivateContext},
+    errors::InterpreterError,
+    execute::{BiOpType, SignalType, Syntax},
+    lexer::Token,
+    parser::{Parser, SyntaxKind},
+    system::{SystemCallType, SystemHandler},
 };
 use async_recursion::async_recursion;
 use futures::{future::join_all, StreamExt, TryStreamExt};
@@ -184,7 +190,8 @@ impl<'a, 'b> Executor<'a, 'b> {
                     }
                 }
                 SignalType::Message => Ok(
-                    match self.system
+                    match self
+                        .system
                         .get_holder()
                         .send_message(
                             signal_id,
@@ -223,7 +230,12 @@ impl<'a, 'b> Executor<'a, 'b> {
             }
             Syntax::Call(box Syntax::Contextual(ctx_id, system_id, box Syntax::Id(id)), rhs) => {
                 let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await.unwrap();
-                let mut system = self.system.get_holder().get_handler(system_id).await.unwrap();
+                let mut system = self
+                    .system
+                    .get_holder()
+                    .get_handler(system_id)
+                    .await
+                    .unwrap();
 
                 Ok(Syntax::Contextual(
                     ctx_id,
@@ -247,7 +259,12 @@ impl<'a, 'b> Executor<'a, 'b> {
                 let old_system_id = self.system.get_id();
 
                 let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await.unwrap();
-                let mut system = self.system.get_holder().get_handler(system_id).await.unwrap();
+                let mut system = self
+                    .system
+                    .get_holder()
+                    .get_handler(system_id)
+                    .await
+                    .unwrap();
                 let mut executor = Executor::new(&mut ctx, &mut system);
 
                 // Create a new contextual with the contents evaulated in the given context
@@ -288,7 +305,8 @@ impl<'a, 'b> Executor<'a, 'b> {
                     // Assignments are only allowed on the top-level
                     Ok(expr)
                 } else {
-                    self.ctx.insert_into_values(&id, *rhs, &mut values_defined_here)
+                    self.ctx
+                        .insert_into_values(&id, *rhs, &mut values_defined_here)
                         .await;
                     Ok(Syntax::ValAny())
                 }
@@ -298,19 +316,21 @@ impl<'a, 'b> Executor<'a, 'b> {
                     Ok(expr)
                 } else {
                     if let Ok((id, syntax)) = extract_id(*lhs.clone(), Vec::new()).await {
-                        self.ctx.insert_fns(
-                            id,
-                            (
-                                unpack_params(syntax, Default::default()).await?,
-                                rhs.reduce().await,
-                            ),
-                        )
-                        .await
+                        self.ctx
+                            .insert_fns(
+                                id,
+                                (
+                                    unpack_params(syntax, Default::default()).await?,
+                                    rhs.reduce().await,
+                                ),
+                            )
+                            .await
                     } else {
                         // This left-hand side isn't prepended by an identifier
                         // => Maybe it's a normal assignment of a let expression?
                         let rhs = self.execute(*rhs, false).await?;
-                        if !self.ctx
+                        if !self
+                            .ctx
                             .clone()
                             .set_values_in_context(
                                 &mut self.ctx.get_holder(),
@@ -321,10 +341,11 @@ impl<'a, 'b> Executor<'a, 'b> {
                             .await
                         {
                             self.ctx.remove_values(&mut values_defined_here).await;
-                            self.ctx.push_error(
-                                format!("{lhs} must be assignable to {rhs} but is not",),
-                            )
-                            .await;
+                            self.ctx
+                                .push_error(
+                                    format!("{lhs} must be assignable to {rhs} but is not",),
+                                )
+                                .await;
                         } else {
                             values_defined_here.clear();
                         }
@@ -350,7 +371,8 @@ impl<'a, 'b> Executor<'a, 'b> {
 
                         let new_rhs = self.execute_once(*rhs.clone(), first, no_change).await?;
                         if *rhs == new_rhs {
-                            self.ctx.push_error(format!("Let expression failed: {expr}"))
+                            self.ctx
+                                .push_error(format!("Let expression failed: {expr}"))
                                 .await;
 
                             Err(InterpreterError::LetDoesMatch(format!(
@@ -465,10 +487,11 @@ impl<'a, 'b> Executor<'a, 'b> {
                             let cond = self.execute_once(*cond, false, true).await?;
 
                             if cond == *old_cond {
-                                self.ctx.push_error(
-                                    "Expected :true or :false in if-condition".to_string(),
-                                )
-                                .await;
+                                self.ctx
+                                    .push_error(
+                                        "Expected :true or :false in if-condition".to_string(),
+                                    )
+                                    .await;
                                 expr
                             } else {
                                 Syntax::If(Box::new(cond), expr_true, expr_false)
@@ -490,7 +513,9 @@ impl<'a, 'b> Executor<'a, 'b> {
                 Ok(Syntax::Tuple(Box::new(lhs), Box::new(rhs)))
             }
             Syntax::UnexpectedArguments() => {
-                self.ctx.push_error("Unexpected arguments".to_string()).await;
+                self.ctx
+                    .push_error("Unexpected arguments".to_string())
+                    .await;
                 Ok(expr)
             }
             Syntax::Lst(lst) => {

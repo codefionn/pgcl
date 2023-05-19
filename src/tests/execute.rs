@@ -3,10 +3,10 @@ use rowan::GreenNodeBuilder;
 use crate::{
     context::{ContextHandler, ContextHolder},
     errors::InterpreterError,
-    execute::{Syntax, Executor},
+    execute::{Executor, Syntax},
     lexer::Token,
     parser::{Parser, SyntaxKind},
-    system::SystemHandler
+    system::SystemHandler,
 };
 
 async fn parse(
@@ -1125,13 +1125,13 @@ async fn test_two_ctx() {
     assert!(parse_to_str("x = 1", &mut ctx0, &mut system).await.is_ok());
     assert_eq!(
         Ok(r"1".to_string()),
-        Executor::new(&mut ctx1, &mut system).execute(Syntax::Contextual(
-            ctx0_id,
-            system_id,
-            Box::new(Syntax::Id("x".to_string()))
-        ), true)
-        .await
-        .map(|expr| format!("{}", expr))
+        Executor::new(&mut ctx1, &mut system)
+            .execute(
+                Syntax::Contextual(ctx0_id, system_id, Box::new(Syntax::Id("x".to_string()))),
+                true
+            )
+            .await
+            .map(|expr| format!("{}", expr))
     );
 }
 

@@ -3,10 +3,10 @@ use rowan::GreenNodeBuilder;
 use crate::{
     context::ContextHandler,
     errors::InterpreterError,
-    execute::{Syntax, Executor},
+    execute::{Executor, Syntax},
     lexer::Token,
     parser::{Parser, SyntaxKind},
-    system::SystemHandler
+    system::SystemHandler,
 };
 
 async fn parse(

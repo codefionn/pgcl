@@ -1,10 +1,10 @@
 #![feature(box_patterns)]
 #![feature(iterator_try_collect)]
 
-mod execute;
 mod actor;
 mod context;
 mod errors;
+mod execute;
 mod interpreter;
 mod lexer;
 mod parser;

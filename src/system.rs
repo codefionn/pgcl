@@ -17,7 +17,7 @@ use crate::{
     actor,
     context::ContextHandler,
     errors::InterpreterError,
-    execute::{SignalType, Syntax, Executor},
+    execute::{Executor, SignalType, Syntax},
     rational::BigRational,
 };
 
