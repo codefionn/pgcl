@@ -119,7 +119,7 @@ pub enum Token {
     Atom(String),
 
     // Yeah, understanding this regex in the future will be kinda hard
-    #[regex(r"\u{0022}([^\u{0022}\\]|\\([rnt\u{0022}\\']|u\{[A-F0-9][A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?\}))*\u{0022}", |lex| parse_string(lex.slice()))]
+    #[regex(r"\u{0022}([^\u{0022}\\]|\\([0rnt\\\\']|\u{0022}|u\{[A-F0-9][A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?\}))*\u{0022}", |lex| parse_string(lex.slice()))]
     Str(String),
 
     #[token("\n\r")]

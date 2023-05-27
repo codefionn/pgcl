@@ -11,8 +11,12 @@ async fn parse(line: &str) -> Result<Syntax, InterpreterError> {
     let toks = Token::lex_for_rowan(line);
     let toks: Vec<(SyntaxKind, String)> = toks
         .into_iter()
-        .map(|(tok, slice)| (tok.clone().try_into().unwrap(), slice.clone()))
-        .collect();
+        .map(
+            |(tok, slice)| -> Result<(SyntaxKind, String), InterpreterError> {
+                Ok((tok.clone().try_into()?, slice.clone()))
+            },
+        )
+        .try_collect()?;
 
     let (ast, errors) = Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse();
     if !errors.is_empty() {
@@ -75,5 +79,57 @@ async fn parse_std_right_expr() {
     assert_eq!(
         Ok(r"((std.right) ((1 2) 3))".to_string()),
         parse_to_str("std.right (1 2 3)").await
+    );
+}
+
+#[tokio::test]
+async fn parse_biop() {
+    assert_eq!(Ok(r"(x == y)".to_string()), parse_to_str("x == y").await);
+    assert_eq!(Ok(r"(x.y)".to_string()), parse_to_str("x.y").await);
+    assert_eq!(Ok(r"(x - y)".to_string()), parse_to_str("x - y").await);
+    assert_eq!(Ok(r"(x + y)".to_string()), parse_to_str("x + y").await);
+    assert_eq!(Ok(r"(x * y)".to_string()), parse_to_str("x * y").await);
+    assert_eq!(Ok(r"(x / y)".to_string()), parse_to_str("x / y").await);
+    assert_eq!(Ok(r"(x != y)".to_string()), parse_to_str("x != y").await);
+    assert_eq!(Ok(r"(x === y)".to_string()), parse_to_str("x === y").await);
+    assert_eq!(Ok(r"(x !== y)".to_string()), parse_to_str("x !== y").await);
+    assert_eq!(Ok(r"(x >= y)".to_string()), parse_to_str("x >= y").await);
+    assert_eq!(Ok(r"(x <= y)".to_string()), parse_to_str("x <= y").await);
+    assert_eq!(Ok(r"(x > y)".to_string()), parse_to_str("x > y").await);
+    assert_eq!(Ok(r"(x < y)".to_string()), parse_to_str("x < y").await);
+    assert_eq!(Ok(r"(x | y)".to_string()), parse_to_str("x | y").await);
+}
+
+#[tokio::test]
+async fn parse_str() {
+    assert_eq!(Ok("\"test\"".to_string()), parse_to_str("\"test\"").await);
+    assert_eq!(Ok("\"\\n\"".to_string()), parse_to_str("\"\\n\"").await);
+    assert_eq!(
+        Ok("\"\\t\\n\"".to_string()),
+        parse_to_str("\"\\t\\n\"").await
+    );
+    assert_eq!(
+        Ok("\"\\t\\n\"".to_string()),
+        parse_to_str("\"\\t\\n\"").await
+    );
+    assert_eq!(
+        Ok("\"\\r\\t\\n\"".to_string()),
+        parse_to_str("\"\\r\\t\\n\"").await
+    );
+    assert_eq!(
+        Ok("\"\\0\\r\\t\\n\"".to_string()),
+        parse_to_str("\"\\0\\r\\t\\n\"").await
+    );
+    assert_eq!(
+        Ok("\"\\\\0\\r\\t\\n\"".to_string()),
+        parse_to_str("\"\\\\\\0\\r\\t\\n\"").await
+    );
+    assert_eq!(
+        Ok("\"\\\"\\\\0\\r\\t\\n\"".to_string()),
+        parse_to_str("\"\\\"\\\\\\0\\r\\t\\n\"").await
+    );
+    assert_eq!(
+        Ok("\"\'\\\"\\\\0\\r\\t\\n\"".to_string()),
+        parse_to_str("\"\\\'\\\"\\\\\\0\\r\\t\\n\"").await
     );
 }

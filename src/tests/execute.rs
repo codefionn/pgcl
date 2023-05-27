@@ -119,6 +119,15 @@ async fn add_floats() {
         )
         .await
     );
+    assert_eq!(
+        Ok(format!("7")),
+        parse_to_str(
+            "let x = 2.5 in x + 4.5",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
 }
 
 #[tokio::test]
@@ -1184,6 +1193,26 @@ async fn test_map_add() {
         Ok("{ x: 10, y: 12 }".to_string()),
         parse_to_str("{ x: 10 } + { x: 13, y: 12 }", &mut ctx, &mut system).await
     );
+
+    assert_eq!(
+        Ok("{ x: 10, y: 12, z: 2 }".to_string()),
+        parse_to_str(
+            "{ x: 10 } + { x: 13, y: 12 } + {z: 2}",
+            &mut ctx,
+            &mut system
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok("{ x: 10, y: 12, z: 2 }".to_string()),
+        parse_to_str(
+            "{ x: 10 } + ({ x: 13, y: 12 } + {z: 2})",
+            &mut ctx,
+            &mut system
+        )
+        .await
+    );
 }
 
 #[tokio::test]
@@ -1635,6 +1664,144 @@ async fn test_js_bool() {
         Ok("{ x: @true }".to_string()),
         parse_to_str(
             "{ x: true }",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+}
+
+#[tokio::test]
+async fn test_pipe() {
+    assert_eq!(
+        Ok("3".to_string()),
+        parse_to_str(
+            r"1 | (\x \y x + y) 2",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("2".to_string()),
+        parse_to_str(
+            r"2 | (\x \y x / y) 4",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+}
+
+#[tokio::test]
+async fn test_if_let() {
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            r"if let 0.1 = 0.1 then @true else @false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str(
+            r"if let 0.2 = 0.1 then @true else @false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            "if let \"x\" = \"x\" then @true else @false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str(
+            "if let \"x\" = \"y\" then @true else @false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+}
+
+#[tokio::test]
+async fn equal_type_coersion() {
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str(
+            "2.0 == 1.0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            "2.0 == 2.0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str(
+            "2.0 == 1",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            "2.0 == 2",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str(
+            "2 == 1.0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            "2 == 2.0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            "_ == 2.0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            "2 == _",
             &mut ContextHandler::async_default().await,
             &mut SystemHandler::async_default().await
         )
