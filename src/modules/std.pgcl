@@ -95,6 +95,10 @@ limit _ [] = []
 limit n [x:xs] = [x] + limit (n-1) xs
 export limit
 
+chunks [] _ = []
+chunks x  l = [limit l x] + chunks (offset l x) l
+export chunks
+
 ##
 # Logical **and** operation on two booleans.
 #

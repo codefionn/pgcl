@@ -380,3 +380,21 @@ async fn test_or_all() {
         parse_to_str("std.or_all [@false, @false, @false]").await
     );
 }
+
+#[tokio::test]
+async fn test_chunks() {
+    assert_eq!(Ok(format!("[]")), parse_to_str("std.chunks [] 1").await);
+    assert_eq!(Ok(format!("[[1]]")), parse_to_str("std.chunks [1] 1").await);
+    assert_eq!(
+        Ok(format!("[[1], [2]]")),
+        parse_to_str("std.chunks [1, 2] 1").await
+    );
+    assert_eq!(
+        Ok(format!("[[1], [2], [3]]")),
+        parse_to_str("std.chunks [1, 2, 3] 1").await
+    );
+    assert_eq!(
+        Ok(format!("[[1, 2], [3]]")),
+        parse_to_str("std.chunks [1, 2, 3] 2").await
+    );
+}
