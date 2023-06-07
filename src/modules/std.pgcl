@@ -95,8 +95,8 @@ limit _ [] = []
 limit n [x:xs] = [x] + limit (n-1) xs
 export limit
 
-chunks [] _ = []
-chunks x  l = [limit l x] + chunks (offset l x) l
+chunks _ [] = []
+chunks l x  = [limit l x] + chunks l (offset l x)
 export chunks
 
 ##
