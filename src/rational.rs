@@ -1,9 +1,11 @@
 use std::{hash::Hash, str::FromStr};
 
 use bigdecimal::{
-    num_bigint::ToBigInt, BigDecimal, FromPrimitive, One, ParseBigDecimalError, Zero,
+    num_bigint::ToBigInt, BigDecimal, FromPrimitive, One, ParseBigDecimalError, Zero, ToPrimitive,
 };
 use num::{BigInt, Integer};
+
+use crate::errors::InterpreterError;
 
 #[derive(Clone)]
 pub struct BigRational {
@@ -19,6 +21,12 @@ impl BigRational {
             quotient: quotient.into(),
             fraction: fraction.into(),
         }
+    }
+
+    pub fn split(self) -> (BigInt, BigInt) {
+        let res = self.reduce();
+
+        (res.quotient.to_bigint().unwrap(), res.fraction.to_bigint().unwrap())
     }
 
     /// Reduce rational
@@ -40,6 +48,14 @@ impl BigRational {
         self.fraction = self.fraction / gcd;
 
         self
+    }
+
+    pub fn abs(self) -> Self {
+        let mut result = self.reduce();
+        result.quotient = result.quotient.abs();
+        result.fraction = result.fraction.abs();
+
+        result
     }
 
     #[inline]
@@ -165,6 +181,14 @@ impl From<BigInt> for BigRational {
 impl From<BigRational> for BigDecimal {
     fn from(value: BigRational) -> Self {
         value.quotient / value.fraction
+    }
+}
+
+impl TryFrom<BigRational> for f64 {
+    type Error = InterpreterError;
+
+    fn try_from(value: BigRational) -> Result<Self, Self::Error> {
+        (value.quotient / value.fraction).to_f64().ok_or_else(|| InterpreterError::NumberTooBig())
     }
 }
 

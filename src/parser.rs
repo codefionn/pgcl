@@ -18,6 +18,7 @@ pub enum SyntaxKind {
     LstRight,
     MapLeft,
     MapRight,
+    OpPow,
     OpAdd,
     OpSub,
     OpMul,
@@ -563,11 +564,19 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         )
     }
 
+    fn parse_pow(&mut self, first: bool) -> bool {
+        self.handle_operation(
+            first,
+            &[SyntaxKind::OpPow],
+            Self::parse_call,
+        )
+    }
+
     fn parse_mul(&mut self, first: bool) -> bool {
         self.handle_operation(
             first,
             &[SyntaxKind::OpMul, SyntaxKind::OpDiv],
-            Self::parse_call,
+            Self::parse_pow,
         )
     }
 
@@ -811,6 +820,7 @@ impl TryInto<Syntax> for SyntaxElement {
                                     SyntaxKind::OpNeq => Ok(OpNeq),
                                     SyntaxKind::OpStrictEq => Ok(OpStrictEq),
                                     SyntaxKind::OpStrictNeq => Ok(OpStrictNeq),
+                                    SyntaxKind::OpPow => Ok(OpPow),
                                     SyntaxKind::OpAdd => Ok(OpAdd),
                                     SyntaxKind::OpSub => Ok(OpSub),
                                     SyntaxKind::OpMul => Ok(OpMul),

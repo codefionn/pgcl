@@ -1,20 +1,20 @@
 use async_recursion::async_recursion;
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use futures::{
     future::{join_all, OptionFuture},
     StreamExt,
 };
-use log::debug;
 use std::collections::{BTreeMap, HashSet};
+use num::pow::Pow;
+use num::Zero;
+use num::FromPrimitive;
 
-use crate::{
-    actor,
-    parser::{Parser, SyntaxKind},
-    rational::BigRational,
-};
+use crate::rational::BigRational;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BiOpType {
+    /// Operator power
+    OpPow,
     /// Operator addition
     OpAdd,
     /// Operator substract
@@ -248,6 +248,131 @@ impl Syntax {
                 Box::new(Self::ValFlt(int_to_flt(x) / int_to_flt(y))),
                 expr,
             ),
+            Self::BiOp(BiOpType::OpPow, box Self::ValInt(x), box Self::ValInt(y)) => {
+                if y == 0.into() {
+                    Self::ValInt(1.into())
+                } else if y > 0.into() && y <= u64::MAX.into() {
+                    let y: u64 = y.try_into().unwrap();
+                    Self::ValInt(x.pow(y))
+                } else if y < 0.into() && -y.clone() <= u64::MAX.into() {
+                    let y: u64 = (-y).try_into().unwrap();
+                    Self::ValFlt(BigRational::new(1, x.pow(y)))
+                } else {
+                    Self::UnexpectedArguments()
+                }
+            },
+            Self::BiOp(BiOpType::OpPow, box Self::ValInt(x), box Self::ValFlt(y)) => {
+                if y.is_zero() {
+                    Self::ValInt(1.into())
+                } else {
+                    let yp = y.clone().abs();
+                    let (u, d) = yp.clone().split();
+                    let ints = u.clone() / d.clone();
+                    let roots_parts = u - ints.clone() * d.clone();
+
+                    let ints: u64 = match ints.try_into() {
+                        Ok(i) => i,
+                        Err(_) => {
+                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValInt(x)), Box::new(Self::ValFlt(y)));
+                        }
+                    };
+
+                    let mut result = BigRational::new(x.clone().pow(ints), 1);
+
+                    let roots_parts: u64 = match roots_parts.try_into() {
+                        Ok(i) => i,
+                        Err(_) => {
+                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValInt(x)), Box::new(Self::ValFlt(y)));
+                        }
+                    };
+
+                    let d: u32 = match d.try_into() {
+                        Ok(d) => d,
+                        Err(_) => {
+                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValInt(x)), Box::new(Self::ValFlt(y)));
+                        }
+                    };
+
+                    let xf: f64 = match x.to_u64().map(|xf| xf as f64) {
+                        Some(xf) => xf,
+                        _ => {
+                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValInt(x)), Box::new(Self::ValFlt(y)));
+                        }
+                    };
+
+                    println!("{}", roots_parts);
+                    for _ in 0..roots_parts {
+                        println!("{:?}, {}, {}", result, d, xf.clone().sqrt());
+                        if d == 2 {
+                            result = result * BigRational::from_f64(xf.clone().sqrt()).unwrap();
+                        } else {
+                            result = result * BigRational::from_f64(xf.clone().powf(1.0 / d as f64)).unwrap();
+                        }
+                    }
+
+                    if y < BigRational::new(0, 1) {
+                        result = BigRational::new(-1, 1) / result;
+                    }
+
+                    Self::ValFlt(result)
+                }
+            }
+            Self::BiOp(BiOpType::OpPow, box Self::ValFlt(x), box Self::ValFlt(y)) => {
+                if y.is_zero() {
+                    Self::ValInt(1.into())
+                } else {
+                    let yp = y.clone().abs();
+                    let (u, d) = yp.clone().split();
+                    let ints = u.clone() / d.clone();
+                    let roots_parts = u - ints.clone() * d.clone();
+
+                    let ints: i32 = match ints.try_into() {
+                        Ok(i) => i,
+                        Err(_) => {
+                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValFlt(x)), Box::new(Self::ValFlt(y)));
+                        }
+                    };
+
+                    let xf: f64 = match x.clone().try_into() {
+                        Ok(xf) => xf,
+                        _ => {
+                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValFlt(x)), Box::new(Self::ValFlt(y)));
+                        }
+                    };
+
+                    let mut result = BigRational::from_f64(xf.clone().powi(ints)).unwrap();
+
+                    let roots_parts: u64 = match roots_parts.try_into() {
+                        Ok(i) => i,
+                        Err(_) => {
+                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValFlt(x)), Box::new(Self::ValFlt(y)));
+                        }
+                    };
+
+                    let d: u32 = match d.try_into() {
+                        Ok(d) => d,
+                        Err(_) => {
+                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValFlt(x)), Box::new(Self::ValFlt(y)));
+                        }
+                    };
+
+                    println!("{}", roots_parts);
+                    for _ in 0..roots_parts {
+                        println!("{:?}, {}, {}", result, d, xf.clone().sqrt());
+                        if d == 2 {
+                            result = result * BigRational::from_f64(xf.clone().sqrt()).unwrap();
+                        } else {
+                            result = result * BigRational::from_f64(xf.clone().powf(1.0 / d as f64)).unwrap();
+                        }
+                    }
+
+                    if y < BigRational::new(0, 1) {
+                        result = BigRational::new(1, 1) / result;
+                    }
+
+                    Self::ValFlt(result)
+                }
+            }
             Self::BiOp(BiOpType::OpAdd, box Self::ValInt(x), box Self::ValInt(y)) => {
                 Self::ValInt(x + y)
             }
@@ -797,6 +922,7 @@ impl std::fmt::Display for BiOpType {
             Self::OpGt => ">",
             Self::OpLt => "<",
             Self::OpPipe => "|",
+            Self::OpPow => "**",
         })
     }
 }

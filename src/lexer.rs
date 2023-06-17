@@ -30,6 +30,9 @@ pub enum Token {
     #[token("}")]
     MapRight,
 
+    #[token("**")]
+    OpPow,
+
     #[token("+")]
     OpAdd,
 
@@ -145,6 +148,7 @@ impl Token {
             use Token::*;
             let slice = match tok.clone() {
                 Lambda | ParenLeft | ParenRight | LstLeft | LstRight | MapLeft | MapRight
+                | OpPow
                 | OpAdd | OpSub | OpMul | OpDiv | Unpack | OpPeriod | OpComma | OpAsg | OpEq
                 | OpStrictEq | OpNeq | OpStrictNeq | OpMap | KwIn | KwLet | NewLine | Semicolon
                 | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe | KwIf | KwElse | KwThen | Error => {
@@ -175,6 +179,7 @@ impl TryInto<SyntaxKind> for Token {
             Token::LstRight => Ok(SyntaxKind::LstRight),
             Token::MapLeft => Ok(SyntaxKind::MapLeft),
             Token::MapRight => Ok(SyntaxKind::MapRight),
+            Token::OpPow => Ok(SyntaxKind::OpPow),
             Token::OpAdd => Ok(SyntaxKind::OpAdd),
             Token::OpSub => Ok(SyntaxKind::OpSub),
             Token::OpMul => Ok(SyntaxKind::OpMul),

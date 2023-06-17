@@ -21,5 +21,6 @@ pub enum InterpreterError {
     LetDoesMatch(String),
     ContextNotInFile(String),
     ImportFileDoesNotExist(String),
+    NumberTooBig(),
     ProgramTerminatedByUser(i32),
 }
