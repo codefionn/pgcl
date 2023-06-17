@@ -261,6 +261,17 @@ impl Syntax {
                     Self::UnexpectedArguments()
                 }
             },
+            Self::BiOp(BiOpType::OpPow, box Self::ValFlt(x), box Self::ValInt(y)) => {
+                if y == 0.into() {
+                    Self::ValInt(1.into())
+                } else if y >= i32::MIN.into() && y <= i32::MAX.into() && x >= BigRational::from_f64(f64::MIN).unwrap() && x <= BigRational::from_f64(f64::MAX).unwrap() {
+                    let y: i32 = y.try_into().unwrap();
+                    let x: f64 = x.try_into().unwrap();
+                    Self::ValFlt(BigRational::from_f64(x.powi(y)).unwrap())
+                } else {
+                    Self::BiOp(BiOpType::OpPow, Box::new(Self::ValFlt(x)), Box::new(Self::ValInt(y)))
+                }
+            },
             Self::BiOp(BiOpType::OpPow, box Self::ValInt(x), box Self::ValFlt(y)) => {
                 if y.is_zero() {
                     Self::ValInt(1.into())

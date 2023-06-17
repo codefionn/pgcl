@@ -1808,3 +1808,52 @@ async fn equal_type_coersion() {
         .await
     );
 }
+
+#[tokio::test]
+async fn pow() {
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "2 ** 2",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "2.0 ** 2",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "2 ** 2.0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("16".to_string()),
+        parse_to_str(
+            "4 ** 2.0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("8".to_string()),
+        parse_to_str(
+            "4 ** (3 / 2)",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+}
