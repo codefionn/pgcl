@@ -4,10 +4,10 @@ use futures::{
     future::{join_all, OptionFuture},
     StreamExt,
 };
-use std::collections::{BTreeMap, HashSet};
 use num::pow::Pow;
-use num::Zero;
 use num::FromPrimitive;
+use num::Zero;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::rational::BigRational;
 
@@ -43,6 +43,8 @@ pub enum BiOpType {
     OpPipe,
     /// Operator get in
     OpPeriod,
+    // For operators-as-functions
+    OpComma,
 }
 
 /// Representing a typed syntax tree
@@ -60,6 +62,7 @@ pub enum Syntax {
         /* expr: */ Box<Syntax>,
     ),
     Pipe(Box<Syntax>),
+    FnOp(/* op: */ BiOpType),
     BiOp(
         /* op: */ BiOpType,
         /* rhs: */ Box<Syntax>,
@@ -198,6 +201,12 @@ impl Syntax {
                     )
                 }
             }
+            expr @ Self::FnOp(_) => expr,
+            Self::Call(box Self::Call(box Self::FnOp(BiOpType::OpComma), lhs), rhs) => {
+                Self::Tuple(lhs, rhs)
+            }
+            Self::Call(box Self::Call(box Self::FnOp(op), lhs), rhs) => Self::BiOp(op, lhs, rhs),
+            Self::BiOp(BiOpType::OpComma, lhs, rhs) => Self::Tuple(lhs, rhs),
             Self::BiOp(BiOpType::OpPipe, lhs, rhs) => Self::Call(rhs, lhs),
             Self::BiOp(
                 BiOpType::OpAdd,
@@ -260,18 +269,26 @@ impl Syntax {
                 } else {
                     Self::UnexpectedArguments()
                 }
-            },
+            }
             Self::BiOp(BiOpType::OpPow, box Self::ValFlt(x), box Self::ValInt(y)) => {
                 if y == 0.into() {
                     Self::ValInt(1.into())
-                } else if y >= i32::MIN.into() && y <= i32::MAX.into() && x >= BigRational::from_f64(f64::MIN).unwrap() && x <= BigRational::from_f64(f64::MAX).unwrap() {
+                } else if y >= i32::MIN.into()
+                    && y <= i32::MAX.into()
+                    && x >= BigRational::from_f64(f64::MIN).unwrap()
+                    && x <= BigRational::from_f64(f64::MAX).unwrap()
+                {
                     let y: i32 = y.try_into().unwrap();
                     let x: f64 = x.try_into().unwrap();
                     Self::ValFlt(BigRational::from_f64(x.powi(y)).unwrap())
                 } else {
-                    Self::BiOp(BiOpType::OpPow, Box::new(Self::ValFlt(x)), Box::new(Self::ValInt(y)))
+                    Self::BiOp(
+                        BiOpType::OpPow,
+                        Box::new(Self::ValFlt(x)),
+                        Box::new(Self::ValInt(y)),
+                    )
                 }
-            },
+            }
             Self::BiOp(BiOpType::OpPow, box Self::ValInt(x), box Self::ValFlt(y)) => {
                 if y.is_zero() {
                     Self::ValInt(1.into())
@@ -284,7 +301,11 @@ impl Syntax {
                     let ints: u64 = match ints.try_into() {
                         Ok(i) => i,
                         Err(_) => {
-                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValInt(x)), Box::new(Self::ValFlt(y)));
+                            return Self::BiOp(
+                                BiOpType::OpPow,
+                                Box::new(Self::ValInt(x)),
+                                Box::new(Self::ValFlt(y)),
+                            );
                         }
                     };
 
@@ -293,21 +314,33 @@ impl Syntax {
                     let roots_parts: u64 = match roots_parts.try_into() {
                         Ok(i) => i,
                         Err(_) => {
-                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValInt(x)), Box::new(Self::ValFlt(y)));
+                            return Self::BiOp(
+                                BiOpType::OpPow,
+                                Box::new(Self::ValInt(x)),
+                                Box::new(Self::ValFlt(y)),
+                            );
                         }
                     };
 
                     let d: u32 = match d.try_into() {
                         Ok(d) => d,
                         Err(_) => {
-                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValInt(x)), Box::new(Self::ValFlt(y)));
+                            return Self::BiOp(
+                                BiOpType::OpPow,
+                                Box::new(Self::ValInt(x)),
+                                Box::new(Self::ValFlt(y)),
+                            );
                         }
                     };
 
                     let xf: f64 = match x.to_u64().map(|xf| xf as f64) {
                         Some(xf) => xf,
                         _ => {
-                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValInt(x)), Box::new(Self::ValFlt(y)));
+                            return Self::BiOp(
+                                BiOpType::OpPow,
+                                Box::new(Self::ValInt(x)),
+                                Box::new(Self::ValFlt(y)),
+                            );
                         }
                     };
 
@@ -317,7 +350,8 @@ impl Syntax {
                         if d == 2 {
                             result = result * BigRational::from_f64(xf.clone().sqrt()).unwrap();
                         } else {
-                            result = result * BigRational::from_f64(xf.clone().powf(1.0 / d as f64)).unwrap();
+                            result = result
+                                * BigRational::from_f64(xf.clone().powf(1.0 / d as f64)).unwrap();
                         }
                     }
 
@@ -340,14 +374,22 @@ impl Syntax {
                     let ints: i32 = match ints.try_into() {
                         Ok(i) => i,
                         Err(_) => {
-                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValFlt(x)), Box::new(Self::ValFlt(y)));
+                            return Self::BiOp(
+                                BiOpType::OpPow,
+                                Box::new(Self::ValFlt(x)),
+                                Box::new(Self::ValFlt(y)),
+                            );
                         }
                     };
 
                     let xf: f64 = match x.clone().try_into() {
                         Ok(xf) => xf,
                         _ => {
-                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValFlt(x)), Box::new(Self::ValFlt(y)));
+                            return Self::BiOp(
+                                BiOpType::OpPow,
+                                Box::new(Self::ValFlt(x)),
+                                Box::new(Self::ValFlt(y)),
+                            );
                         }
                     };
 
@@ -356,14 +398,22 @@ impl Syntax {
                     let roots_parts: u64 = match roots_parts.try_into() {
                         Ok(i) => i,
                         Err(_) => {
-                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValFlt(x)), Box::new(Self::ValFlt(y)));
+                            return Self::BiOp(
+                                BiOpType::OpPow,
+                                Box::new(Self::ValFlt(x)),
+                                Box::new(Self::ValFlt(y)),
+                            );
                         }
                     };
 
                     let d: u32 = match d.try_into() {
                         Ok(d) => d,
                         Err(_) => {
-                            return Self::BiOp(BiOpType::OpPow, Box::new(Self::ValFlt(x)), Box::new(Self::ValFlt(y)));
+                            return Self::BiOp(
+                                BiOpType::OpPow,
+                                Box::new(Self::ValFlt(x)),
+                                Box::new(Self::ValFlt(y)),
+                            );
                         }
                     };
 
@@ -373,7 +423,8 @@ impl Syntax {
                         if d == 2 {
                             result = result * BigRational::from_f64(xf.clone().sqrt()).unwrap();
                         } else {
-                            result = result * BigRational::from_f64(xf.clone().powf(1.0 / d as f64)).unwrap();
+                            result = result
+                                * BigRational::from_f64(xf.clone().powf(1.0 / d as f64)).unwrap();
                         }
                     }
 
@@ -624,6 +675,7 @@ impl Syntax {
                 .collect()
                 .await,
             ),
+            expr @ Self::FnOp(_) => expr,
             Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => Self::BiOp(
                 BiOpType::OpPeriod,
                 Box::new(Self::Contextual(ctx_id, system_id, lhs).reduce().await),
@@ -796,6 +848,7 @@ impl Syntax {
             expr @ Self::Context(_, _, _) => expr,
             expr @ Self::Signal(_, _) => expr,
             Self::Pipe(expr) => Self::Pipe(Box::new(expr.replace_args(key, value).await)),
+            expr @ Self::FnOp(_) => expr,
         }
     }
 
@@ -888,6 +941,7 @@ impl Syntax {
             Self::Context(_, _, _) => {}
             Self::Contextual(_, _, _) => {}
             Self::Signal(_, _) => {}
+            Self::FnOp(_) => {}
         }
 
         result
@@ -934,6 +988,7 @@ impl std::fmt::Display for BiOpType {
             Self::OpLt => "<",
             Self::OpPipe => "|",
             Self::OpPow => "**",
+            Self::OpComma => ",",
         })
     }
 }
@@ -1090,6 +1145,7 @@ impl std::fmt::Display for Syntax {
                 Self::Contextual(_, _, expr) => format!("{expr}"),
                 Self::Context(_, _, id) => id.to_string(),
                 Self::Signal(_, _) => "signal".to_string(),
+                Self::FnOp(op) => format!("({op})"),
             }
             .as_str(),
         )

@@ -95,9 +95,20 @@ limit _ [] = []
 limit n [x:xs] = [x] + limit (n-1) xs
 export limit
 
+##
+# Generate a list of lists, where each list has at most the specified length.
+# Only the last list in the resulting list can have a lower length than the
+# specified one.
+##
 chunks _ [] = []
 chunks l x  = [limit l x] + chunks l (offset l x)
 export chunks
+
+##
+# Converts a list to a tuple
+##
+tuplize [x:xs] = foldl (,) x xs
+export tuplize
 
 ##
 # Logical **and** operation on two booleans.

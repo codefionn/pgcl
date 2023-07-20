@@ -1,7 +1,7 @@
 use std::{hash::Hash, str::FromStr};
 
 use bigdecimal::{
-    num_bigint::ToBigInt, BigDecimal, FromPrimitive, One, ParseBigDecimalError, Zero, ToPrimitive,
+    num_bigint::ToBigInt, BigDecimal, FromPrimitive, One, ParseBigDecimalError, ToPrimitive, Zero,
 };
 use num::{BigInt, Integer};
 
@@ -26,7 +26,10 @@ impl BigRational {
     pub fn split(self) -> (BigInt, BigInt) {
         let res = self.reduce();
 
-        (res.quotient.to_bigint().unwrap(), res.fraction.to_bigint().unwrap())
+        (
+            res.quotient.to_bigint().unwrap(),
+            res.fraction.to_bigint().unwrap(),
+        )
     }
 
     /// Reduce rational
@@ -188,7 +191,9 @@ impl TryFrom<BigRational> for f64 {
     type Error = InterpreterError;
 
     fn try_from(value: BigRational) -> Result<Self, Self::Error> {
-        (value.quotient / value.fraction).to_f64().ok_or_else(|| InterpreterError::NumberTooBig())
+        (value.quotient / value.fraction)
+            .to_f64()
+            .ok_or_else(|| InterpreterError::NumberTooBig())
     }
 }
 

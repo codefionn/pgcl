@@ -1857,3 +1857,16 @@ async fn pow() {
         .await
     );
 }
+
+#[tokio::test]
+async fn test_fn_op() {
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "(+) 3 1",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::async_default().await
+        )
+        .await
+    );
+}

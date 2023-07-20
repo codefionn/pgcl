@@ -34,7 +34,7 @@ The interpreter uses
 * [x] List
 * [x] JSON support
 * [x] Pipes
-* [ ] Operators as functions
+* [x] Operators as functions
 * [ ] Optimizations for groups with floating point numbers
 * [x] Import (modules)
 * [ ] Standard library

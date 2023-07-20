@@ -1,5 +1,5 @@
 ///! This module is for creating an untyped AST and creating an typed AST from it
-use std::{iter::Peekable, str::FromStr};
+use std::{collections::VecDeque, iter::Peekable, str::FromStr};
 
 use log::warn;
 use num::Num;
@@ -65,6 +65,7 @@ pub enum SyntaxKind {
 
     Error,
 
+    FnOp,
     BiOp,
     Root,
 }
@@ -72,6 +73,30 @@ pub enum SyntaxKind {
 impl From<SyntaxKind> for rowan::SyntaxKind {
     fn from(kind: SyntaxKind) -> Self {
         Self(kind as u16)
+    }
+}
+
+impl SyntaxKind {
+    fn is_bi_op(&self) -> bool {
+        match self {
+            Self::OpPow
+            | Self::OpAdd
+            | Self::OpSub
+            | Self::OpMul
+            | Self::OpDiv
+            | Self::OpPeriod
+            | Self::OpComma
+            | Self::OpAsg
+            | Self::OpEq
+            | Self::OpStrictEq
+            | Self::OpNeq
+            | Self::OpGeq
+            | Self::OpLeq
+            | Self::OpGt
+            | Self::OpLt
+            | Self::OpStrictNeq => true,
+            _ => false,
+        }
     }
 }
 
@@ -98,17 +123,19 @@ pub type SyntaxElement = rowan::NodeOrToken<SyntaxNode, SyntaxToken>;
 pub struct Parser<I: Iterator<Item = (SyntaxKind, String)>> {
     builder: GreenNodeBuilder<'static>,
     errors: Vec<String>,
-    iter: Peekable<I>,
+    iter: I,
+    buffer: VecDeque<(SyntaxKind, String)>,
     tuple: Vec<bool>,
     line: usize,
     is_let: Vec<bool>,
 }
 
 impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
-    pub fn new(builder: GreenNodeBuilder<'static>, iter: Peekable<I>) -> Self {
+    pub fn new(builder: GreenNodeBuilder<'static>, iter: I) -> Self {
         Self {
             builder,
             iter,
+            buffer: VecDeque::new(),
             errors: Default::default(),
             tuple: Vec::new(),
             line: 1,
@@ -126,13 +153,43 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         }
     }
 
+    fn bufferize(&mut self, len: usize) -> bool {
+        for _ in 0..len {
+            if let Some(tok) = self.iter.next() {
+                self.buffer.push_back(tok);
+            } else {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     fn peek(&mut self) -> Option<SyntaxKind> {
-        self.iter.peek().map(|&(t, _)| t)
+        self.peek_nth(0)
+    }
+
+    fn peek_nth(&mut self, offset: usize) -> Option<SyntaxKind> {
+        if self.buffer.len() <= offset {
+            if !self.bufferize(offset - self.buffer.len() + 1) {
+                return None;
+            }
+        }
+
+        Some(self.buffer.get(offset)?.0)
+    }
+
+    fn next(&mut self) -> Option<(SyntaxKind, String)> {
+        if let Some((token, string)) = self.buffer.pop_front() {
+            Some((token, string))
+        } else {
+            self.iter.next()
+        }
     }
 
     /// Bump the current token to rowan
     fn bump(&mut self) {
-        if let Some((token, string)) = self.iter.next() {
+        if let Some((token, string)) = self.next() {
             self.builder.token(token.into(), string.as_str());
         }
     }
@@ -165,7 +222,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 true
             }
             Some(SyntaxKind::OpPipe) if first => {
-                self.iter.next(); // skip |
+                self.next(); // skip |
 
                 let checkpoint = self.builder.checkpoint();
                 if self.parse_expr(first) {
@@ -181,7 +238,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             Some(SyntaxKind::LstLeft) => {
                 self.tuple.push(false);
 
-                self.iter.next(); // skip [
+                self.next(); // skip [
                 let checkpoint = self.builder.checkpoint();
 
                 if Some(SyntaxKind::LstRight) != self.peek() {
@@ -190,14 +247,14 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                         self.builder
                             .start_node_at(checkpoint, SyntaxKind::Lst.into());
                         while Some(SyntaxKind::OpComma) == self.peek() {
-                            self.iter.next();
+                            self.next();
                             self.parse_expr(false);
                         }
                     } else if Some(SyntaxKind::OpMap) == self.peek() {
                         self.builder
                             .start_node_at(checkpoint, SyntaxKind::LstMatch.into());
                         while Some(SyntaxKind::OpMap) == self.peek() {
-                            self.iter.next();
+                            self.next();
                             self.parse_expr(false);
                         }
                     } else {
@@ -214,7 +271,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 }
 
                 if Some(SyntaxKind::LstRight) == self.peek() {
-                    self.iter.next(); // skip maybe ]
+                    self.next(); // skip maybe ]
                 }
 
                 self.builder.finish_node();
@@ -223,7 +280,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 true
             }
             Some(SyntaxKind::MapLeft) => {
-                self.iter.next();
+                self.next();
 
                 let checkpoint = self.builder.checkpoint();
 
@@ -252,7 +309,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                         }
 
                         if Some(SyntaxKind::OpMap) == self.peek() {
-                            self.iter.next(); // skip :
+                            self.next(); // skip :
 
                             self.parse_expr(false);
                         } else {
@@ -262,7 +319,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                         self.builder.finish_node();
 
                         if Some(SyntaxKind::OpComma) == self.peek() {
-                            self.iter.next();
+                            self.next();
                         }
                     }
 
@@ -286,15 +343,28 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 }
 
                 if Some(SyntaxKind::MapRight) == self.peek() {
-                    self.iter.next(); // skip
+                    self.next(); // skip
                 }
 
                 true
             }
             Some(SyntaxKind::ParenLeft) => {
+                self.next(); // skip
                 self.tuple.push(true);
 
-                self.iter.next(); // skip
+                // Special case for operators-as-functions
+                if self.peek_nth(0).map(|tok| tok.is_bi_op()).unwrap_or(false)
+                    && self.peek_nth(1) == Some(SyntaxKind::ParenRight)
+                {
+                    self.builder.start_node(SyntaxKind::FnOp.into());
+                    self.bump();
+                    self.builder.finish_node();
+
+                    self.next(); // skip
+                    self.tuple.pop().unwrap();
+
+                    return true;
+                }
 
                 self.builder.start_node(SyntaxKind::ExplicitExpr.into());
                 self.parse_expr(false);
@@ -303,7 +373,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     .map(|tok| tok == SyntaxKind::ParenRight)
                     .unwrap_or(false)
                 {
-                    self.iter.next(); // skip
+                    self.next(); // skip
                 } else {
                     self.errors.push("Expected )".to_string());
                 }
@@ -315,7 +385,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 true
             }
             Some(SyntaxKind::If) => {
-                self.iter.next(); // skip
+                self.next(); // skip
                 self.skip_newlines();
 
                 if self
@@ -324,7 +394,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     .unwrap_or(false)
                 {
                     // parse an if-let statement
-                    self.iter.next(); // skip
+                    self.next(); // skip
                     self.skip_newlines();
                     self.builder.start_node(SyntaxKind::IfLet.into());
                     self.parse_let_args(SyntaxKind::KwThen);
@@ -338,7 +408,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                         .map(|tok| tok == SyntaxKind::KwThen)
                         .unwrap_or(false)
                     {
-                        self.iter.next(); // skip
+                        self.next(); // skip
                         self.skip_newlines();
                     } else {
                         self.errors.push("Expected 'then'".to_string());
@@ -353,7 +423,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     .map(|tok| tok == SyntaxKind::KwElse)
                     .unwrap_or(false)
                 {
-                    self.iter.next(); // skip
+                    self.next(); // skip
                     self.skip_newlines();
                 } else {
                     self.errors.push("Expected 'else'".to_string());
@@ -367,7 +437,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 true
             }
             Some(SyntaxKind::KwLet) => {
-                self.iter.next(); // Skip let
+                self.next(); // Skip let
                 self.skip_newlines();
 
                 self.builder.start_node(SyntaxKind::KwLet.into());
@@ -379,7 +449,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 true
             }
             Some(SyntaxKind::Lambda) => {
-                self.iter.next(); // Skip \
+                self.next(); // Skip \
                 self.builder.start_node(SyntaxKind::Lambda.into());
 
                 if !self
@@ -398,7 +468,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     .map(|tok| tok == SyntaxKind::OpAsg)
                     .unwrap_or(false)
                 {
-                    self.iter.next(); // ignore
+                    self.next(); // ignore
                 }
 
                 self.skip_newlines();
@@ -413,7 +483,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 if allow_empty {
                     false
                 } else {
-                    self.iter.next(); // Skip -
+                    self.next(); // Skip -
 
                     self.builder.start_node(SyntaxKind::BiOp.into());
                     self.builder.token(SyntaxKind::Int.into(), "0");
@@ -451,7 +521,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         loop {
             // Allow the 'then' or 'in' the next line
             if count > 0 && self.peek().map(|tok| tok == end).unwrap_or(false) {
-                self.iter.next();
+                self.next();
                 self.skip_newlines();
                 break;
             }
@@ -478,14 +548,14 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 .map(|tok| tok == SyntaxKind::Semicolon)
                 .unwrap_or(false)
             {
-                self.iter.next();
+                self.next();
                 self.skip_newlines();
                 count += 1;
                 continue;
             }
 
             if self.peek().map(|tok| tok == end).unwrap_or(false) {
-                self.iter.next();
+                self.next();
                 self.skip_newlines();
                 break;
             }
@@ -565,11 +635,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     }
 
     fn parse_pow(&mut self, first: bool) -> bool {
-        self.handle_operation(
-            first,
-            &[SyntaxKind::OpPow],
-            Self::parse_call,
-        )
+        self.handle_operation(first, &[SyntaxKind::OpPow], Self::parse_call)
     }
 
     fn parse_mul(&mut self, first: bool) -> bool {
@@ -621,7 +687,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
 
             exprs_cnt += 1;
             if self.peek() == Some(SyntaxKind::Semicolon) {
-                self.iter.next();
+                self.next();
                 self.skip_newlines();
             } else {
                 break;
@@ -640,7 +706,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     fn skip_newlines(&mut self) -> usize {
         let mut lines = 0;
         while self.peek() == Some(SyntaxKind::NewLine) {
-            self.iter.next();
+            self.next();
 
             lines += 1;
             self.line += 1;
@@ -662,7 +728,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         }
 
         while self.peek() == Some(SyntaxKind::NewLine) {
-            self.iter.next();
+            self.next();
             self.line += 1;
 
             let peeked = self.peek();
@@ -712,6 +778,42 @@ impl TryInto<Syntax> for SyntaxElement {
                                     .try_collect()?,
                             ))
                         }
+                    }
+                    SyntaxKind::FnOp => {
+                        let op = children
+                            .next()
+                            .and_then(|x| {
+                                if let NodeOrToken::Token(tok) = x {
+                                    Some(tok)
+                                } else {
+                                    None
+                                }
+                            })
+                            .ok_or(InterpreterError::ExpectedOperator())?;
+
+                        use crate::execute::BiOpType::*;
+
+                        Ok(Syntax::FnOp(
+                            (match op.kind() {
+                                SyntaxKind::OpEq => Ok(OpEq),
+                                SyntaxKind::OpNeq => Ok(OpNeq),
+                                SyntaxKind::OpStrictEq => Ok(OpStrictEq),
+                                SyntaxKind::OpStrictNeq => Ok(OpStrictNeq),
+                                SyntaxKind::OpPow => Ok(OpPow),
+                                SyntaxKind::OpAdd => Ok(OpAdd),
+                                SyntaxKind::OpSub => Ok(OpSub),
+                                SyntaxKind::OpMul => Ok(OpMul),
+                                SyntaxKind::OpDiv => Ok(OpDiv),
+                                SyntaxKind::OpGeq => Ok(OpGeq),
+                                SyntaxKind::OpLeq => Ok(OpLeq),
+                                SyntaxKind::OpGt => Ok(OpGt),
+                                SyntaxKind::OpLt => Ok(OpLt),
+                                SyntaxKind::OpPipe => Ok(OpPipe),
+                                SyntaxKind::OpPeriod => Ok(OpPeriod),
+                                SyntaxKind::OpComma => Ok(OpComma),
+                                _ => Err(InterpreterError::InvalidOperator()),
+                            })?,
+                        ))
                     }
                     SyntaxKind::ExplicitExpr => {
                         let child = children

@@ -603,6 +603,7 @@ impl<'a, 'b> Executor<'a, 'b> {
             }
             expr @ Syntax::Context(_, _, _) => Ok(expr),
             expr @ Syntax::Signal(_, _) => Ok(expr),
+            expr @ Syntax::FnOp(_) => Ok(expr),
         }?;
 
         Ok(expr)
@@ -639,6 +640,7 @@ impl<'a, 'b> Executor<'a, 'b> {
             old = expr.clone();
         }
 
+        debug!("{:?}", expr);
         Ok(expr)
     }
 }

@@ -133,3 +133,10 @@ async fn parse_str() {
         parse_to_str("\"\\\'\\\"\\\\\\0\\r\\t\\n\"").await
     );
 }
+
+#[tokio::test]
+async fn parse_fn_op() {
+    assert_eq!(Ok("(+)".to_string()), parse_to_str("(+)").await);
+    assert_eq!(Ok("(*)".to_string()), parse_to_str("(*)").await);
+    assert_eq!(Ok("(,)".to_string()), parse_to_str("(,)").await);
+}

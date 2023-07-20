@@ -398,3 +398,31 @@ async fn test_chunks() {
         parse_to_str("std.chunks 2 [1, 2, 3]").await
     );
 }
+
+#[tokio::test]
+async fn test_tuplize() {
+    assert_eq!(
+        Ok(format!("(0, 1)")),
+        parse_to_str("std.tuplize [0, 1]").await
+    );
+
+    assert_eq!(
+        Ok(format!("(2, 1)")),
+        parse_to_str("std.tuplize [2, 1]").await
+    );
+
+    assert_eq!(
+        Ok(format!("0")),
+        parse_to_str("std.tuplize [0]").await
+    );
+
+    assert_eq!(
+        Ok(format!("1")),
+        parse_to_str("std.tuplize [1]").await
+    );
+
+    assert_eq!(
+        Ok(format!("((0, 1), 2)")),
+        parse_to_str("std.tuplize [0, 1, 2]").await
+    );
+}
