@@ -4,6 +4,7 @@ use std::{
 };
 
 use bigdecimal::{BigDecimal, ToPrimitive};
+use futures::future::join_all;
 use log::debug;
 use num::FromPrimitive;
 use tokio::{
@@ -421,19 +422,32 @@ impl System {
     }
 }
 
+struct ActorHandle {
+    pub tx: mpsc::Sender<crate::actor::Message>,
+    pub handle: JoinHandle<()>,
+    pub used: bool,
+}
+
+impl ActorHandle {
+    async fn destroy(self) -> JoinHandle<()> {
+        self.tx.send(crate::actor::Message::Exit()).await.ok();
+
+        self.handle
+    }
+}
+
+struct MessageHandle {
+    pub tx: mpsc::Sender<crate::actor::Message>,
+    pub rx: mpsc::Receiver<crate::actor::Message>,
+    pub used: bool,
+}
+
 struct PrivateSystemHolder {
     systems: HashMap<usize, Arc<Mutex<PrivateSystem>>>,
     last_id: usize,
-    actors: HashMap<usize, mpsc::Sender<crate::actor::Message>>,
-    actors_handle: Vec<JoinHandle<()>>,
+    actors: HashMap<usize, ActorHandle>,
     last_actor_id: usize,
-    messages: HashMap<
-        usize,
-        (
-            mpsc::Sender<crate::actor::Message>,
-            mpsc::Receiver<crate::actor::Message>,
-        ),
-    >,
+    messages: HashMap<usize, MessageHandle>,
     last_message_id: usize,
 }
 
@@ -451,7 +465,6 @@ impl Default for PrivateSystemHolder {
             .collect(),
             last_id: 0,
             actors: Default::default(),
-            actors_handle: Default::default(),
             last_actor_id: 0,
             messages: Default::default(),
             last_message_id: 0,
@@ -482,14 +495,20 @@ impl PrivateSystemHolder {
         let id = self.last_actor_id;
         self.last_actor_id += 1;
 
-        self.actors.insert(id, tx);
-        self.actors_handle.push(handle);
+        self.actors.insert(
+            id,
+            ActorHandle {
+                tx,
+                handle,
+                used: false,
+            },
+        );
 
         id
     }
 
     pub fn get_actor(&self, id: usize) -> Option<mpsc::Sender<crate::actor::Message>> {
-        self.actors.get(&id).cloned()
+        self.actors.get(&id).map(|actor| actor.tx.clone())
     }
 
     pub fn create_message(&mut self) -> (usize, mpsc::Sender<crate::actor::Message>) {
@@ -497,13 +516,20 @@ impl PrivateSystemHolder {
         self.last_message_id += 1;
 
         let (tx, rx) = mpsc::channel(128);
-        self.messages.insert(id, (tx.clone(), rx));
+        self.messages.insert(
+            id,
+            MessageHandle {
+                tx: tx.clone(),
+                rx,
+                used: false,
+            },
+        );
 
         (id, tx)
     }
 
     pub async fn recv_message(&mut self, id: usize) -> Option<Syntax> {
-        let (_, rx) = self.messages.get_mut(&id)?;
+        let rx = &mut self.messages.get_mut(&id)?.rx;
 
         rx.recv()
             .await
@@ -515,7 +541,7 @@ impl PrivateSystemHolder {
     }
 
     pub fn get_message_sender(&self, id: usize) -> Option<mpsc::Sender<crate::actor::Message>> {
-        self.messages.get(&id).map(|(tx, _)| tx.clone())
+        self.messages.get(&id).map(|msg| msg.tx.clone())
     }
 
     pub async fn drop_actors(&mut self) -> Vec<JoinHandle<()>> {
@@ -526,13 +552,14 @@ impl PrivateSystemHolder {
         debug!("Dropping actors");
         // We have to return the actors, otherwise the runtime will be locked
 
-        for actor_tx in self.actors.values() {
-            actor_tx.send(crate::actor::Message::Exit()).await.ok();
-        }
+
+
+        let result = join_all(self.actors.drain().map(|(_, actor)| actor.destroy()))
+        .await;
 
         debug!("Awaiting actor tasks");
 
-        self.actors_handle.drain(..).collect()
+        result
     }
 }
 

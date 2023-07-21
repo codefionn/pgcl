@@ -209,7 +209,10 @@ impl Syntax {
 
                                 if matches {
                                     let (lst0, lst1) = new_asgs.pop().unwrap();
-                                    return Self::Let((Box::new(lst0), Box::new(lst1)), Box::new(expr_true.reduce().await));
+                                    return Self::Let(
+                                        (Box::new(lst0), Box::new(lst1)),
+                                        Box::new(expr_true.reduce().await),
+                                    );
                                 }
                             }
                         }

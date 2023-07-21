@@ -411,15 +411,9 @@ async fn test_tuplize() {
         parse_to_str("std.tuplize [2, 1]").await
     );
 
-    assert_eq!(
-        Ok(format!("0")),
-        parse_to_str("std.tuplize [0]").await
-    );
+    assert_eq!(Ok(format!("0")), parse_to_str("std.tuplize [0]").await);
 
-    assert_eq!(
-        Ok(format!("1")),
-        parse_to_str("std.tuplize [1]").await
-    );
+    assert_eq!(Ok(format!("1")), parse_to_str("std.tuplize [1]").await);
 
     assert_eq!(
         Ok(format!("((0, 1), 2)")),

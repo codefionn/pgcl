@@ -18,12 +18,16 @@ pub struct Executor<'a, 'b> {
     ctx: &'a mut ContextHandler,
     system: &'b mut SystemHandler,
     // Hide the change in the debug mode (to create more meaningful output)
-    hide_change: bool
+    hide_change: bool,
 }
 
 impl<'a, 'b> Executor<'a, 'b> {
     pub fn new(ctx: &'a mut ContextHandler, system: &'b mut SystemHandler) -> Self {
-        Self { ctx, system, hide_change: false }
+        Self {
+            ctx,
+            system,
+            hide_change: false,
+        }
     }
 
     pub fn get_ctx(&mut self) -> &mut ContextHandler {

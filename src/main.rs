@@ -1,5 +1,6 @@
 #![feature(box_patterns)]
 #![feature(iterator_try_collect)]
+#![feature(async_fn_in_trait)]
 
 mod actor;
 mod context;
