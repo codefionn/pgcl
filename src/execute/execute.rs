@@ -194,6 +194,27 @@ impl Syntax {
                 if new_asgs.is_empty() {
                     expr_true.reduce().await
                 } else {
+                    if new_asgs.len() == 1 {
+                        if let (Self::LstMatch(lst0), Self::Lst(lst1)) = &new_asgs[0] {
+                            if lst0.len() <= lst1.len() + 1 {
+                                let mut matches = true;
+                                for i in 0..lst0.len().min(lst1.len()) {
+                                    if let Self::Id(_) = lst0[i] {
+                                        continue;
+                                    } else if lst0[i] != lst1[0] {
+                                        matches = false;
+                                        break;
+                                    }
+                                }
+
+                                if matches {
+                                    let (lst0, lst1) = new_asgs.pop().unwrap();
+                                    return Self::Let((Box::new(lst0), Box::new(lst1)), Box::new(expr_true.reduce().await));
+                                }
+                            }
+                        }
+                    }
+
                     Self::IfLet(
                         new_asgs,
                         Box::new(expr_true.reduce().await),

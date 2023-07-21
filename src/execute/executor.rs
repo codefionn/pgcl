@@ -17,11 +17,13 @@ use rowan::GreenNodeBuilder;
 pub struct Executor<'a, 'b> {
     ctx: &'a mut ContextHandler,
     system: &'b mut SystemHandler,
+    // Hide the change in the debug mode (to create more meaningful output)
+    hide_change: bool
 }
 
 impl<'a, 'b> Executor<'a, 'b> {
     pub fn new(ctx: &'a mut ContextHandler, system: &'b mut SystemHandler) -> Self {
-        Self { ctx, system }
+        Self { ctx, system, hide_change: false }
     }
 
     pub fn get_ctx(&mut self) -> &mut ContextHandler {
@@ -208,6 +210,8 @@ impl<'a, 'b> Executor<'a, 'b> {
                 ),
             },
             Syntax::Call(box Syntax::Id(id), body) => {
+                self.hide_change = true;
+
                 make_call(
                     self.ctx,
                     self.system,
@@ -229,6 +233,8 @@ impl<'a, 'b> Executor<'a, 'b> {
                 Ok(fn_expr.replace_args(&id, &expr).await)
             }
             Syntax::Call(box Syntax::Contextual(ctx_id, system_id, box Syntax::Id(id)), rhs) => {
+                self.hide_change = true;
+
                 let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await.unwrap();
                 let mut system = self
                     .system
@@ -255,6 +261,8 @@ impl<'a, 'b> Executor<'a, 'b> {
                 ))
             }
             Syntax::Call(box Syntax::Contextual(ctx_id, system_id, lhs), rhs) => {
+                self.hide_change = true;
+
                 let old_ctx_id = self.ctx.get_id();
                 let old_system_id = self.system.get_id();
 
@@ -616,6 +624,8 @@ impl<'a, 'b> Executor<'a, 'b> {
         let mut old = expr.clone();
         let mut haschanged = true;
         loop {
+            self.hide_change = false;
+
             expr = self
                 .execute_once(expr.reduce().await, first, !haschanged)
                 .await?;
@@ -633,14 +643,14 @@ impl<'a, 'b> Executor<'a, 'b> {
                 haschanged = true;
             }
 
-            if first && expr != Syntax::ValAny() && haschanged {
+            if !self.hide_change && first && expr != Syntax::ValAny() && haschanged {
                 debug!("{}", expr);
             }
 
             old = expr.clone();
         }
 
-        debug!("{:?}", expr);
+        //debug!("{:?}", expr);
         Ok(expr)
     }
 }
