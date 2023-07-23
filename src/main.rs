@@ -12,6 +12,7 @@ mod parser;
 mod rational;
 mod reader;
 mod system;
+mod syscall;
 
 #[cfg(test)]
 mod tests;

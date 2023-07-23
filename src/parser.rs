@@ -1,5 +1,5 @@
 ///! This module is for creating an untyped AST and creating an typed AST from it
-use std::{collections::VecDeque, iter::Peekable, str::FromStr};
+use std::collections::VecDeque;
 
 use log::warn;
 use num::Num;
