@@ -5,7 +5,9 @@ This interpreter and programming language are subject to huge change.
 ```
 
 PGCL - *pretty good calculator language* - is a language for basic
-calculations. Designed for (*my*) rapid success doing calculations.
+calculations. Designed for (*my*) rapid success doing calculations. It is also
+an educational tool, which tries to visualize how functional programming
+languages *could* work.
 
 It is a functional programming language.
 
@@ -22,12 +24,6 @@ And `0.1 + 0.2 == 0.3` is true here ...
 The interpreter uses
 [logos](https://github.com/maciejhirsz/logos) for lexing and
 [rowan](https://github.com/rust-analyzer/rowan) for parsing.
-
-> To be honest im pretty torn on what to do with this project. I could either:
->
-> 1. optimize for performance
-> 2. optimize the output of the intermidiate steps, so that this interpreter is
->    a better learning tool for functional programming languages
 
 ## TODO
 
