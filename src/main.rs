@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .map_err(|err| anyhow!("{:?}", err))?;
 
-        systems.get_holder().drop_actors().await?;
+        systems.get_holder().exit().await;
 
         debug!("Exiting main");
     } else {

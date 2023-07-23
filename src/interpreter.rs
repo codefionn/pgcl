@@ -239,8 +239,8 @@ impl InterpreterExecuteActor {
                         })
                         .map_err(|err| anyhow::anyhow!("{err:?}"))?;
                 }
-                _ => {
-                    self.system.drop_actors().await?;
+                LexerMessage::Exit() => {
+                    self.system.exit().await;
 
                     break;
                 }
