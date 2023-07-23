@@ -419,4 +419,9 @@ async fn test_tuplize() {
         Ok(format!("((0, 1), 2)")),
         parse_to_str("std.tuplize [0, 1, 2]").await
     );
+
+    assert_eq!(
+        Ok(format!("((0, 1), 2)")),
+        parse_to_str("{ tuplize } = import std; tuplize [0, 1, 2]").await
+    );
 }

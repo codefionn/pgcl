@@ -360,17 +360,16 @@ impl PrivateContext {
 
                 true
             }
-            (Syntax::MapMatch(lhs), Syntax::Context(ctx_id, _system_id, _)) => {
+            (Syntax::MapMatch(lhs), Syntax::Context(ctx_id, system_id, _)) => {
                 let mut ctx = holder.get(*ctx_id).await.unwrap();
 
                 for (key, key_into, val, is_id) in lhs.iter() {
-                    debug!("{}", ctx_id);
                     if let Some(rhs) = ctx.get_global(key).await {
                         if *is_id {
                             self.set_values_in_context(
                                 holder,
                                 &Syntax::Id(key.clone()),
-                                &rhs,
+                                &Syntax::Contextual(*ctx_id, *system_id, Box::new(rhs.clone())),
                                 values_defined_here,
                             )
                             .await;
@@ -378,7 +377,7 @@ impl PrivateContext {
                             self.set_values_in_context(
                                 holder,
                                 &Syntax::Id(key.clone()),
-                                &rhs,
+                                &Syntax::Contextual(*ctx_id, *system_id, Box::new(rhs.clone())),
                                 values_defined_here,
                             )
                             .await;

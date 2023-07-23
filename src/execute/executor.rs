@@ -648,12 +648,14 @@ impl<'a, 'b> Executor<'a, 'b> {
             }
 
             if !self.hide_change && first && expr != Syntax::ValAny() && haschanged {
+                //debug!("{:?}", expr);
                 debug!("{}", expr);
             }
 
             old = expr.clone();
         }
 
+        //debug!("{}", expr);
         //debug!("{:?}", expr);
         Ok(expr)
     }
