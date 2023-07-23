@@ -11,8 +11,8 @@ mod lexer;
 mod parser;
 mod rational;
 mod reader;
-mod system;
 mod syscall;
+mod system;
 
 #[cfg(test)]
 mod tests;

@@ -5,13 +5,13 @@ use std::{
 
 use anyhow::anyhow;
 use futures::{future::join_all, SinkExt};
-use log::{error, debug};
+use log::{debug, error};
 use tokio::{
     sync::{mpsc, oneshot, Mutex},
     task::JoinHandle,
 };
 
-pub use crate::syscall::{SystemCallType, PrivateSystem};
+pub use crate::syscall::{PrivateSystem, SystemCallType};
 use crate::{
     actor,
     context::ContextHandler,
@@ -94,7 +94,7 @@ impl std::fmt::Debug for SystemActorMessage {
             Self::GetMessage(id, _) => f.write_str(format!("GetMessage({})", id).as_str()),
             Self::RecvMessage(id, _) => f.write_str(format!("RecvMessage({})", id).as_str()),
             Self::Exit(_) => f.write_str("Exit()"),
-            Self::RealExit() => f.write_str("RealExit()")
+            Self::RealExit() => f.write_str("RealExit()"),
         }
     }
 }
@@ -152,7 +152,7 @@ impl SystemActor {
                 messages: Default::default(),
                 last_message_id: 0,
                 rx,
-                tx
+                tx,
             };
 
             actor.run_actor().await;
@@ -193,7 +193,8 @@ impl SystemActor {
                     exit_handle = Some(result);
 
                     let tx = self.tx.clone();
-                    let actors_tx: Vec<mpsc::Sender<crate::actor::Message>> = self.actors.values().map(|actor| actor.tx.clone()).collect();
+                    let actors_tx: Vec<mpsc::Sender<crate::actor::Message>> =
+                        self.actors.values().map(|actor| actor.tx.clone()).collect();
                     tokio::spawn(async move {
                         log::debug!("Exiting {} actors", actors_tx.len());
                         let mut actors_wait_handlers = Vec::new();
@@ -216,7 +217,7 @@ impl SystemActor {
                             error!("{}", err);
                         }
                     });
-                },
+                }
                 SystemActorMessage::RealExit() => break,
             }
         }
@@ -319,7 +320,8 @@ impl SystemActor {
             if let Err(err) = actor.destroy().await.await {
                 error!("{}", err);
             }
-        })).await;
+        }))
+        .await;
 
         debug!("Awaiting actor tasks");
     }

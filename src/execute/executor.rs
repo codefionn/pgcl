@@ -245,7 +245,9 @@ impl<'a, 'b> Executor<'a, 'b> {
                     .get_holder()
                     .get_handler(system_id)
                     .await
-                    .ok_or(InterpreterError::InternalError(format!("Expected system handler")))?;
+                    .ok_or(InterpreterError::InternalError(format!(
+                        "Expected system handler"
+                    )))?;
 
                 Ok(Syntax::Contextual(
                     ctx_id,
@@ -276,7 +278,9 @@ impl<'a, 'b> Executor<'a, 'b> {
                     .get_holder()
                     .get_handler(system_id)
                     .await
-                    .ok_or(InterpreterError::InternalError(format!("Expected system handler")))?;
+                    .ok_or(InterpreterError::InternalError(format!(
+                        "Expected system handler"
+                    )))?;
                 let mut executor = Executor::new(&mut ctx, &mut system);
 
                 // Create a new contextual with the contents evaulated in the given context

@@ -1,22 +1,18 @@
 use std::collections::BTreeMap;
 
-use bigdecimal::{BigDecimal, ToPrimitive};
-use futures::SinkExt;
-use log::{error, debug};
-use num::FromPrimitive;
-use tokio::{
-    process::Command,
-    sync::oneshot,
-    time::Instant,
-};
 use crate::{
     actor,
     context::ContextHandler,
     errors::InterpreterError,
     execute::{Executor, SignalType, Syntax},
     rational::BigRational,
-    system::SystemHandler
+    system::SystemHandler,
 };
+use bigdecimal::{BigDecimal, ToPrimitive};
+use futures::SinkExt;
+use log::{debug, error};
+use num::FromPrimitive;
+use tokio::{process::Command, sync::oneshot, time::Instant};
 
 #[derive(Clone, Debug, PartialEq, Hash, Eq, PartialOrd, Ord, Copy)]
 pub enum SystemCallType {
@@ -93,7 +89,6 @@ impl TryFrom<&str> for SystemCallType {
     }
 }
 
-
 pub struct PrivateSystem {
     id: usize,
     map: BTreeMap<SystemCallType, Syntax>,
@@ -101,10 +96,7 @@ pub struct PrivateSystem {
 
 impl PrivateSystem {
     pub fn new(id: usize, map: BTreeMap<SystemCallType, Syntax>) -> Self {
-        Self {
-            id,
-            map
-        }
+        Self { id, map }
     }
 
     pub fn get_id(&self) -> usize {
@@ -224,10 +216,10 @@ impl PrivateSystem {
                                     }
 
                                     Ok(Syntax::ValAtom("true".to_string()))
-                                },
+                                }
                                 Err(_) => Ok(Syntax::ValAtom("false".to_string())),
                             }
-                        },
+                        }
                         _ => Ok(Syntax::ValAtom("false".to_string())),
                     },
                     _ => Ok(false.into()),
@@ -318,19 +310,17 @@ impl PrivateSystem {
                 .recv_message(id)
                 .await
                 .map_err(|err| InterpreterError::InternalError(format!("{}", err))),
-            (syscall, expr) => {
-                Ok(Syntax::Call(
-                    Box::new(Syntax::Id("syscall".to_string())),
-                    Box::new(Syntax::Tuple(
-                        Box::new(Syntax::ValAtom(syscall.to_systemcall().to_string())),
-                        Box::new(
-                            Executor::new(ctx, system)
-                                .execute_once(expr, false, no_change)
-                                .await?,
-                        ),
-                    )),
-                ))
-            }
+            (syscall, expr) => Ok(Syntax::Call(
+                Box::new(Syntax::Id("syscall".to_string())),
+                Box::new(Syntax::Tuple(
+                    Box::new(Syntax::ValAtom(syscall.to_systemcall().to_string())),
+                    Box::new(
+                        Executor::new(ctx, system)
+                            .execute_once(expr, false, no_change)
+                            .await?,
+                    ),
+                )),
+            )),
         }
     }
 
@@ -401,5 +391,3 @@ where
         }
     }
 }
-
-
