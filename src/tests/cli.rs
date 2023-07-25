@@ -213,5 +213,19 @@ fn test_immediate() -> anyhow::Result<()> {
         .success()
         .stdout(predicate::str::is_match(r"^\[0, 1, 4, 9\]\n$")?);
 
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin(r"std = $ import std; std.map (\x x * x) [0, 1, 2, 3]")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^\[0, 1, 4, 9\]\n$")?);
+
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin(r"(std = $ import std; std.map (\x x * x) [0, 1, 2, 3])")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^\[0, 1, 4, 9\]\n$")?);
+
     Ok(())
 }

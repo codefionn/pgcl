@@ -380,8 +380,27 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     return true;
                 }
 
+
                 self.builder.start_node(SyntaxKind::ExplicitExpr.into());
-                self.parse_expr(false);
+                let checkpoint = self.builder.checkpoint();
+                let mut expr_cnt = 0;
+                loop {
+                    self.parse_expr(false);
+
+                    expr_cnt += 1;
+                    if self.peek() == Some(SyntaxKind::Semicolon) {
+                        self.next();
+                        self.skip_newlines();
+                    } else {
+                        break;
+                    }
+                }
+
+                if expr_cnt > 1 {
+                    self.builder.start_node_at(checkpoint, SyntaxKind::Root.into());
+                    self.builder.finish_node();
+                }
+
                 if self
                     .peek()
                     .map(|tok| tok == SyntaxKind::ParenRight)
@@ -700,7 +719,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             }
 
             exprs_cnt += 1;
-            if self.peek() == Some(SyntaxKind::Semicolon) {
+            if first && self.peek() == Some(SyntaxKind::Semicolon) {
                 self.next();
                 self.skip_newlines();
             } else {
