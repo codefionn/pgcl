@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
         let code = std::fs::read_to_string(&filepath)?;
 
         let mut holder = ContextHolder::default();
-        let mut systems = SystemHandler::async_default().await;
+        let mut systems = SystemHandler::default();
 
         crate::execute::execute_code(
             &filepath.to_string_lossy(),
@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .map_err(|err| anyhow!("{:?}", err))?;
 
-        systems.get_holder().exit().await;
+        systems.exit().await;
 
         debug!("Exiting main");
     } else {

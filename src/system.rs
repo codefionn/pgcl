@@ -7,7 +7,7 @@ use anyhow::anyhow;
 use futures::{future::join_all, SinkExt};
 use log::{debug, error};
 use tokio::{
-    sync::{mpsc, oneshot, Mutex},
+    sync::{broadcast, mpsc, oneshot, Mutex},
     task::JoinHandle,
 };
 
@@ -50,6 +50,8 @@ impl System {
     }
 }
 
+pub enum SystemHandleMessage {}
+
 enum SystemActorMessage {
     MarkUseSignal(SignalType, usize),
     StartCollectGarbage(),
@@ -59,6 +61,7 @@ enum SystemActorMessage {
         oneshot::Sender<(usize, Arc<Mutex<PrivateSystem>>)>,
     ),
     GetSystem(usize, oneshot::Sender<Option<Arc<Mutex<PrivateSystem>>>>),
+    DropSystemHandle(usize, oneshot::Sender<bool>),
     CreateActor(
         /* handle: */ JoinHandle<()>,
         /* tx: */ mpsc::Sender<crate::actor::Message>,
@@ -88,6 +91,9 @@ impl std::fmt::Debug for SystemActorMessage {
             Self::StopCollectGarbage() => f.write_str(format!("StopCollectGarbage()").as_str()),
             Self::CreateSystem(map, _) => f.write_str(format!("CreateSystem({:?})", map).as_str()),
             Self::GetSystem(id, _) => f.write_str(format!("GetSystem({})", id).as_str()),
+            Self::DropSystemHandle(id, _) => {
+                f.write_str(format!("DropSystemHandle({})", id).as_str())
+            }
             Self::CreateActor(_, _, _) => f.write_str(format!("CreateActor()").as_str()),
             Self::GetActor(id, _) => f.write_str(format!("GetActor({})", id).as_str()),
             Self::CreateMessage(_) => f.write_str(format!("CreateMessage()").as_str()),
@@ -124,6 +130,7 @@ struct MessageHandle {
 
 struct SystemActor {
     systems: HashMap<usize, Arc<Mutex<PrivateSystem>>>,
+    system_handles_count: usize,
     last_id: usize,
     actors: HashMap<usize, ActorHandle>,
     last_actor_id: usize,
@@ -146,6 +153,7 @@ impl SystemActor {
                 )]
                 .into_iter()
                 .collect(),
+                system_handles_count: 0,
                 last_id: 0,
                 actors: Default::default(),
                 last_actor_id: 0,
@@ -170,6 +178,9 @@ impl SystemActor {
                 }
                 SystemActorMessage::GetSystem(id, result) => {
                     result.send(self.get_system(id)).ok();
+                }
+                SystemActorMessage::DropSystemHandle(id, result) => {
+                    result.send(self.drop_system_handle(id).await).ok();
                 }
                 SystemActorMessage::CreateActor(handle, tx, result) => {
                     result.send(self.create_actor(handle, tx)).ok();
@@ -250,6 +261,10 @@ impl SystemActor {
         (id, system)
     }
 
+    pub async fn drop_system_handle(&mut self, id: usize) -> bool {
+        true
+    }
+
     pub fn create_actor(
         &mut self,
         handle: JoinHandle<()>,
@@ -328,15 +343,19 @@ impl SystemActor {
 }
 
 #[derive(Clone)]
-pub struct SystemHolder {
+pub struct SystemHandler {
+    id: usize,
     system: mpsc::Sender<SystemActorMessage>,
     actors: HashMap<usize, mpsc::Sender<crate::actor::Message>>,
     messages: HashMap<usize, mpsc::Sender<crate::actor::Message>>,
 }
 
-impl Default for SystemHolder {
-    fn default() -> Self {
-        SystemHolder {
+impl Default for SystemHandler {
+    fn default() -> SystemHandler {
+        let system_holder = SystemActor::run();
+
+        SystemHandler {
+            id: 0,
             system: SystemActor::run(),
             actors: Default::default(),
             messages: Default::default(),
@@ -344,8 +363,49 @@ impl Default for SystemHolder {
     }
 }
 
-impl SystemHolder {
-    pub async fn get(&mut self, id: usize) -> Option<System> {
+impl SystemHandler {
+    pub fn get_id(&self) -> usize {
+        self.id
+    }
+
+    pub async fn do_syscall(
+        &mut self,
+        ctx: &mut ContextHandler,
+        system: &mut SystemHandler,
+        no_change: bool,
+        syscall: SystemCallType,
+        expr: Syntax,
+    ) -> Result<Syntax, InterpreterError> {
+        self.get_system(self.id)
+            .await
+            .unwrap()
+            .do_syscall(ctx, system, no_change, syscall, expr)
+            .await
+    }
+
+    pub async fn get_handler(&mut self, id: usize) -> Option<SystemHandler> {
+        let (tx, rx) = oneshot::channel();
+        let get_system = self.system.send(SystemActorMessage::GetSystem(id, tx));
+        let result = SystemHandler {
+            id,
+            system: self.system.clone(),
+            actors: Default::default(),
+            messages: Default::default(),
+        };
+
+        get_system.await.ok()?;
+
+        match rx.await.ok()? {
+            Some(_) => Some(result),
+            None => None,
+        }
+    }
+
+    pub async fn get_expr_for_syscall(&mut self, syscall: SystemCallType) -> Option<Syntax> {
+        self.get_system(self.id).await?.get(syscall).await
+    }
+
+    pub async fn get_system(&mut self, id: usize) -> Option<System> {
         let (tx, rx) = oneshot::channel();
         self.system
             .send(SystemActorMessage::GetSystem(id, tx))
@@ -356,17 +416,6 @@ impl SystemHolder {
             id,
             private_system: rx.await.ok()??,
         })
-    }
-
-    pub async fn get_handler(&mut self, id: usize) -> Option<SystemHandler> {
-        if self.get(id).await.is_some() {
-            Some(SystemHandler {
-                id,
-                system: self.clone(),
-            })
-        } else {
-            None
-        }
     }
 
     pub async fn new_system(&mut self, map: BTreeMap<SystemCallType, Syntax>) -> usize {
@@ -387,7 +436,9 @@ impl SystemHolder {
 
         SystemHandler {
             id,
-            system: self.clone(),
+            system: self.system.clone(),
+            messages: Default::default(),
+            actors: Default::default(),
         }
     }
 
@@ -471,59 +522,5 @@ impl SystemHolder {
             error!("{}", err);
         }
         rx.await;
-    }
-}
-
-#[derive(Clone)]
-pub struct SystemHandler {
-    id: usize,
-    system: SystemHolder,
-}
-
-impl SystemHandler {
-    pub async fn async_default() -> SystemHandler {
-        let system_holder = SystemActor::run();
-        let system_holder = SystemHolder {
-            system: system_holder,
-            actors: Default::default(),
-            messages: Default::default(),
-        };
-
-        SystemHandler {
-            id: 0,
-            system: system_holder,
-        }
-    }
-
-    pub fn get_id(&self) -> usize {
-        self.id
-    }
-
-    pub async fn do_syscall(
-        &mut self,
-        ctx: &mut ContextHandler,
-        system: &mut SystemHandler,
-        no_change: bool,
-        syscall: SystemCallType,
-        expr: Syntax,
-    ) -> Result<Syntax, InterpreterError> {
-        self.system
-            .get(self.id)
-            .await
-            .unwrap()
-            .do_syscall(ctx, system, no_change, syscall, expr)
-            .await
-    }
-
-    pub async fn get(&mut self, syscall: SystemCallType) -> Option<Syntax> {
-        self.system.get(self.id).await.unwrap().get(syscall).await
-    }
-
-    pub fn get_holder(&self) -> SystemHolder {
-        self.system.clone()
-    }
-
-    pub async fn exit(&mut self) {
-        self.system.exit().await;
     }
 }

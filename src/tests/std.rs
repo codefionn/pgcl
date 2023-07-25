@@ -36,7 +36,7 @@ async fn parse(
 
 async fn parse_to_str(line: &str) -> Result<String, InterpreterError> {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     let typed = parse(
         format!("std = import std;{}", line).as_str(),

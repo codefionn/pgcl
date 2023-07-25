@@ -380,7 +380,6 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     return true;
                 }
 
-
                 self.builder.start_node(SyntaxKind::ExplicitExpr.into());
                 let checkpoint = self.builder.checkpoint();
                 let mut expr_cnt = 0;
@@ -397,7 +396,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 }
 
                 if expr_cnt > 1 {
-                    self.builder.start_node_at(checkpoint, SyntaxKind::Root.into());
+                    self.builder
+                        .start_node_at(checkpoint, SyntaxKind::Root.into());
                     self.builder.finish_node();
                 }
 

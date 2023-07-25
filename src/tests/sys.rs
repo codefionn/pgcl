@@ -36,7 +36,7 @@ async fn parse(
 
 async fn parse_to_str(line: &str) -> Result<String, InterpreterError> {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     parse("sys = import sys", &mut ctx, &mut system).await?;
     let typed = parse(line, &mut ctx, &mut system).await?;
@@ -45,7 +45,7 @@ async fn parse_to_str(line: &str) -> Result<String, InterpreterError> {
 
 async fn parse_to_str_custom(line: &str) -> Result<String, InterpreterError> {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     parse(
         "sys = import (sys, { type: @error })",
@@ -59,7 +59,7 @@ async fn parse_to_str_custom(line: &str) -> Result<String, InterpreterError> {
 
 async fn parse_to_str_restrict(line: &str) -> Result<String, InterpreterError> {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     parse(
         "sys = import (sys, { restrict: @true })",
@@ -75,7 +75,7 @@ async fn parse_to_str_restrict_and_restrict_insecure(
     line: &str,
 ) -> Result<String, InterpreterError> {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     parse(
         "sys = import (sys, { restrict_insecure: @true, restrict: @true })",
@@ -89,7 +89,7 @@ async fn parse_to_str_restrict_and_restrict_insecure(
 
 async fn parse_to_str_restrict_insecure(line: &str) -> Result<String, InterpreterError> {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     parse(
         "sys = import (sys, { restrict_insecure: @true })",

@@ -49,7 +49,7 @@ async fn add_integers() {
         parse_to_str(
             "2 + 3",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -58,7 +58,7 @@ async fn add_integers() {
         parse_to_str(
             "2 + 3 * 3",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -71,7 +71,7 @@ async fn test_comments() {
         parse_to_str(
             "5 // Test",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -80,7 +80,7 @@ async fn test_comments() {
         parse_to_str(
             "5 # Test",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -93,7 +93,7 @@ async fn add_with_pipe() {
         parse_to_str(
             r"1 | \x x + 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -106,7 +106,7 @@ async fn add_floats() {
         parse_to_str(
             "2.0 + 3.0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -115,7 +115,7 @@ async fn add_floats() {
         parse_to_str(
             "2.5 + 4.5",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -124,7 +124,7 @@ async fn add_floats() {
         parse_to_str(
             "let x = 2.5 in x + 4.5",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -137,7 +137,7 @@ async fn more_maths() {
         parse_to_str(
             "2.0 / 2.0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -146,7 +146,7 @@ async fn more_maths() {
         parse_to_str(
             "1 * 6",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -159,7 +159,7 @@ async fn eq() {
         parse_to_str(
             "2 == 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -168,7 +168,7 @@ async fn eq() {
         parse_to_str(
             "3 == 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -177,7 +177,7 @@ async fn eq() {
         parse_to_str(
             "_ == 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -190,7 +190,7 @@ async fn add_str() {
         parse_to_str(
             "\"hello\" + \"world\"",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -203,7 +203,7 @@ async fn neq() {
         parse_to_str(
             "2 != 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -212,7 +212,7 @@ async fn neq() {
         parse_to_str(
             "3 != 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -221,7 +221,7 @@ async fn neq() {
         parse_to_str(
             "_ != 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -230,7 +230,7 @@ async fn neq() {
         parse_to_str(
             "2 != _",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -243,7 +243,7 @@ async fn fn_add_lambda() {
         parse_to_str(
             r"(\x = \y = x + y) 2 10",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -252,7 +252,7 @@ async fn fn_add_lambda() {
         parse_to_str(
             r"(\x = \y = x + y) 10 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -261,7 +261,7 @@ async fn fn_add_lambda() {
         parse_to_str(
             r"(\x = (\y x + y)) 10 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -270,7 +270,7 @@ async fn fn_add_lambda() {
 #[tokio::test]
 async fn fn_add_fn_and_lambda() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     assert!(parse_to_str(r"add x = \y = x + y", &mut ctx, &mut system)
         .await
         .is_ok());
@@ -287,7 +287,7 @@ async fn fn_add_fn_and_lambda() {
 #[tokio::test]
 async fn fn_add_fn() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     assert!(parse_to_str(r"add x y = x + y", &mut ctx, &mut system)
         .await
         .is_ok());
@@ -304,7 +304,7 @@ async fn fn_add_fn() {
 #[tokio::test]
 async fn fn_add_fn_tuple() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     assert!(parse_to_str(r"add (x, y) = x + y", &mut ctx, &mut system)
         .await
         .is_ok());
@@ -321,7 +321,7 @@ async fn fn_add_fn_tuple() {
 #[tokio::test]
 async fn test_fn_atom() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     assert!(parse_to_str("add @zero y = y", &mut ctx, &mut system)
         .await
         .is_ok());
@@ -365,7 +365,7 @@ async fn test_fn_atom() {
 #[tokio::test]
 async fn op_geq() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     assert!(parse_to_str(r"add x y = x + y", &mut ctx, &mut system)
         .await
         .is_ok());
@@ -475,7 +475,7 @@ async fn op_geq() {
 #[tokio::test]
 async fn op_gt() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     assert!(parse_to_str(r"add x y = x + y", &mut ctx, &mut system)
         .await
         .is_ok());
@@ -585,7 +585,7 @@ async fn op_gt() {
 #[tokio::test]
 async fn op_leq() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     assert!(parse_to_str(r"add x y = x + y", &mut ctx, &mut system)
         .await
         .is_ok());
@@ -695,7 +695,7 @@ async fn op_leq() {
 #[tokio::test]
 async fn op_lt() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     assert!(parse_to_str(r"add x y = x + y", &mut ctx, &mut system)
         .await
         .is_ok());
@@ -805,7 +805,7 @@ async fn op_lt() {
 #[tokio::test]
 async fn recursion_fib() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     assert!(parse_to_str("fib 1 = 1", &mut ctx, &mut system)
         .await
         .is_ok());
@@ -826,7 +826,7 @@ async fn recursion_fib() {
 #[tokio::test]
 async fn pattern_match_list() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     assert!(parse_to_str("len [] = 0", &mut ctx, &mut system)
         .await
         .is_ok());
@@ -853,7 +853,7 @@ async fn pattern_match_list() {
     );
 
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     assert!(parse_to_str("len [] = 0", &mut ctx, &mut system)
         .await
         .is_ok());
@@ -892,7 +892,7 @@ async fn test_map() {
         parse_to_str(
             "let { x } = { x: \"Hello, world\" } in x",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -901,7 +901,7 @@ async fn test_map() {
         parse_to_str(
             "let { x } = { x: \"Hello, world\", y: 0 } in x",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -910,7 +910,7 @@ async fn test_map() {
         parse_to_str(
             "let { x } = { y: 0, x: \"Hello, world\" } in x",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -919,7 +919,7 @@ async fn test_map() {
         parse_to_str(
             "let { \"x\" a } = { y: 0, x: \"Hello, world\" } in a",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -928,7 +928,7 @@ async fn test_map() {
         parse_to_str(
             "let {\"x\": y} = {y: 0, x: \"Hello, world\"} in y",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -937,7 +937,7 @@ async fn test_map() {
         parse_to_str(
             "let {x: y} = {y: 0, x: \"Hello, world\"} in y",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -946,7 +946,7 @@ async fn test_map() {
         parse_to_str(
             "if let {\"z\"} = {y: 0, x: \"Hello, world\"} then z else 10",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -955,7 +955,7 @@ async fn test_map() {
         parse_to_str(
             "let {\"x\": (@succ y)} = {y: 0, x: (@succ \"Hello, world\")} in y",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -964,7 +964,7 @@ async fn test_map() {
         parse_to_str(
             "{}",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -973,7 +973,7 @@ async fn test_map() {
         parse_to_str(
             "{ x: 0, y: 1}.x",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -982,7 +982,7 @@ async fn test_map() {
         parse_to_str(
             "{ x: 0, y: 1}.y",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -991,7 +991,7 @@ async fn test_map() {
 #[tokio::test]
 async fn test_fn_right() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     assert!(
         parse_to_str("right ((x y) z) = right (x (y z))", &mut ctx, &mut system)
@@ -1041,7 +1041,7 @@ async fn test_fn_right() {
 #[tokio::test]
 async fn test_fn_right_add() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     assert!(
         parse_to_str("right ((x y) z) = right (x (y z))", &mut ctx, &mut system)
@@ -1110,7 +1110,7 @@ async fn test_minus_1() {
         parse_to_str(
             "-1",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1119,7 +1119,7 @@ async fn test_minus_1() {
 #[tokio::test]
 async fn test_two_ctx() {
     let mut holder = ContextHolder::default();
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
     let mut ctx0 = holder
         .create_context("0".to_string(), None)
         .await
@@ -1147,7 +1147,7 @@ async fn test_two_ctx() {
 #[tokio::test]
 async fn test_export() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     assert!(parse_to_str("id x = x", &mut ctx, &mut system)
         .await
@@ -1163,7 +1163,7 @@ async fn test_export() {
 #[tokio::test]
 async fn test_import_std() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     assert!(parse_to_str("std = import std", &mut ctx, &mut system)
         .await
@@ -1182,7 +1182,7 @@ async fn test_import_std() {
 #[tokio::test]
 async fn test_map_add() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     assert_eq!(
         Ok("{ x: 10, y: 12 }".to_string()),
@@ -1218,7 +1218,7 @@ async fn test_map_add() {
 #[tokio::test]
 async fn test_int_div() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     assert_eq!(
         Ok("2.5".to_string()),
@@ -1234,7 +1234,7 @@ async fn test_int_div() {
 #[tokio::test]
 async fn test_float() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     assert_eq!(
         Ok("1".to_string()),
@@ -1353,7 +1353,7 @@ async fn test_lambda() {
         parse_to_str(
             r"(\x \x x) 10 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1362,7 +1362,7 @@ async fn test_lambda() {
         parse_to_str(
             r"(\x \y (x, y)) 10 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1371,7 +1371,7 @@ async fn test_lambda() {
         parse_to_str(
             r"(\x \y x == y) 10 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1380,7 +1380,7 @@ async fn test_lambda() {
         parse_to_str(
             r"(\x \y x == y) 10 (8 + 2)",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1389,7 +1389,7 @@ async fn test_lambda() {
         parse_to_str(
             r"(\x let (1 x) = (1 x) in x) 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1398,7 +1398,7 @@ async fn test_lambda() {
         parse_to_str(
             r"(\x \y let (1 y) = (1 y) in x) 2 10",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1407,7 +1407,7 @@ async fn test_lambda() {
         parse_to_str(
             r"(\x \y let (1 y) = (1 y) in y) 2 10",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1420,7 +1420,7 @@ async fn test_syscall_type() {
         parse_to_str(
             r"syscall (@type, 2)",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1429,7 +1429,7 @@ async fn test_syscall_type() {
         parse_to_str(
             r"syscall (@type, 2.0)",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1438,7 +1438,7 @@ async fn test_syscall_type() {
         parse_to_str(
             r"syscall (@type, 2.0 + 1.0)",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1447,7 +1447,7 @@ async fn test_syscall_type() {
         parse_to_str(
             "syscall (@type, \"\")",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1456,7 +1456,7 @@ async fn test_syscall_type() {
         parse_to_str(
             r"syscall (@type, [])",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1465,7 +1465,7 @@ async fn test_syscall_type() {
         parse_to_str(
             r"syscall (@type, {})",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1474,7 +1474,7 @@ async fn test_syscall_type() {
         parse_to_str(
             r"syscall (@type, (\x x))",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1483,7 +1483,7 @@ async fn test_syscall_type() {
         parse_to_str(
             r"syscall (@type, (2, 3))",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1492,7 +1492,7 @@ async fn test_syscall_type() {
         parse_to_str(
             r"syscall (@type, (2, []))",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1501,7 +1501,7 @@ async fn test_syscall_type() {
 #[tokio::test]
 async fn test_syscall_cmd() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     let result = if cfg!(target_os = "windows") {
         parse_to_str("syscall (@cmd, \"dir\")", &mut ctx, &mut system).await
@@ -1522,7 +1522,7 @@ async fn test_syscall_cmd() {
 #[tokio::test]
 async fn test_lst_str() {
     let mut ctx = ContextHandler::async_default().await;
-    let mut system = SystemHandler::async_default().await;
+    let mut system = SystemHandler::default();
 
     assert!(parse_to_str("len [] = 0", &mut ctx, &mut system)
         .await
@@ -1553,7 +1553,7 @@ async fn test_str_starts_with() {
         parse_to_str(
             "if let [\"t\":x] = \"test\" then x else 0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1562,7 +1562,7 @@ async fn test_str_starts_with() {
         parse_to_str(
             "if let [\"x\":x] = \"test\" then x else 0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1571,7 +1571,7 @@ async fn test_str_starts_with() {
         parse_to_str(
             "if let [\"te\":x] = \"test\" then x else 0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1580,7 +1580,7 @@ async fn test_str_starts_with() {
         parse_to_str(
             "if let [\"tx\":x] = \"test\" then x else 0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1589,7 +1589,7 @@ async fn test_str_starts_with() {
         parse_to_str(
             "if let [\"tes\":x] = \"test\" then x else 0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1598,7 +1598,7 @@ async fn test_str_starts_with() {
         parse_to_str(
             "if let [\"test\":x] = \"test\" then x else 0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1607,7 +1607,7 @@ async fn test_str_starts_with() {
         parse_to_str(
             "if let [\"testx\":x] = \"test\" then x else 0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1616,7 +1616,7 @@ async fn test_str_starts_with() {
         parse_to_str(
             "if let [\"te\":y:\"t\":x] = \"test\" then y x else 0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1625,7 +1625,7 @@ async fn test_str_starts_with() {
         parse_to_str(
             "if let [x:\"es\":y] = \"test\" then x + y else 0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1638,7 +1638,7 @@ async fn test_js_bool() {
         parse_to_str(
             "false",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1647,7 +1647,7 @@ async fn test_js_bool() {
         parse_to_str(
             "true",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1656,7 +1656,7 @@ async fn test_js_bool() {
         parse_to_str(
             "{ y: false }",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1665,7 +1665,7 @@ async fn test_js_bool() {
         parse_to_str(
             "{ x: true }",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1678,7 +1678,7 @@ async fn test_pipe() {
         parse_to_str(
             r"1 | (\x \y x + y) 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1687,7 +1687,7 @@ async fn test_pipe() {
         parse_to_str(
             r"2 | (\x \y x / y) 4",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1700,7 +1700,7 @@ async fn test_if_let() {
         parse_to_str(
             r"if let 0.1 = 0.1 then @true else @false",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1709,7 +1709,7 @@ async fn test_if_let() {
         parse_to_str(
             r"if let 0.2 = 0.1 then @true else @false",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1718,7 +1718,7 @@ async fn test_if_let() {
         parse_to_str(
             "if let \"x\" = \"x\" then @true else @false",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1727,7 +1727,7 @@ async fn test_if_let() {
         parse_to_str(
             "if let \"x\" = \"y\" then @true else @false",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1740,7 +1740,7 @@ async fn equal_type_coersion() {
         parse_to_str(
             "2.0 == 1.0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1749,7 +1749,7 @@ async fn equal_type_coersion() {
         parse_to_str(
             "2.0 == 2.0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1758,7 +1758,7 @@ async fn equal_type_coersion() {
         parse_to_str(
             "2.0 == 1",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1767,7 +1767,7 @@ async fn equal_type_coersion() {
         parse_to_str(
             "2.0 == 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1776,7 +1776,7 @@ async fn equal_type_coersion() {
         parse_to_str(
             "2 == 1.0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1785,7 +1785,7 @@ async fn equal_type_coersion() {
         parse_to_str(
             "2 == 2.0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1794,7 +1794,7 @@ async fn equal_type_coersion() {
         parse_to_str(
             "_ == 2.0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1803,7 +1803,7 @@ async fn equal_type_coersion() {
         parse_to_str(
             "2 == _",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1816,7 +1816,7 @@ async fn pow() {
         parse_to_str(
             "2 ** 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1825,7 +1825,7 @@ async fn pow() {
         parse_to_str(
             "2.0 ** 2",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1834,7 +1834,7 @@ async fn pow() {
         parse_to_str(
             "2 ** 2.0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1843,7 +1843,7 @@ async fn pow() {
         parse_to_str(
             "4 ** 2.0",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1852,7 +1852,7 @@ async fn pow() {
         parse_to_str(
             "4 ** (3 / 2)",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );
@@ -1865,7 +1865,7 @@ async fn test_fn_op() {
         parse_to_str(
             "(+) 3 1",
             &mut ContextHandler::async_default().await,
-            &mut SystemHandler::async_default().await
+            &mut SystemHandler::default()
         )
         .await
     );

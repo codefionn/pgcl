@@ -10,7 +10,7 @@ use crate::{
     lexer::Token,
     parser::{print_ast, Parser, SyntaxKind},
     reader::{ExecutedMessage, LineMessage},
-    system::{SystemHandler, SystemHolder},
+    system::SystemHandler,
     Args,
 };
 
@@ -113,7 +113,7 @@ struct InterpreterExecuteActor {
     rx: mpsc::Receiver<LexerMessage>,
     last_result: Option<Syntax>,
     ctx: ContextHolder,
-    system: SystemHolder,
+    system: SystemHandler,
 }
 
 impl InterpreterExecuteActor {
@@ -123,7 +123,7 @@ impl InterpreterExecuteActor {
             rx,
             last_result: None,
             ctx: ContextHolder::default(),
-            system: SystemHolder::default(),
+            system: SystemHandler::default(),
         }
     }
 

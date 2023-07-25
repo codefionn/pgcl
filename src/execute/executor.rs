@@ -179,7 +179,7 @@ impl<'a, 'b> Executor<'a, 'b> {
             }
             Syntax::Call(box Syntax::Signal(signal_type, signal_id), expr) => match signal_type {
                 SignalType::Actor => {
-                    if let Some(tx) = self.system.get_holder().get_actor(signal_id).await {
+                    if let Some(tx) = self.system.get_actor(signal_id).await {
                         if tx
                             .send(actor::Message::Signal(Syntax::Contextual(
                                 self.ctx.get_id(),
@@ -200,7 +200,6 @@ impl<'a, 'b> Executor<'a, 'b> {
                 SignalType::Message => Ok(
                     match self
                         .system
-                        .get_holder()
                         .send_message(
                             signal_id,
                             Syntax::Contextual(self.ctx.get_id(), self.system.get_id(), expr),
@@ -244,7 +243,6 @@ impl<'a, 'b> Executor<'a, 'b> {
                 let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await.unwrap();
                 let mut system = self
                     .system
-                    .get_holder()
                     .get_handler(system_id)
                     .await
                     .ok_or(InterpreterError::InternalError(format!(
@@ -277,7 +275,6 @@ impl<'a, 'b> Executor<'a, 'b> {
                 let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await.unwrap();
                 let mut system = self
                     .system
-                    .get_holder()
                     .get_handler(system_id)
                     .await
                     .ok_or(InterpreterError::InternalError(format!(
@@ -726,7 +723,7 @@ async fn build_system(
                     syscall_type,
                     Syntax::Contextual(old_ctx_id, old_system_id, Box::new(expr)),
                 );
-            } else if let Some(expr) = system.get(syscall_type).await {
+            } else if let Some(expr) = system.get_expr_for_syscall(syscall_type).await {
                 new_builtins_map.insert(syscall_type, expr);
             }
         }
@@ -751,7 +748,6 @@ async fn build_system(
         }
 
         system
-            .get_holder()
             .new_system_handler(new_builtins_map)
             .await
     }
@@ -939,7 +935,7 @@ async fn make_call(
             ("import", Syntax::Contextual(ctx_id, system_id, body @ box Syntax::Id(_)))
             | ("import", Syntax::Contextual(ctx_id, system_id, body @ box Syntax::ValStr(_))) => {
                 let mut ctx = ctx.get_holder().get_handler(ctx_id).await.unwrap();
-                let mut system = system.get_holder().get_handler(system_id).await.unwrap();
+                let mut system = system.get_handler(system_id).await.unwrap();
 
                 make_call(
                     &mut ctx,
@@ -982,7 +978,7 @@ async fn make_call(
                 ),
             ) => {
                 let mut ctx = ctx.get_holder().get_handler(ctx_id).await.unwrap();
-                let mut system = system.get_holder().get_handler(system_id).await.unwrap();
+                let mut system = system.get_handler(system_id).await.unwrap();
 
                 make_call(
                     &mut ctx,

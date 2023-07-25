@@ -200,13 +200,13 @@ impl PrivateSystem {
             (SystemCallType::Actor, Syntax::Tuple(init, actor_fn)) => {
                 let (handle, tx) =
                     crate::actor::create_actor(ctx.clone(), system.clone(), *init, *actor_fn).await;
-                let id = system.get_holder().create_actor(handle, tx).await;
+                let id = system.create_actor(handle, tx).await;
 
                 Ok(Syntax::Signal(SignalType::Actor, id))
             }
             (SystemCallType::ExitActor, Syntax::Signal(signal_type, signal_id)) => {
                 match signal_type {
-                    SignalType::Actor => match system.get_holder().get_actor(signal_id).await {
+                    SignalType::Actor => match system.get_actor(signal_id).await {
                         Some(tx) => {
                             let (tx_exit, rx_exit) = oneshot::channel();
                             match tx.send(actor::Message::Exit(tx_exit)).await {
@@ -302,11 +302,10 @@ impl PrivateSystem {
                 InterpreterError::ProgramTerminatedByUser(id.to_i32().unwrap_or(1)),
             ),
             (SystemCallType::CreateMsg, Syntax::ValAny()) => {
-                let handle = system.get_holder().create_message().await;
+                let handle = system.create_message().await;
                 Ok(Syntax::Signal(SignalType::Message, handle))
             }
             (SystemCallType::RecvMsg, Syntax::Signal(SignalType::Message, id)) => system
-                .get_holder()
                 .recv_message(id)
                 .await
                 .map_err(|err| InterpreterError::InternalError(format!("{}", err))),
