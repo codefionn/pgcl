@@ -203,3 +203,15 @@ fn test_exit_2() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_immediate() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin(r"(std = $ import std); std.map (\x x * x) [0, 1, 2, 3]")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^\[0, 1, 4, 9\]\n$")?);
+
+    Ok(())
+}

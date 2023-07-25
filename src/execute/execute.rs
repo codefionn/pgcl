@@ -47,6 +47,11 @@ pub enum BiOpType {
     OpComma,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum UnOpType {
+    OpImmediate
+}
+
 /// Representing a typed syntax tree
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Syntax {
@@ -68,6 +73,10 @@ pub enum Syntax {
         /* rhs: */ Box<Syntax>,
         /* lhs: */ Box<Syntax>,
     ),
+    UnOp(
+        /* op: */ UnOpType,
+        /* expr: */ Box<Syntax>
+        ),
     If(
         /* condition: */ Box<Syntax>,
         /* expr_true: */ Box<Syntax>,
@@ -662,6 +671,7 @@ impl Syntax {
             }
             expr @ Self::Context(_, _, _) => expr,
             Self::UnexpectedArguments() => self,
+            Self::UnOp(UnOpType::OpImmediate, expr) => Self::UnOp(UnOpType::OpImmediate, Box::new(expr.reduce().await))
         }
     }
 
@@ -718,6 +728,7 @@ impl Syntax {
                 Box::new(Self::Contextual(ctx_id, system_id, lhs).reduce().await),
                 Box::new(Self::Contextual(ctx_id, system_id, rhs).reduce().await),
             ),
+            Self::UnOp(UnOpType::OpImmediate, expr) => Self::UnOp(UnOpType::OpImmediate, Box::new(Self::Contextual(ctx_id, system_id, expr))),
             expr @ Self::Context(_, _, _) => expr,
             // If a contextual is in a contextual we can use just he inner contextual
             expr @ Self::Contextual(_, _, _) => expr,
@@ -873,6 +884,7 @@ impl Syntax {
             expr @ Self::Signal(_, _) => expr,
             Self::Pipe(expr) => Self::Pipe(Box::new(expr.replace_args(key, value).await)),
             expr @ Self::FnOp(_) => expr,
+            Self::UnOp(UnOpType::OpImmediate, expr) => Self::UnOp(UnOpType::OpImmediate, Box::new(expr.replace_args(key, value).await))
         }
     }
 
@@ -966,6 +978,7 @@ impl Syntax {
             Self::Contextual(_, _, _) => {}
             Self::Signal(_, _) => {}
             Self::FnOp(_) => {}
+            Self::UnOp(UnOpType::OpImmediate, expr) => result.extend(expr.get_args().await)
         }
 
         result
@@ -1170,6 +1183,7 @@ impl std::fmt::Display for Syntax {
                 Self::Context(_, _, id) => id.to_string(),
                 Self::Signal(_, _) => "signal".to_string(),
                 Self::FnOp(op) => format!("({op})"),
+                Self::UnOp(UnOpType::OpImmediate, expr) => format!("$ {}", expr)
             }
             .as_str(),
         )

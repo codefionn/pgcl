@@ -14,6 +14,8 @@ use futures::{future::join_all, StreamExt, TryStreamExt};
 use log::debug;
 use rowan::GreenNodeBuilder;
 
+use super::UnOpType;
+
 pub struct Executor<'a, 'b> {
     ctx: &'a mut ContextHandler,
     system: &'b mut SystemHandler,
@@ -321,8 +323,22 @@ impl<'a, 'b> Executor<'a, 'b> {
                     // Assignments are only allowed on the top-level
                     Ok(expr)
                 } else {
+                    let expr = if let Syntax::UnOp(UnOpType::OpImmediate, expr) = *rhs {
+                        let old_expr = expr.clone();
+                        let expr = self.execute_once(*expr, false, no_change).await?;
+                        // Gradual execution: If expression changed or in not no_change, then
+                        // return result
+                        if !no_change || expr != *old_expr {
+                            return Ok(Syntax::Asg(Box::new(Syntax::Id(id)), Box::new(Syntax::UnOp(UnOpType::OpImmediate, Box::new(expr)))));
+                        }
+
+                        expr
+                    } else {
+                        *rhs
+                    };
+
                     self.ctx
-                        .insert_into_values(&id, *rhs, &mut values_defined_here)
+                        .insert_into_values(&id, expr, &mut values_defined_here)
                         .await;
                     Ok(Syntax::ValAny())
                 }
@@ -620,6 +636,7 @@ impl<'a, 'b> Executor<'a, 'b> {
             expr @ Syntax::Context(_, _, _) => Ok(expr),
             expr @ Syntax::Signal(_, _) => Ok(expr),
             expr @ Syntax::FnOp(_) => Ok(expr),
+            Syntax::UnOp(UnOpType::OpImmediate, expr) => Ok(*expr)
         }?;
 
         Ok(expr)

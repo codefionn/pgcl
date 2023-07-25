@@ -5,7 +5,7 @@ use log::warn;
 use num::Num;
 use rowan::{GreenNodeBuilder, NodeOrToken};
 
-use crate::{errors::InterpreterError, execute::Syntax};
+use crate::{errors::InterpreterError, execute::{Syntax, UnOpType}};
 
 /// SyntaxKinds for the untyped syntax tree created with *rowan*
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -37,6 +37,7 @@ pub enum SyntaxKind {
     OpStrictNeq,
     OpMap,
     OpPipe,
+    OpImmediate,
     NewLine,
     Pipe,
 
@@ -67,6 +68,7 @@ pub enum SyntaxKind {
 
     FnOp,
     BiOp,
+    UnOp,
     Root,
 }
 
@@ -234,6 +236,15 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 } else {
                     false
                 }
+            }
+            Some(op @ SyntaxKind::OpImmediate) => {
+                self.builder.start_node(SyntaxKind::UnOp.into());
+                self.bump(); // eat operator
+
+                let result = self.parse_expr(false);
+                self.builder.finish_node();
+
+                result
             }
             Some(SyntaxKind::LstLeft) => {
                 self.tuple.push(false);
@@ -888,6 +899,24 @@ impl TryInto<Syntax> for SyntaxElement {
 
                         let expr: SyntaxElement = children.last().unwrap().clone();
                         build_let(&asgs, expr)
+                    }
+                    SyntaxKind::UnOp => {
+                        let op = children
+                            .next()
+                            .and_then(|x| {
+                                if let NodeOrToken::Token(tok) = x {
+                                    Some(tok)
+                                } else {
+                                    None
+                                }
+                            })
+                            .ok_or(InterpreterError::ExpectedOperator())?;
+                        let expr = children.next().ok_or(expected_expr())?;
+
+                        Ok(Syntax::UnOp(match op.kind() {
+                            SyntaxKind::OpImmediate => UnOpType::OpImmediate,
+                            _ => panic!("Expected correct unary operator")
+                        }, Box::new(expr.try_into()?)))
                     }
                     SyntaxKind::BiOp => {
                         let lhs = children.next().ok_or(expected_expr())?;

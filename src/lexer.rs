@@ -87,6 +87,9 @@ pub enum Token {
     #[token("|")]
     OpPipe,
 
+    #[token("$")]
+    OpImmediate,
+
     #[token(";")]
     Semicolon,
 
@@ -150,7 +153,7 @@ impl Token {
                 Lambda | ParenLeft | ParenRight | LstLeft | LstRight | MapLeft | MapRight
                 | OpPow | OpAdd | OpSub | OpMul | OpDiv | Unpack | OpPeriod | OpComma | OpAsg
                 | OpEq | OpStrictEq | OpNeq | OpStrictNeq | OpMap | KwIn | KwLet | NewLine
-                | Semicolon | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe | KwIf | KwElse
+                | Semicolon | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe | OpImmediate | KwIf | KwElse
                 | KwThen | Error => lex.slice().to_string(),
 
                 Flt(x) => x.to_string(),
@@ -196,6 +199,7 @@ impl TryInto<SyntaxKind> for Token {
             Token::OpLt => Ok(SyntaxKind::OpLt),
             Token::OpMap => Ok(SyntaxKind::OpMap),
             Token::OpPipe => Ok(SyntaxKind::OpPipe),
+            Token::OpImmediate => Ok(SyntaxKind::OpImmediate),
             Token::Semicolon => Ok(SyntaxKind::Semicolon),
             Token::KwIf => Ok(SyntaxKind::If),
             Token::KwThen => Ok(SyntaxKind::KwThen),
