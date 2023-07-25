@@ -329,7 +329,10 @@ impl<'a, 'b> Executor<'a, 'b> {
                         // Gradual execution: If expression changed or in not no_change, then
                         // return result
                         if !no_change || expr != *old_expr {
-                            return Ok(Syntax::Asg(Box::new(Syntax::Id(id)), Box::new(Syntax::UnOp(UnOpType::OpImmediate, Box::new(expr)))));
+                            return Ok(Syntax::Asg(
+                                Box::new(Syntax::Id(id)),
+                                Box::new(Syntax::UnOp(UnOpType::OpImmediate, Box::new(expr))),
+                            ));
                         }
 
                         expr
@@ -636,7 +639,7 @@ impl<'a, 'b> Executor<'a, 'b> {
             expr @ Syntax::Context(_, _, _) => Ok(expr),
             expr @ Syntax::Signal(_, _) => Ok(expr),
             expr @ Syntax::FnOp(_) => Ok(expr),
-            Syntax::UnOp(UnOpType::OpImmediate, expr) => Ok(*expr)
+            Syntax::UnOp(UnOpType::OpImmediate, expr) => Ok(*expr),
         }?;
 
         Ok(expr)

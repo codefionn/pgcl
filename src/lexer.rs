@@ -153,8 +153,8 @@ impl Token {
                 Lambda | ParenLeft | ParenRight | LstLeft | LstRight | MapLeft | MapRight
                 | OpPow | OpAdd | OpSub | OpMul | OpDiv | Unpack | OpPeriod | OpComma | OpAsg
                 | OpEq | OpStrictEq | OpNeq | OpStrictNeq | OpMap | KwIn | KwLet | NewLine
-                | Semicolon | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe | OpImmediate | KwIf | KwElse
-                | KwThen | Error => lex.slice().to_string(),
+                | Semicolon | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe | OpImmediate | KwIf
+                | KwElse | KwThen | Error => lex.slice().to_string(),
 
                 Flt(x) => x.to_string(),
                 Int(x) => x.to_string(),

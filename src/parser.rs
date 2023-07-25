@@ -5,7 +5,10 @@ use log::warn;
 use num::Num;
 use rowan::{GreenNodeBuilder, NodeOrToken};
 
-use crate::{errors::InterpreterError, execute::{Syntax, UnOpType}};
+use crate::{
+    errors::InterpreterError,
+    execute::{Syntax, UnOpType},
+};
 
 /// SyntaxKinds for the untyped syntax tree created with *rowan*
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -913,10 +916,13 @@ impl TryInto<Syntax> for SyntaxElement {
                             .ok_or(InterpreterError::ExpectedOperator())?;
                         let expr = children.next().ok_or(expected_expr())?;
 
-                        Ok(Syntax::UnOp(match op.kind() {
-                            SyntaxKind::OpImmediate => UnOpType::OpImmediate,
-                            _ => panic!("Expected correct unary operator")
-                        }, Box::new(expr.try_into()?)))
+                        Ok(Syntax::UnOp(
+                            match op.kind() {
+                                SyntaxKind::OpImmediate => UnOpType::OpImmediate,
+                                _ => panic!("Expected correct unary operator"),
+                            },
+                            Box::new(expr.try_into()?),
+                        ))
                     }
                     SyntaxKind::BiOp => {
                         let lhs = children.next().ok_or(expected_expr())?;
