@@ -425,3 +425,21 @@ async fn test_tuplize() {
         parse_to_str("{ tuplize } = import std; tuplize [0, 1, 2]").await
     );
 }
+
+#[tokio::test]
+async fn test_callize() {
+    assert_eq!(
+        Ok(format!("(0 1)")),
+        parse_to_str("std.callize [0, 1]").await
+    );
+
+    assert_eq!(
+        Ok(format!("((0 1) 2)")),
+        parse_to_str("std.callize [0, 1, 2]").await
+    );
+
+    assert_eq!(
+        Ok(format!("((2 0) 1)")),
+        parse_to_str("std.callize [2, 0, 1]").await
+    );
+}

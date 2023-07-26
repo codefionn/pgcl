@@ -111,6 +111,12 @@ tuplize [x:xs] = foldl (,) x xs
 export tuplize
 
 ##
+# Converts a list to calls
+##
+callize [x:xs] = foldl (\x \y (x y)) x xs
+export callize
+
+##
 # Logical **and** operation on two booleans.
 #
 # ## Parameters
