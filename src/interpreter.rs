@@ -141,7 +141,7 @@ impl InterpreterExecuteActor {
         );
 
         let mut main_system: SystemHandler = self.system.get_handler(0).await.unwrap();
-        let mut executor = Executor::new(&mut main_ctx, &mut main_system);
+        let mut executor = Executor::new(&mut main_ctx, &mut main_system, self.args.verbose);
 
         // Save the length of the error vec in the main context
         // This helps to only output current errors

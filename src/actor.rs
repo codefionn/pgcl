@@ -32,7 +32,7 @@ pub async fn create_actor(
     let handle = tokio::spawn(async move {
         let mut ctx = ctx.clone();
         let mut system = system.clone();
-        let mut executor = Executor::new(&mut ctx, &mut system);
+        let mut executor = Executor::new(&mut ctx, &mut system, false);
         let mut init = init.clone();
 
         let mut exit_handlers: Vec<oneshot::Sender<()>> = Vec::new();

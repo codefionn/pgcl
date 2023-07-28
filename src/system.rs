@@ -37,11 +37,12 @@ impl System {
         no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
+        show_steps: bool
     ) -> Result<Syntax, InterpreterError> {
         self.private_system
             .lock()
             .await
-            .do_syscall(ctx, system, no_change, syscall, expr)
+            .do_syscall(ctx, system, no_change, syscall, expr, show_steps)
             .await
     }
 
@@ -375,11 +376,12 @@ impl SystemHandler {
         no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
+        show_steps: bool
     ) -> Result<Syntax, InterpreterError> {
         self.get_system(self.id)
             .await
             .unwrap()
-            .do_syscall(ctx, system, no_change, syscall, expr)
+            .do_syscall(ctx, system, no_change, syscall, expr, show_steps)
             .await
     }
 

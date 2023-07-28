@@ -30,7 +30,7 @@ async fn parse(
         Err(InterpreterError::UnknownError())
     } else {
         let ast: Syntax = (*ast).try_into()?;
-        Executor::new(ctx, system).execute(ast, true).await
+        Executor::new(ctx, system, false).execute(ast, true).await
     }
 }
 
