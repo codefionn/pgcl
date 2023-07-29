@@ -42,6 +42,7 @@ The interpreter uses
 * [ ] Networking (Server/Client)
 * [ ] Immediate execution
 * [ ] Make lists and maps more lazy
+* [ ] Garbage collect signals
 
 ## Structures
 
