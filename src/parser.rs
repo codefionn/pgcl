@@ -358,6 +358,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     self.builder.finish_node();
                 }
 
+                self.skip_newlines();
+
                 if Some(SyntaxKind::MapRight) == self.peek() {
                     self.next(); // skip
                 }

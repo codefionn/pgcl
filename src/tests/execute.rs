@@ -1174,7 +1174,7 @@ async fn test_import_std() {
     );
 
     assert_eq!(
-        Ok("std".to_string()),
+        Ok("(import \"std\")".to_string()),
         parse_to_str("import std", &mut ctx, &mut system).await
     );
 }

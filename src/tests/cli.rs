@@ -229,3 +229,15 @@ fn test_immediate() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_import_natural() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin("nat = import \"./examples/natural.pgcl\"\nnat.num.ten")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^\(@succ \(@succ \(@succ \(@succ \(@succ \(@succ \(@succ \(@succ \(@succ \(@succ @zero\)\)\)\)\)\)\)\)\)\)\n$").unwrap());
+
+    Ok(())
+}

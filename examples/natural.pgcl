@@ -20,6 +20,11 @@ num = {
   three: right (@succ @succ @zero),
   four:  add num.two num.two,
   five:  @succ num.four,
+  six:   add num.three num.three,
+  seven: add num.four num.three,
+  eight: mul num.two num.four,
+  nine:  add num.five num.four,
+  ten:   mul num.two num.five
 }
 
 export num
