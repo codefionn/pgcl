@@ -1185,7 +1185,7 @@ impl std::fmt::Display for Syntax {
                 }
                 Self::ExplicitExpr(expr) => format!("{expr}"),
                 Self::Contextual(_, _, expr) => format!("{expr}"),
-                Self::Context(_, _, id) => id.to_string(),
+                Self::Context(_, _, id) => format!("(import \"{}\")", id),
                 Self::Signal(_, _) => "signal".to_string(),
                 Self::FnOp(op) => format!("({op})"),
                 Self::UnOp(UnOpType::OpImmediate, expr) => format!("$ {}", expr),

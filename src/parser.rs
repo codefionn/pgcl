@@ -295,6 +295,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             }
             Some(SyntaxKind::MapLeft) => {
                 self.next();
+                self.skip_newlines();
 
                 let checkpoint = self.builder.checkpoint();
 
@@ -334,6 +335,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
 
                         if Some(SyntaxKind::OpComma) == self.peek() {
                             self.next();
+                            self.skip_newlines();
                         }
                     }
 

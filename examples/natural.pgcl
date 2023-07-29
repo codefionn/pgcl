@@ -1,0 +1,25 @@
+# Natural numbers
+{ right } = import std
+
+add x (@succ y) = add (@succ x) y
+add x @zero     = x
+export add
+
+sub (@succ x) (@succ y) = sub x y
+sub x         @zero     = x
+export sub
+
+mul x (@succ y) = add x (mul x y)
+mul _ @zero     = @zero
+export mul
+
+num = {
+  zero:  @zero,
+  one:   @succ @zero,
+  two:   right (@succ @succ @zero),
+  three: right (@succ @succ @zero),
+  four:  add num.two num.two,
+  five:  @succ num.four,
+}
+
+export num
