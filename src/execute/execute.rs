@@ -7,7 +7,7 @@ use futures::{
 use num::pow::Pow;
 use num::FromPrimitive;
 use num::Zero;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 
 use crate::rational::BigRational;
 
@@ -816,7 +816,7 @@ impl Syntax {
                 .await;
 
                 let expr_false = expr_false.replace_args(key, value);
-                if futures::stream::iter(asgs.iter().map(|(_, rhs)| rhs.get_args()))
+                if futures::stream::iter(asgs.iter().map(|(lhs, _)| lhs.get_args()))
                     .any(|args| async { args.await.contains(key) })
                     .await
                 {
@@ -893,97 +893,83 @@ impl Syntax {
         }
     }
 
-    #[async_recursion]
-    async fn get_args(&self) -> HashSet<String> {
-        let mut result = HashSet::new();
+    fn get_one_arg<'a>(&'a self) -> (Vec<&'a String>, Vec<&'a Syntax>) {
         match self {
-            Self::Id(id) => {
-                result.insert(id.clone());
+            Self::Id(id) => (vec![id], vec![]),
+            Self::Program(expr) => (vec![], expr.iter().collect()),
+            Self::Lambda(id, box expr) => (vec![id], vec![expr]),
+            Self::Call(box lhs, box rhs)
+            | Self::Asg(box lhs, box rhs)
+            | Self::Tuple(box lhs, box rhs)
+            | Self::BiOp(_, box lhs, box rhs) => (vec![], vec![lhs, rhs]),
+            Self::Let((box lhs, box rhs), box expr) => (vec![], vec![lhs, rhs, expr]),
+            Self::If(box cond, box expr_true, box expr_false) => {
+                (vec![], vec![cond, expr_true, expr_false])
             }
-            Self::Program(_) => {}
-            Self::Lambda(_, expr) => {
-                result.extend(expr.get_args().await);
-            }
-            Self::Call(lhs, rhs)
-            | Self::Asg(lhs, rhs)
-            | Self::Tuple(lhs, rhs)
-            | Self::BiOp(_, lhs, rhs) => {
-                result.extend(lhs.get_args().await);
-                result.extend(rhs.get_args().await);
-            }
-            Self::Let((lhs, rhs), expr) => {
-                result.extend(lhs.get_args().await);
-                result.extend(rhs.get_args().await);
-                result.extend(expr.get_args().await);
-            }
-            Self::If(cond, expr_true, expr_false) => {
-                result.extend(cond.get_args().await);
-                result.extend(expr_true.get_args().await);
-                result.extend(expr_false.get_args().await);
-            }
-            Self::IfLet(asgs, expr_true, expr_false) => {
-                result.extend(
-                    join_all(asgs.iter().map(|(lhs, rhs)| async {
-                        let mut result = lhs.get_args().await;
-                        result.extend(rhs.get_args().await);
-
-                        result
-                    }))
-                    .await
-                    .into_iter()
-                    .flatten(),
-                );
-
-                result.extend(expr_true.get_args().await);
-                result.extend(expr_false.get_args().await);
-            }
+            Self::IfLet(asgs, box expr_true, box expr_false) => (
+                vec![],
+                asgs.iter()
+                    .map(|(lhs, rhs)| vec![lhs, rhs])
+                    .flatten()
+                    .chain([expr_true, expr_false].into_iter())
+                    .collect(),
+            ),
             Self::UnexpectedArguments()
             | Self::ValAny()
             | Self::ValInt(_)
             | Self::ValFlt(_)
             | Self::ValStr(_)
-            | Self::ValAtom(_) => {}
-            Self::Lst(lst) => {
-                result.extend(
-                    join_all(lst.iter().map(|expr| async { expr.get_args().await }))
-                        .await
-                        .into_iter()
-                        .flatten(),
-                );
-            }
-            Self::LstMatch(lst) => {
-                result.extend(
-                    join_all(lst.iter().map(|expr| async { expr.get_args().await }))
-                        .await
-                        .into_iter()
-                        .flatten(),
-                );
-            }
+            | Self::ValAtom(_) => (vec![], vec![]),
+            Self::Lst(lst) => (vec![], lst.iter().collect()),
+            Self::LstMatch(lst) => (vec![], lst.iter().collect()),
             Self::Map(map) => {
-                result.extend(
-                    map.iter()
-                        .filter(|(_, (_, is_id))| *is_id)
-                        .map(|(id, _)| id.clone()),
-                );
+                let ids = map
+                    .iter()
+                    .filter(|(_, (_, is_id))| *is_id)
+                    .map(|(id, _)| id)
+                    .collect();
+                (ids, map.iter().map(|e| &e.1 .0).collect())
             }
             Self::MapMatch(map) => {
-                result.extend(map.iter().map(|(key, into_key, _, _)| {
-                    if let Some(into_key) = into_key {
-                        into_key.clone()
-                    } else {
-                        key.clone()
-                    }
-                }));
+                let ids = map
+                    .iter()
+                    .map(|(key, into_key, _, _)| {
+                        if let Some(into_key) = into_key {
+                            into_key
+                        } else {
+                            key
+                        }
+                    })
+                    .collect();
+
+                (ids, map.iter().filter_map(|e| e.2.as_ref()).collect())
             }
-            Self::ExplicitExpr(expr) => {
-                result.extend(expr.get_args().await);
+            Self::ExplicitExpr(expr) => (Vec::new(), vec![expr]),
+            Self::Pipe(expr) => (Vec::new(), vec![expr]),
+            Self::Context(_, _, _) => (vec![], vec![]),
+            Self::Contextual(_, _, _) => (vec![], vec![]),
+            Self::Signal(_, _) => (vec![], vec![]),
+            Self::FnOp(_) => (vec![], vec![]),
+            Self::UnOp(UnOpType::OpImmediate, expr) => (Vec::new(), vec![expr]),
+        }
+    }
+
+    #[async_recursion]
+    pub async fn get_args<'a>(&'a self) -> HashSet<&String> {
+        let mut broadsearch: VecDeque<&'a Syntax> = VecDeque::new();
+        let mut result: HashSet<&String> = HashSet::new();
+        broadsearch.push_front(self);
+
+        // Cache if expression already processed
+        let mut searched: HashSet<&Syntax> = HashSet::new();
+        while let Some(expr) = broadsearch.pop_front() {
+            if !searched.insert(expr) {
+                continue;
             }
-            Self::Pipe(expr) => result.extend(expr.get_args().await),
-            Self::Context(_, _, _) => {}
-            Self::Contextual(_, _, _) => {}
-            Self::Signal(_, _) => {}
-            Self::FnOp(_) => {}
-            Self::UnOp(UnOpType::OpImmediate, expr) => result.extend(expr.get_args().await),
+
+            let (add_to_result, add_to_broadsearch) = expr.get_one_arg();
+            result.extend(add_to_result.into_iter());
+            broadsearch.extend(add_to_broadsearch.into_iter());
         }
 
         result

@@ -110,7 +110,7 @@ impl PrivateSystem {
         no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
-        show_steps: bool
+        show_steps: bool,
     ) -> Result<Syntax, InterpreterError> {
         if let Some(expr) = self.map.get(&syscall) {
             return Ok(expr.clone());
@@ -153,7 +153,9 @@ impl PrivateSystem {
             (SystemCallType::MeasureTime, expr) => {
                 let now = Instant::now();
 
-                let expr = Executor::new(ctx, system, show_steps).execute(expr, false).await?;
+                let expr = Executor::new(ctx, system, show_steps)
+                    .execute(expr, false)
+                    .await?;
 
                 let diff = now.elapsed().as_secs_f64();
                 let diff: BigRational = BigRational::from_f64(diff).unwrap();

@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
             code.as_str(),
             &mut holder,
             &mut systems,
-            args.verbose
+            args.verbose,
         )
         .await
         .map_err(|err| anyhow!("{:?}", err))?;

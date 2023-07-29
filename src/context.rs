@@ -1,10 +1,11 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
     sync::Arc,
 };
 
 use async_recursion::async_recursion;
+use futures::future::join_all;
 use log::debug;
 use tokio::sync::Mutex;
 
@@ -412,9 +413,62 @@ impl PrivateContext {
 }
 
 async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
+    let args_len = fns[0].0.len();
     let arg_name = {
+        let mut dont_use_varnames: HashSet<&String> = HashSet::new();
+        for i in 0..fns.len() {
+            let params_vars: HashSet<&String> = join_all(
+                fns[i]
+                    .0
+                    .iter()
+                    .map(|param| async move { param.get_args().await }),
+            )
+            .await
+            .into_iter()
+            .fold(HashSet::new(), |mut result, part| {
+                result.extend(part.into_iter());
+                result
+            });
+
+            dont_use_varnames.extend(fns[i].1.get_args().await.difference(&params_vars));
+        }
+
+        let mut params_vars: Vec<HashSet<&String>> =
+            (0..args_len).map(|_| HashSet::new()).collect();
+        for i in 0..args_len {
+            for j in 0..fns.len() {
+                params_vars[i].extend(fns[j].0[i].get_args().await.into_iter());
+            }
+        }
+
+        let use_param_names: Vec<Option<String>> = params_vars
+            .into_iter()
+            .map(|mut names| {
+                let mut names: Vec<&String> = names.drain().collect();
+                names.sort_unstable();
+
+                names.into_iter().next()
+            })
+            .map(move |name| match name {
+                Some(name) => {
+                    if dont_use_varnames.contains(name) {
+                        None
+                    } else {
+                        Some(name.to_owned())
+                    }
+                }
+                None => None,
+            })
+            .collect();
+
         let name = name.to_owned();
-        move |arg: usize| format!("{}{}_{}", name.len(), name, arg)
+        move |arg: usize| {
+            if let Some(param) = use_param_names.get(arg).unwrap_or(&None) {
+                param.to_owned()
+            } else {
+                format!("{}{}_{}", name.len(), name, arg)
+            }
+        }
     };
 
     fn build_fn_part(params: &[String], fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
@@ -454,7 +508,7 @@ async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
         }
     }
 
-    let params: Vec<String> = (0..fns[0].0.len()).map(arg_name).collect();
+    let params: Vec<String> = (0..args_len).map(arg_name).collect();
 
     let mut fns: Vec<(Vec<Syntax>, Syntax)> = fns.to_vec();
     fns.reverse();

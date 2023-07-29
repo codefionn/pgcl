@@ -895,16 +895,16 @@ impl TryInto<Syntax> for SyntaxElement {
                             .map(|child| {
                                 if let NodeOrToken::Node(node) = child {
                                     let mut children = node.children_with_tokens();
-                                    let lhs = children.next().unwrap();
+                                    let lhs = children.next().ok_or(expected_expr())?;
                                     children.next();
-                                    let rhs = children.next().unwrap();
+                                    let rhs = children.next().ok_or(expected_expr())?;
 
-                                    (lhs, rhs)
+                                    Ok((lhs, rhs))
                                 } else {
                                     panic!("Not allowed here!");
                                 }
                             })
-                            .collect();
+                            .try_collect()?;
 
                         fn build_let(
                             asgs: &[(SyntaxElement, SyntaxElement)],

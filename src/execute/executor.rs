@@ -21,16 +21,20 @@ pub struct Executor<'a, 'b> {
     system: &'b mut SystemHandler,
     // Hide the change in the debug mode (to create more meaningful output)
     hide_change: bool,
-    show_steps: bool
+    show_steps: bool,
 }
 
 impl<'a, 'b> Executor<'a, 'b> {
-    pub fn new(ctx: &'a mut ContextHandler, system: &'b mut SystemHandler, show_steps: bool) -> Self {
+    pub fn new(
+        ctx: &'a mut ContextHandler,
+        system: &'b mut SystemHandler,
+        show_steps: bool,
+    ) -> Self {
         Self {
             ctx,
             system,
             hide_change: false,
-            show_steps
+            show_steps,
         }
     }
 
@@ -124,7 +128,7 @@ impl<'a, 'b> Executor<'a, 'b> {
                     no_change: bool,
                     ctx: &mut ContextHandler,
                     system: &mut SystemHandler,
-                    show_steps: bool
+                    show_steps: bool,
                 ) -> Result<Vec<(Syntax, Syntax)>, InterpreterError> {
                     futures::stream::iter(asgs.into_iter().map(|(lhs, rhs)| {
                         let mut ctx = ctx.clone();
@@ -144,7 +148,8 @@ impl<'a, 'b> Executor<'a, 'b> {
 
                 if no_change {
                     let old_asgs = asgs.clone();
-                    let asgs = execute_asgs(asgs, true, self.ctx, self.system, self.show_steps).await?;
+                    let asgs =
+                        execute_asgs(asgs, true, self.ctx, self.system, self.show_steps).await?;
 
                     if old_asgs == asgs {
                         for (lhs, rhs) in asgs {
@@ -176,7 +181,8 @@ impl<'a, 'b> Executor<'a, 'b> {
                         Ok(Syntax::IfLet(asgs, expr_true, expr_false))
                     }
                 } else {
-                    let asgs = execute_asgs(asgs, false, self.ctx, self.system, self.show_steps).await?;
+                    let asgs =
+                        execute_asgs(asgs, false, self.ctx, self.system, self.show_steps).await?;
 
                     Ok(Syntax::IfLet(asgs, expr_true, expr_false))
                 }
@@ -229,7 +235,7 @@ impl<'a, 'b> Executor<'a, 'b> {
                     body,
                     expr,
                     &mut values_defined_here,
-                    self.show_steps
+                    self.show_steps,
                 )
                 .await
             }
@@ -246,13 +252,9 @@ impl<'a, 'b> Executor<'a, 'b> {
                 self.hide_change = true;
 
                 let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await.unwrap();
-                let mut system = self
-                    .system
-                    .get_handler(system_id)
-                    .await
-                    .ok_or(InterpreterError::InternalError(format!(
-                        "Expected system handler"
-                    )))?;
+                let mut system = self.system.get_handler(system_id).await.ok_or(
+                    InterpreterError::InternalError(format!("Expected system handler")),
+                )?;
 
                 Ok(Syntax::Contextual(
                     ctx_id,
@@ -266,7 +268,7 @@ impl<'a, 'b> Executor<'a, 'b> {
                             rhs,
                             expr.clone(),
                             &mut values_defined_here,
-                            self.show_steps
+                            self.show_steps,
                         )
                         .await?,
                     ),
@@ -279,13 +281,9 @@ impl<'a, 'b> Executor<'a, 'b> {
                 let old_system_id = self.system.get_id();
 
                 let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await.unwrap();
-                let mut system = self
-                    .system
-                    .get_handler(system_id)
-                    .await
-                    .ok_or(InterpreterError::InternalError(format!(
-                        "Expected system handler"
-                    )))?;
+                let mut system = self.system.get_handler(system_id).await.ok_or(
+                    InterpreterError::InternalError(format!("Expected system handler")),
+                )?;
                 let mut executor = Executor::new(&mut ctx, &mut system, self.show_steps);
 
                 // Create a new contextual with the contents evaulated in the given context
@@ -675,7 +673,12 @@ impl<'a, 'b> Executor<'a, 'b> {
                 haschanged = true;
             }
 
-            if !self.hide_change && first && expr != Syntax::ValAny() && haschanged && self.show_steps {
+            if !self.hide_change
+                && first
+                && expr != Syntax::ValAny()
+                && haschanged
+                && self.show_steps
+            {
                 //debug!("{:?}", expr);
                 println!("{}", expr);
             }
@@ -754,9 +757,7 @@ async fn build_system(
             }
         }
 
-        system
-            .new_system_handler(new_builtins_map)
-            .await
+        system.new_system_handler(new_builtins_map).await
     }
 }
 
@@ -824,7 +825,7 @@ async fn import_lib(
     system: &mut SystemHandler,
     path: String,
     builtins_map: BTreeMap<String, Syntax>,
-    show_steps: bool
+    show_steps: bool,
 ) -> Result<Syntax, InterpreterError> {
     let system = {
         let ctx = ctx.clone();
@@ -876,7 +877,7 @@ async fn import_lib(
                     code.as_str(),
                     holder,
                     &mut system,
-                    show_steps
+                    show_steps,
                 )
                 .await?;
 
@@ -916,7 +917,7 @@ async fn make_call(
     body: Box<Syntax>,
     original_expr: Syntax,
     values_defined_here: &mut Vec<String>,
-    show_steps: bool
+    show_steps: bool,
 ) -> Result<Syntax, InterpreterError> {
     if let Some(value) = ctx.get_from_values(&id, values_defined_here).await {
         Ok(Syntax::Call(Box::new(value), body))
@@ -955,7 +956,7 @@ async fn make_call(
                     body,
                     original_expr,
                     values_defined_here,
-                    show_steps
+                    show_steps,
                 )
                 .await
             }
@@ -969,7 +970,7 @@ async fn make_call(
                         .filter(|(_, (_, is_id))| *is_id)
                         .map(|(key, (value, _))| (key, value))
                         .collect(),
-                        show_steps
+                    show_steps,
                 )
                 .await
             }
@@ -1000,7 +1001,7 @@ async fn make_call(
                     body,
                     original_expr,
                     values_defined_here,
-                    show_steps
+                    show_steps,
                 )
                 .await
             }
@@ -1027,7 +1028,7 @@ async fn import_std_lib(
     ctx: &mut ContextHandler,
     system: &mut SystemHandler,
     path: String,
-    show_steps: bool
+    show_steps: bool,
 ) -> Result<Syntax, InterpreterError> {
     if let Some(ctx) = ctx.get_holder().get_path(&path).await {
         Ok(Syntax::Context(ctx.get_id(), system.get_id(), path))
@@ -1066,7 +1067,7 @@ pub async fn execute_code(
     code: &str,
     holder: &mut ContextHolder,
     system: &mut SystemHandler,
-    show_steps: bool
+    show_steps: bool,
 ) -> Result<ContextHandler, InterpreterError> {
     let mut ctx = holder
         .create_context(name.to_owned(), path)
@@ -1088,7 +1089,9 @@ pub async fn execute_code(
     let typed = parse_to_typed(toks);
     debug!("{:?}", typed);
     let typed = typed?;
-    Executor::new(&mut ctx, system, show_steps).execute(typed, true).await?;
+    Executor::new(&mut ctx, system, show_steps)
+        .execute(typed, true)
+        .await?;
 
     Ok(ctx)
 }

@@ -37,7 +37,7 @@ impl System {
         no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
-        show_steps: bool
+        show_steps: bool,
     ) -> Result<Syntax, InterpreterError> {
         self.private_system
             .lock()
@@ -376,7 +376,7 @@ impl SystemHandler {
         no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
-        show_steps: bool
+        show_steps: bool,
     ) -> Result<Syntax, InterpreterError> {
         self.get_system(self.id)
             .await
