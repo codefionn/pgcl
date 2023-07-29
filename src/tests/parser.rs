@@ -98,6 +98,12 @@ async fn parse_biop() {
     assert_eq!(Ok(r"(x > y)".to_string()), parse_to_str("x > y").await);
     assert_eq!(Ok(r"(x < y)".to_string()), parse_to_str("x < y").await);
     assert_eq!(Ok(r"(x | y)".to_string()), parse_to_str("x | y").await);
+    assert_eq!(Ok(r"(x ** y)".to_string()), parse_to_str("x ** y").await);
+}
+
+#[tokio::test]
+async fn parse_unop() {
+    assert_eq!(Ok(r"$ x".to_string()), parse_to_str("$ x").await);
 }
 
 #[tokio::test]
@@ -132,6 +138,13 @@ async fn parse_str() {
         Ok("\"\'\\\"\\\\0\\r\\t\\n\"".to_string()),
         parse_to_str("\"\\\'\\\"\\\\\\0\\r\\t\\n\"").await
     );
+}
+
+#[tokio::test]
+async fn parse_lst() {
+    assert_eq!(Ok("[x, y]".to_string()), parse_to_str("[x, y]").await);
+    assert_eq!(Ok("[x:xs]".to_string()), parse_to_str("[x:xs]").await);
+    assert_eq!(Ok("[x:y:xs]".to_string()), parse_to_str("[x:y:xs]").await);
 }
 
 #[tokio::test]
