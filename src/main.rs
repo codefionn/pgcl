@@ -11,6 +11,7 @@ mod lexer;
 mod parser;
 mod rational;
 mod reader;
+mod runner;
 mod syscall;
 mod system;
 
@@ -23,6 +24,7 @@ use anyhow::anyhow;
 use clap::Parser;
 use context::ContextHolder;
 use log::{debug, LevelFilter};
+use runner::Runner;
 use system::SystemHandler;
 use tokio::sync::mpsc;
 
@@ -55,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
 
         let mut holder = ContextHolder::default();
         let mut systems = SystemHandler::default();
+        let mut runner = Runner::new(&mut systems).await?;
 
         crate::execute::execute_code(
             &filepath.to_string_lossy(),
@@ -62,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
             code.as_str(),
             &mut holder,
             &mut systems,
+            &mut runner,
             args.verbose,
         )
         .await

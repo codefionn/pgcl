@@ -1,22 +1,21 @@
 use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
+    collections::{BTreeMap, HashMap}, sync::{Arc, atomic::{AtomicBool, Ordering}}, time::Duration, ops::Deref,
 };
 
 use anyhow::anyhow;
 use futures::{future::join_all, SinkExt};
 use log::{debug, error};
 use tokio::{
-    sync::{broadcast, mpsc, oneshot, Mutex},
+    sync::{mpsc, oneshot, Mutex, RwLock},
     task::JoinHandle,
 };
 
 pub use crate::syscall::{PrivateSystem, SystemCallType};
 use crate::{
-    actor,
+    actor::{self, ActorHandle},
     context::ContextHandler,
     errors::InterpreterError,
-    execute::{SignalType, Syntax},
+    execute::{SignalType, Syntax}, runner::{RunnerMessage, Runner}, interpreter::LexerMessage,
 };
 
 #[derive(Clone)]
@@ -34,6 +33,7 @@ impl System {
         &self,
         ctx: &mut ContextHandler,
         system: &mut SystemHandler,
+        runner: &mut Runner,
         no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
@@ -42,7 +42,7 @@ impl System {
         self.private_system
             .lock()
             .await
-            .do_syscall(ctx, system, no_change, syscall, expr, show_steps)
+            .do_syscall(ctx, system, runner, no_change, syscall, expr, show_steps)
             .await
     }
 
@@ -54,15 +54,17 @@ impl System {
 pub enum SystemHandleMessage {}
 
 enum SystemActorMessage {
-    MarkUseSignal(SignalType, usize),
-    StartCollectGarbage(),
-    StopCollectGarbage(),
+    MarkUseSignal(SignalType, usize, /* result: */ oneshot::Sender<()>),
+    CollectGarbage(),
+    FinishedCollectGarbage(),
     CreateSystem(
         BTreeMap<SystemCallType, Syntax>,
         oneshot::Sender<(usize, Arc<Mutex<PrivateSystem>>)>,
     ),
     GetSystem(usize, oneshot::Sender<Option<Arc<Mutex<PrivateSystem>>>>),
     DropSystemHandle(usize, oneshot::Sender<bool>),
+    CreateRunner(mpsc::Sender<RunnerMessage>, oneshot::Sender<usize>),
+    DropRunner(usize),
     CreateActor(
         /* handle: */ JoinHandle<()>,
         /* tx: */ mpsc::Sender<crate::actor::Message>,
@@ -78,6 +80,7 @@ enum SystemActorMessage {
         oneshot::Sender<Option<mpsc::Sender<crate::actor::Message>>>,
     ),
     RecvMessage(usize, oneshot::Sender<Option<Syntax>>),
+    SetLexer(mpsc::Sender<LexerMessage>),
     Exit(oneshot::Sender<()>),
     RealExit(),
 }
@@ -85,11 +88,11 @@ enum SystemActorMessage {
 impl std::fmt::Debug for SystemActorMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::MarkUseSignal(signal_type, id) => {
+            Self::MarkUseSignal(signal_type, id, _) => {
                 f.write_str(format!("MarkUseSignal({:?}, {})", signal_type, id).as_str())
             }
-            Self::StartCollectGarbage() => f.write_str(format!("StartCollectGarbage()").as_str()),
-            Self::StopCollectGarbage() => f.write_str(format!("StopCollectGarbage()").as_str()),
+            Self::CollectGarbage() => f.write_str(format!("CollectGarbage()").as_str()),
+            Self::FinishedCollectGarbage() => f.write_str(format!("FinishedCollectGarbage()").as_str()),
             Self::CreateSystem(map, _) => f.write_str(format!("CreateSystem({:?})", map).as_str()),
             Self::GetSystem(id, _) => f.write_str(format!("GetSystem({})", id).as_str()),
             Self::DropSystemHandle(id, _) => {
@@ -102,24 +105,10 @@ impl std::fmt::Debug for SystemActorMessage {
             Self::RecvMessage(id, _) => f.write_str(format!("RecvMessage({})", id).as_str()),
             Self::Exit(_) => f.write_str("Exit()"),
             Self::RealExit() => f.write_str("RealExit()"),
+            Self::CreateRunner(_, _) => f.write_str("CreateRunner()"),
+            Self::DropRunner(id) => f.write_str(format!("DropRunner({})", id).as_str()),
+            Self::SetLexer(_) => f.write_str(format!("SetLexer()").as_str()),
         }
-    }
-}
-
-struct ActorHandle {
-    pub tx: mpsc::Sender<crate::actor::Message>,
-    pub handle: JoinHandle<()>,
-    pub used: bool,
-}
-
-impl ActorHandle {
-    async fn destroy(self) -> JoinHandle<()> {
-        let (tx, rx) = oneshot::channel();
-        if let Ok(()) = self.tx.send(crate::actor::Message::Exit(tx)).await {
-            rx.await;
-        }
-
-        self.handle
     }
 }
 
@@ -139,6 +128,10 @@ struct SystemActor {
     last_message_id: usize,
     rx: mpsc::Receiver<SystemActorMessage>,
     tx: mpsc::Sender<SystemActorMessage>,
+    runners: HashMap<usize, mpsc::Sender<RunnerMessage>>,
+    last_runner_id: usize,
+    gc_running: Option<JoinHandle<()>>,
+    tx_lexer: Option<mpsc::Sender<LexerMessage>>
 }
 
 impl SystemActor {
@@ -160,8 +153,12 @@ impl SystemActor {
                 last_actor_id: 0,
                 messages: Default::default(),
                 last_message_id: 0,
+                runners: Default::default(),
+                last_runner_id: 0,
+                gc_running: None,
                 rx,
                 tx,
+                tx_lexer: None
             };
 
             actor.run_actor().await;
@@ -171,8 +168,32 @@ impl SystemActor {
     }
 
     async fn run_actor(mut self) {
+        #[cfg(debug_assertions)]
+        debug!("System actor: Started");
+
         let mut exit_handle: Option<oneshot::Sender<()>> = None;
+        let mut running = Arc::new(AtomicBool::new(true));
+        let mut watcher = tokio::spawn({
+            let tx = self.tx.clone();
+            let mut running = running.clone();
+            async move {
+                while running.load(Ordering::Relaxed) {
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    if let Err(_) = tx.send(SystemActorMessage::CollectGarbage()).await {
+                        break;
+                    }
+                }
+            }
+        });
+
         while let Some(msg) = self.rx.recv().await {
+            if !running.load(Ordering::Relaxed) {
+                break;
+            }
+
+            #[cfg(debug_assertions)]
+            debug!("{:?}", msg);
+
             match msg {
                 SystemActorMessage::CreateSystem(map, result) => {
                     result.send(self.create_system(map)).ok();
@@ -198,16 +219,37 @@ impl SystemActor {
                 SystemActorMessage::RecvMessage(id, result) => {
                     result.send(self.recv_message(id).await).ok();
                 }
-                SystemActorMessage::StartCollectGarbage() => {}
-                SystemActorMessage::StopCollectGarbage() => {}
-                SystemActorMessage::MarkUseSignal(signal, id) => {}
+                SystemActorMessage::CollectGarbage() => {
+                    self.gc();
+                }
+                SystemActorMessage::FinishedCollectGarbage() => {
+                    self.await_gc().await;
+                }
+                SystemActorMessage::MarkUseSignal(signal, id, result) => {
+                    self.mark_use_signal(signal, id);
+                    result.send(());
+                }
+                SystemActorMessage::CreateRunner(tx, result) => {
+                    result.send(self.create_runner(tx)).ok();
+                }
+                SystemActorMessage::DropRunner(id) => {
+                    self.drop_runner(id);
+                }
+                SystemActorMessage::SetLexer(tx_lexer) => {
+                    self.tx_lexer = Some(tx_lexer);
+                }
                 SystemActorMessage::Exit(result) => {
+                    running.swap(false, Ordering::Relaxed);
+
                     exit_handle = Some(result);
 
                     let tx = self.tx.clone();
                     let actors_tx: Vec<mpsc::Sender<crate::actor::Message>> =
                         self.actors.values().map(|actor| actor.tx.clone()).collect();
                     tokio::spawn(async move {
+                        tx.send(SystemActorMessage::CollectGarbage()).await.ok();
+
+                        #[cfg(debug_assertions)]
                         log::debug!("Exiting {} actors", actors_tx.len());
                         let mut actors_wait_handlers = Vec::new();
                         for actor_tx in actors_tx {
@@ -223,6 +265,7 @@ impl SystemActor {
                             actors_wait_handler.await;
                         }
 
+                        #[cfg(debug_assertions)]
                         log::debug!("Exited actors");
 
                         if let Err(err) = tx.send(SystemActorMessage::RealExit()).await {
@@ -234,15 +277,157 @@ impl SystemActor {
             }
         }
 
+        running.swap(false, Ordering::Relaxed);
+        self.await_gc().await;
+
+        if let Some(tx_lexer) = &mut self.tx_lexer {
+            tx_lexer.send(LexerMessage::Exit()).await.ok();
+        }
+
+        #[cfg(debug_assertions)]
         log::debug!("Cleaning up system actor");
         self.drop_actors().await;
         self.messages.drain();
         self.systems.drain();
+        #[cfg(debug_assertions)]
         log::debug!("Cleaned up system actor");
 
         if let Some(exit_handle) = exit_handle {
             exit_handle.send(());
         }
+    }
+
+    pub fn mark_use_signal(&mut self, signal_type: SignalType, id: usize) {
+        #[cfg(debug_assertions)]
+        debug!("mark_use_signal({:?}, {})", signal_type, id);
+
+        match signal_type {
+            SignalType::Actor => {
+                if let Some(actor) = self.actors.get_mut(&id) {
+                    actor.used = true;
+                }
+            },
+            SignalType::Message => {
+                if let Some(msg) = self.messages.get_mut(&id) {
+                     msg.used = true;
+                }
+            }
+        }
+    }
+
+    pub async fn await_gc(&mut self) -> Option<()> {
+        let gc_running = self.gc_running.as_mut()?;
+        gc_running.await;
+
+        #[cfg(debug_assertions)]
+        debug!("GC: Finishing up");
+
+        let mut to_drop_actors_ids: Vec<usize> = Vec::new();
+        for (id, actor) in &self.actors {
+            if !actor.used {
+                to_drop_actors_ids.push(*id);
+            }
+        }
+
+        let mut to_drop_actors: Vec<ActorHandle> = Vec::with_capacity(to_drop_actors_ids.len());
+        for actor_id in to_drop_actors_ids {
+            to_drop_actors.push(self.actors.remove(&actor_id).unwrap());
+        }
+
+        let mut to_drop_message_ids: Vec<usize> = Vec::new();
+        for (id, message) in &self.messages {
+            if !message.used {
+                to_drop_message_ids.push(*id);
+            }
+        }
+
+        let mut to_drop_messages: Vec<MessageHandle> = Vec::with_capacity(to_drop_message_ids.len());
+        for msg_id in to_drop_message_ids {
+            to_drop_messages.push(self.messages.remove(&msg_id).unwrap());
+        }
+
+        tokio::spawn(async move {
+            #[cfg(debug_assertions)]
+            log::debug!("GC: {} actors, {} messages", to_drop_actors.len(), to_drop_messages.len());
+
+            for actor in to_drop_actors.into_iter() {
+                actor.destroy().await;
+            }
+
+            for msg in to_drop_messages {
+                // Do nothing
+            }
+        });
+
+        self.gc_running = None;
+
+        Some(())
+    }
+
+    pub fn gc(&mut self) {
+        if self.gc_running.is_some() {
+            return;
+        }
+
+        #[cfg(debug_assertions)]
+        debug!("GC: Started");
+
+        // Mark everying as not used
+        for actor in self.actors.values_mut() {
+            actor.used = false;
+        }
+
+        for msg in self.messages.values_mut() {
+            msg.used = false;
+        }
+
+        let tx = self.tx.clone();
+        let runners_tx: Vec<mpsc::Sender<RunnerMessage>> = self.runners.values().into_iter().cloned().collect();
+        let mut tx_lexer = self.tx_lexer.clone();
+        let mut actors: Vec<mpsc::Sender<crate::actor::Message>> = self.actors.values_mut().map(|actor| actor.tx.clone()).collect();
+        self.gc_running = Some(tokio::spawn(async move {
+            #[cfg(debug_assertions)]
+            debug!("GC: Waiting for {} runners", runners_tx.len());
+
+            let runners_tx = join_all(runners_tx.into_iter().map(|tx| async move {
+                let (result_tx, result_rx) = oneshot::channel();
+                tx.send(RunnerMessage::Mark(result_tx)).await;
+                
+                (tx, result_rx)
+            })).await;
+
+            let runners = tokio::spawn(async move {
+                join_all(runners_tx.into_iter().map(|(tx, result_rx)| async move {
+                    result_rx.await;
+
+                    tx
+                })
+                .map(|tx| async move {
+                    let tx = tx.await;
+
+                    let (result_tx, result_rx) = oneshot::channel();
+                    tx.send(RunnerMessage::Sweep(result_tx)).await.ok();
+
+                    result_rx.await;
+                })).await;
+            });
+
+            while !runners.is_finished() {
+                tokio::time::sleep(Duration::from_millis(30)).await;
+
+                if let Some(tx_lexer) = tx_lexer.as_mut() {
+                    tx_lexer.send(LexerMessage::Wakeup()).await;
+                }
+
+                for actor in &mut actors {
+                    actor.send(crate::actor::Message::Wakeup()).await;
+                }
+            }
+
+            runners.await;
+
+            tx.send(SystemActorMessage::FinishedCollectGarbage()).await.ok();
+        }));
     }
 
     pub fn get_system(&mut self, id: usize) -> Option<Arc<Mutex<PrivateSystem>>> {
@@ -279,7 +464,7 @@ impl SystemActor {
             ActorHandle {
                 tx: tx.clone(),
                 handle,
-                used: false,
+                used: true,
             },
         );
 
@@ -300,7 +485,7 @@ impl SystemActor {
             MessageHandle {
                 tx: tx.clone(),
                 rx,
-                used: false,
+                used: true,
             },
         );
 
@@ -324,11 +509,13 @@ impl SystemActor {
     }
 
     pub async fn drop_actors(&mut self) {
+        #[cfg(debug_assertions)]
         debug!("Actors to clean up: {}", self.actors.len());
         if self.actors.is_empty() {
             return;
         }
 
+        #[cfg(debug_assertions)]
         debug!("Dropping actors");
         // We have to return the actors, otherwise the runtime will be locked
 
@@ -339,7 +526,23 @@ impl SystemActor {
         }))
         .await;
 
+        #[cfg(debug_assertions)]
         debug!("Awaiting actor tasks");
+    }
+
+    pub fn create_runner(&mut self, tx: mpsc::Sender<RunnerMessage>) -> usize {
+        let id = self.last_runner_id;
+        self.last_runner_id += 1;
+
+        if self.runners.insert(id, tx).is_some() {
+            panic!("There should not be any runner with id {}", id);
+        }
+
+        id
+    }
+
+    pub fn drop_runner(&mut self,  id: usize) {
+        self.runners.remove(&id);
     }
 }
 
@@ -353,8 +556,6 @@ pub struct SystemHandler {
 
 impl Default for SystemHandler {
     fn default() -> SystemHandler {
-        let system_holder = SystemActor::run();
-
         SystemHandler {
             id: 0,
             system: SystemActor::run(),
@@ -373,6 +574,7 @@ impl SystemHandler {
         &mut self,
         ctx: &mut ContextHandler,
         system: &mut SystemHandler,
+        runner: &mut Runner,
         no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
@@ -381,7 +583,7 @@ impl SystemHandler {
         self.get_system(self.id)
             .await
             .unwrap()
-            .do_syscall(ctx, system, no_change, syscall, expr, show_steps)
+            .do_syscall(ctx, system, runner, no_change, syscall, expr, show_steps)
             .await
     }
 
@@ -518,11 +720,34 @@ impl SystemHandler {
         Ok(rx.await.map_err(|err| anyhow!("{}", err))?.unwrap())
     }
 
+    pub async fn set_lexer(&mut self, tx_lexer: mpsc::Sender<LexerMessage>) {
+        self.system.send(SystemActorMessage::SetLexer(tx_lexer)).await;
+    }
+
     pub async fn exit(&mut self) {
         let (tx, rx) = oneshot::channel();
         if let Err(err) = self.system.send(SystemActorMessage::Exit(tx)).await {
             error!("{}", err);
         }
         rx.await;
+    }
+
+    pub async fn mark_use_signal(&mut self, signal_type: SignalType, id: usize) {
+        let (tx, rx) = oneshot::channel();
+        self.system.send(SystemActorMessage::MarkUseSignal(signal_type, id, tx)).await.ok();
+        rx.await;
+    }
+
+    pub async fn create_runner(&mut self, tx_runner: mpsc::Sender<RunnerMessage>) -> anyhow::Result<usize> {
+        let (tx, rx) = oneshot::channel();
+        self.system.send(SystemActorMessage::CreateRunner(tx_runner, tx)).await?;
+
+        let result = rx.await?;
+
+        Ok(result)
+    }
+
+    pub async fn drop_runner(&mut self, id: usize) {
+        self.system.send(SystemActorMessage::DropRunner(id)).await.ok();
     }
 }

@@ -6,7 +6,7 @@ use crate::{
     errors::InterpreterError,
     execute::{Executor, SignalType, Syntax},
     rational::BigRational,
-    system::SystemHandler,
+    system::SystemHandler, runner::Runner,
 };
 use bigdecimal::{BigDecimal, ToPrimitive};
 use futures::SinkExt;
@@ -107,6 +107,7 @@ impl PrivateSystem {
         &self,
         ctx: &mut ContextHandler,
         system: &mut SystemHandler,
+        runner: &mut Runner,
         no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
@@ -153,9 +154,10 @@ impl PrivateSystem {
             (SystemCallType::MeasureTime, expr) => {
                 let now = Instant::now();
 
-                let expr = Executor::new(ctx, system, show_steps)
+                let expr = Executor::new(ctx, system, runner, show_steps)
                     .execute(expr, false)
                     .await?;
+                std::mem::drop(runner);
 
                 let diff = now.elapsed().as_secs_f64();
                 let diff: BigRational = BigRational::from_f64(diff).unwrap();
@@ -317,7 +319,7 @@ impl PrivateSystem {
                 Box::new(Syntax::Tuple(
                     Box::new(Syntax::ValAtom(syscall.to_systemcall().to_string())),
                     Box::new(
-                        Executor::new(ctx, system, show_steps)
+                        Executor::new(ctx, system, runner, show_steps)
                             .execute_once(expr, false, no_change)
                             .await?,
                     ),

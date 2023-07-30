@@ -1,6 +1,6 @@
 use log::debug;
 use rowan::GreenNodeBuilder;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{
     context::{ContextHandler, ContextHolder},
@@ -11,7 +11,7 @@ use crate::{
     parser::{print_ast, Parser, SyntaxKind},
     reader::{ExecutedMessage, LineMessage},
     system::SystemHandler,
-    Args,
+    Args, runner::Runner,
 };
 
 /// Actor for interpreting input lines from the CLI
@@ -26,20 +26,24 @@ impl InterpreterActor {
     }
 
     pub async fn run(self) -> anyhow::Result<()> {
+        #[cfg(debug_assertions)]
         debug!("Started {}", stringify!(InterpreterActor));
 
         let (tx_lexer, rx_lexer) = mpsc::channel(1);
 
         let (h0, h1) = tokio::join!(
-            tokio::spawn(async move {
-                let lexer = InterpreterLexerActor::new(self.rx, tx_lexer);
-                lexer.run().await
+            tokio::spawn({
+                let tx_lexer = tx_lexer.clone();
+                async move {
+                    let lexer = InterpreterLexerActor::new(self.rx, tx_lexer);
+                    lexer.run().await
+                }
             }),
             tokio::spawn({
                 let _args = self.args.clone();
 
                 async move {
-                    let execute = InterpreterExecuteActor::new(self.args, rx_lexer);
+                    let execute = InterpreterExecuteActor::new(self.args, tx_lexer, rx_lexer);
                     execute.run().await
                 }
             })
@@ -64,9 +68,13 @@ impl InterpreterLexerActor {
     }
 
     async fn run(mut self) -> anyhow::Result<()> {
+        #[cfg(debug_assertions)]
         debug!("Started {}", stringify!(InterpreterLexerActor));
 
         while let Some(msg) = self.rx.recv().await {
+            #[cfg(debug_assertions)]
+            debug!("Interpreter: {:?}", msg);
+
             match msg {
                 LineMessage::Line(line, tx_confirm) => {
                     if line.trim().is_empty() {
@@ -104,6 +112,7 @@ pub enum LexerMessage {
         Vec<(Token, String)>,
         tokio::sync::oneshot::Sender<ExecutedMessage>,
     ),
+    Wakeup(),
     Exit(),
 }
 
@@ -111,16 +120,18 @@ pub enum LexerMessage {
 struct InterpreterExecuteActor {
     args: Args,
     rx: mpsc::Receiver<LexerMessage>,
+    tx: mpsc::Sender<LexerMessage>,
     last_result: Option<Syntax>,
     ctx: ContextHolder,
     system: SystemHandler,
 }
 
 impl InterpreterExecuteActor {
-    fn new(args: Args, rx: mpsc::Receiver<LexerMessage>) -> Self {
+    fn new(args: Args, tx: mpsc::Sender<LexerMessage>, rx: mpsc::Receiver<LexerMessage>) -> Self {
         Self {
             args,
             rx,
+            tx,
             last_result: None,
             ctx: ContextHolder::default(),
             system: SystemHandler::default(),
@@ -128,6 +139,7 @@ impl InterpreterExecuteActor {
     }
 
     async fn run(mut self) -> anyhow::Result<()> {
+        #[cfg(debug_assertions)]
         debug!("Started {}", stringify!(InterpreterExecuteActor));
 
         let path = std::env::current_dir()?;
@@ -141,7 +153,9 @@ impl InterpreterExecuteActor {
         );
 
         let mut main_system: SystemHandler = self.system.get_handler(0).await.unwrap();
-        let mut executor = Executor::new(&mut main_ctx, &mut main_system, self.args.verbose);
+        main_system.set_lexer(self.tx).await;
+        let mut runner = Runner::new(&mut main_system).await?;
+        let mut executor = Executor::new(&mut main_ctx, &mut main_system, &mut runner, self.args.verbose);
 
         // Save the length of the error vec in the main context
         // This helps to only output current errors
@@ -153,6 +167,9 @@ impl InterpreterExecuteActor {
         let mut leftover_tokens: Vec<Vec<(SyntaxKind, String)>> = Vec::new();
 
         while let Some(msg) = self.rx.recv().await {
+            #[cfg(debug_assertions)]
+            debug!("Interpreter: {:?}", msg);
+
             match msg {
                 LexerMessage::Line(lexer_result, tx_confirm) => {
                     let toks: Vec<(SyntaxKind, String)> = lexer_result
@@ -185,6 +202,7 @@ impl InterpreterExecuteActor {
                             )
                         };
 
+                        #[cfg(debug_assertions)]
                         debug!("{:?}", typed);
                         if let Ok(typed) = typed {
                             success = true;
@@ -200,6 +218,7 @@ impl InterpreterExecuteActor {
 
                             let reduced: Syntax = typed.reduce().await;
 
+                            #[cfg(debug_assertions)]
                             debug!("{}", reduced);
                             match executor.execute(reduced, true).await {
                                 Ok(executed) => {
@@ -238,6 +257,9 @@ impl InterpreterExecuteActor {
                             Some(id) => ExecutedMessage::Exit(id),
                         })
                         .map_err(|err| anyhow::anyhow!("{err:?}"))?;
+                }
+                LexerMessage::Wakeup() => {
+                    executor.runner_handle(&[]).await;
                 }
                 LexerMessage::Exit() => {
                     self.system.exit().await;

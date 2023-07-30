@@ -6,7 +6,7 @@ use crate::{
     execute::{Executor, Syntax},
     lexer::Token,
     parser::{Parser, SyntaxKind},
-    system::SystemHandler,
+    system::SystemHandler, runner::Runner,
 };
 
 async fn parse(
@@ -29,7 +29,8 @@ async fn parse(
         Err(InterpreterError::UnknownError())
     } else {
         let ast: Syntax = (*ast).try_into()?;
-        Executor::new(ctx, system, false).execute(ast, true).await
+        let mut runner = Runner::new(system).await.map_err(|err| InterpreterError::InternalError(format!("{}", err)))?;
+        Executor::new(ctx, system, &mut runner, false).execute(ast, true).await
     }
 }
 
@@ -1132,9 +1133,10 @@ async fn test_two_ctx() {
     let system_id = system.get_id();
 
     assert!(parse_to_str("x = 1", &mut ctx0, &mut system).await.is_ok());
+    let mut runner = Runner::new(&mut system).await.unwrap();
     assert_eq!(
         Ok(r"1".to_string()),
-        Executor::new(&mut ctx1, &mut system, false)
+        Executor::new(&mut ctx1, &mut system, &mut runner, false)
             .execute(
                 Syntax::Contextual(ctx0_id, system_id, Box::new(Syntax::Id("x".to_string()))),
                 true

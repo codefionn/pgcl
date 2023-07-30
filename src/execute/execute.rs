@@ -975,6 +975,50 @@ impl Syntax {
         result
     }
 
+    pub fn exprs<'a>(&'a self) -> Vec<&'a Syntax> {
+        match self {
+            Self::Id(id) => vec![],
+            Self::Program(expr) => expr.iter().collect(),
+            Self::Lambda(id, box expr) => vec![expr],
+            Self::Call(box lhs, box rhs)
+            | Self::Asg(box lhs, box rhs)
+            | Self::Tuple(box lhs, box rhs)
+            | Self::BiOp(_, box lhs, box rhs) => vec![lhs, rhs],
+            Self::Let((box lhs, box rhs), box expr) => vec![lhs, rhs, expr],
+            Self::If(box cond, box expr_true, box expr_false) => {
+                vec![cond, expr_true, expr_false]
+            }
+            Self::IfLet(asgs, box expr_true, box expr_false) => {
+                asgs.iter()
+                    .map(|(lhs, rhs)| vec![lhs, rhs])
+                    .flatten()
+                    .chain([expr_true, expr_false].into_iter())
+                    .collect()
+            },
+            Self::UnexpectedArguments()
+            | Self::ValAny()
+            | Self::ValInt(_)
+            | Self::ValFlt(_)
+            | Self::ValStr(_)
+            | Self::ValAtom(_) => vec![],
+            Self::Lst(lst) => lst.iter().collect(),
+            Self::LstMatch(lst) => lst.iter().collect(),
+            Self::Map(map) => {
+                map.iter().map(|e| &e.1 .0).collect()
+            }
+            Self::MapMatch(map) => {
+                map.iter().filter_map(|e| e.2.as_ref()).collect()
+            }
+            Self::ExplicitExpr(expr) => vec![expr],
+            Self::Pipe(expr) => vec![expr],
+            Self::Context(_, _, _) => vec![],
+            Self::Contextual(_, _, _) => vec![],
+            Self::Signal(_, _) => vec![],
+            Self::FnOp(_) => vec![],
+            Self::UnOp(UnOpType::OpImmediate, expr) => vec![expr],
+        }
+    }
+
     /// Evaluate, if both statements are equal with type-coercion
     pub async fn eval_equal(&self, other: &Self) -> bool {
         match (self, other) {
