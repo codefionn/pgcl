@@ -281,7 +281,7 @@ impl SystemActor {
         self.await_gc().await;
 
         if let Some(tx_lexer) = &mut self.tx_lexer {
-            tx_lexer.send(LexerMessage::Exit()).await.ok();
+            tx_lexer.send(LexerMessage::RealExit()).await.ok();
         }
 
         #[cfg(debug_assertions)]

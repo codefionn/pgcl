@@ -114,6 +114,7 @@ pub enum LexerMessage {
     ),
     Wakeup(),
     Exit(),
+    RealExit(),
 }
 
 /// Actor for executing results from the lexer
@@ -263,7 +264,8 @@ impl InterpreterExecuteActor {
                 }
                 LexerMessage::Exit() => {
                     self.system.exit().await;
-
+                }
+                LexerMessage::RealExit() => {
                     break;
                 }
             }
