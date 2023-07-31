@@ -43,6 +43,8 @@ The interpreter uses
 * [ ] Immediate execution
 * [ ] Make lists and maps more lazy
 * [X] Garbage collect signals
+* [ ] Correctly garbage collect contexts (especially imports)
+* [ ] Save memory with more shared memory between expressions in context
 
 ## Structures
 
