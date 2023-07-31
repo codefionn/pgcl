@@ -79,7 +79,7 @@ impl Actor {
                 }
                 Message::Wakeup() => {
                     let mut executor = executor.write().await;
-                    executor.runner_handle(&[&init]).await;
+                    executor.runner_handle(&[&init, &self.actor_fn]).await;
                 }
                 Message::Exit(exit_handle) => {
                     exit_handlers.push(exit_handle);
