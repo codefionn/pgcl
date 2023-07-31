@@ -26,8 +26,8 @@ impl InterpreterActor {
     }
 
     pub async fn run(self) -> anyhow::Result<()> {
-        #[cfg(debug_assertions)]
-        debug!("Started {}", stringify!(InterpreterActor));
+        //#[cfg(debug_assertions)]
+        //debug!("Started {}", stringify!(InterpreterActor));
 
         let (tx_lexer, rx_lexer) = mpsc::channel(1);
 
@@ -68,8 +68,8 @@ impl InterpreterLexerActor {
     }
 
     async fn run(mut self) -> anyhow::Result<()> {
-        #[cfg(debug_assertions)]
-        debug!("Started {}", stringify!(InterpreterLexerActor));
+        //#[cfg(debug_assertions)]
+        //debug!("Started {}", stringify!(InterpreterLexerActor));
 
         while let Some(msg) = self.rx.recv().await {
             #[cfg(debug_assertions)]
@@ -142,8 +142,8 @@ impl InterpreterExecuteActor {
     async fn run(mut self) -> anyhow::Result<()> {
         let mut exit_handle = None;
 
-        #[cfg(debug_assertions)]
-        debug!("Started {}", stringify!(InterpreterExecuteActor));
+        //#[cfg(debug_assertions)]
+        //debug!("Started {}", stringify!(InterpreterExecuteActor));
 
         let path = std::env::current_dir()?;
 
@@ -205,8 +205,8 @@ impl InterpreterExecuteActor {
                             )
                         };
 
-                        #[cfg(debug_assertions)]
-                        debug!("{:?}", typed);
+                        //#[cfg(debug_assertions)]
+                        //debug!("{:?}", typed);
                         if let Ok(typed) = typed {
                             success = true;
 
@@ -221,8 +221,8 @@ impl InterpreterExecuteActor {
 
                             let reduced: Syntax = typed.reduce().await;
 
-                            #[cfg(debug_assertions)]
-                            debug!("{}", reduced);
+                            //#[cfg(debug_assertions)]
+                            //debug!("{}", reduced);
                             match executor.execute(reduced, true).await {
                                 Ok(executed) => {
                                     if executed != Syntax::ValAny() {

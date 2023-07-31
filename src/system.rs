@@ -177,8 +177,8 @@ impl SystemActor {
     }
 
     async fn run_actor(mut self) {
-        #[cfg(debug_assertions)]
-        debug!("System actor: Started");
+        //#[cfg(debug_assertions)]
+        //debug!("System actor: Started");
 
         let mut exit_handle: Option<oneshot::Sender<()>> = None;
         let mut watcher = tokio::spawn({
@@ -210,13 +210,13 @@ impl SystemActor {
             tx_lexer.send(LexerMessage::RealExit()).await.ok();
         }
 
-        #[cfg(debug_assertions)]
-        log::debug!("Cleaning up system actor");
+        //#[cfg(debug_assertions)]
+        //log::debug!("Cleaning up system actor");
         self.drop_actors().await;
         self.messages.drain();
         self.systems.drain();
-        #[cfg(debug_assertions)]
-        log::debug!("Cleaned up system actor");
+        //#[cfg(debug_assertions)]
+        //log::debug!("Cleaned up system actor");
 
         for exit_handle in self.exit_handles {
             exit_handle.send(());
@@ -224,8 +224,8 @@ impl SystemActor {
     }
 
     pub async fn handle_messsage(&mut self, msg: SystemActorMessage) -> bool {
-        #[cfg(debug_assertions)]
-        debug!("{:?}", msg);
+        //#[cfg(debug_assertions)]
+        //debug!("{:?}", msg);
 
         match msg {
             SystemActorMessage::CreateSystem(map, result) => {
@@ -316,8 +316,8 @@ impl SystemActor {
                         actors_wait_handler.await;
                     }
         
-                    #[cfg(debug_assertions)]
-                    log::debug!("Exited actors");
+                    //#[cfg(debug_assertions)]
+                    //log::debug!("Exited actors");
         
                     if let Err(err) = tx.send(SystemActorMessage::RealExit()).await {
                         error!("{}", err);
@@ -333,8 +333,8 @@ impl SystemActor {
     }
 
     pub fn mark_use_signal(&mut self, signal_type: SignalType, id: usize) {
-        #[cfg(debug_assertions)]
-        debug!("mark_use_signal({:?}, {})", signal_type, id);
+        //#[cfg(debug_assertions)]
+        //debug!("mark_use_signal({:?}, {})", signal_type, id);
 
         match signal_type {
             SignalType::Actor => {
@@ -354,8 +354,8 @@ impl SystemActor {
         let gc_running = self.gc_running.as_mut()?;
         gc_running.await;
 
-        #[cfg(debug_assertions)]
-        debug!("GC: Finishing up");
+        //#[cfg(debug_assertions)]
+        //debug!("GC: Finishing up");
 
         let mut to_drop_actors_ids: Vec<usize> = Vec::new();
         for (id, actor) in &self.actors {
@@ -409,16 +409,14 @@ impl SystemActor {
             return;
         }
 
-        #[cfg(debug_assertions)]
-        debug!("GC: Started");
+        //#[cfg(debug_assertions)]
+        //debug!("GC: Started");
 
         // Mark everying as not used
         for actor in self.actors.values_mut() {
             if actor.running.load(Ordering::Relaxed) {
-                debug!("Test0");
                 actor.used = true;
             } else {
-                debug!("Test1");
                 actor.used = false;
             }
         }
@@ -432,8 +430,8 @@ impl SystemActor {
         let mut tx_lexer = self.tx_lexer.clone();
         let mut actors: Vec<mpsc::Sender<crate::actor::Message>> = self.actors.values_mut().map(|actor| actor.tx.clone()).collect();
         self.gc_running = Some(tokio::spawn(async move {
-            #[cfg(debug_assertions)]
-            debug!("GC: Waiting for {} runners", runners_tx.len());
+            //#[cfg(debug_assertions)]
+            //debug!("GC: Waiting for {} runners", runners_tx.len());
 
             let runners_tx = join_all(runners_tx.into_iter().map(|tx| async move {
                 let (result_tx, result_rx) = oneshot::channel();
@@ -557,14 +555,15 @@ impl SystemActor {
     }
 
     pub async fn drop_actors(&mut self) {
-        #[cfg(debug_assertions)]
-        debug!("Actors to clean up: {}", self.actors.len());
+        //#[cfg(debug_assertions)]
+        //debug!("Actors to clean up: {}", self.actors.len());
         if self.actors.is_empty() {
             return;
         }
 
-        #[cfg(debug_assertions)]
-        debug!("Dropping actors");
+        //#[cfg(debug_assertions)]
+        //debug!("Dropping actors");
+
         // We have to return the actors, otherwise the runtime will be locked
 
         join_all(self.actors.drain().map(|(handle, actor)| async move {
@@ -574,8 +573,8 @@ impl SystemActor {
         }))
         .await;
 
-        #[cfg(debug_assertions)]
-        debug!("Awaiting actor tasks");
+        //#[cfg(debug_assertions)]
+        //debug!("Awaiting actor tasks");
     }
 
     pub fn create_runner(&mut self, tx: mpsc::Sender<RunnerMessage>) -> usize {

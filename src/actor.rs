@@ -67,8 +67,8 @@ impl Actor {
                     match expr {
                         Ok(expr) => {
                             init = expr;
-                            #[cfg(debug_assertions)]
-                            debug!("Successfully executed actor");
+                            //#[cfg(debug_assertions)]
+                            //debug!("Successfully executed actor");
                         }
                         Err(err) => {
                             error!("Actor failed: {:?}", err);
@@ -88,12 +88,12 @@ impl Actor {
                 }
             }
 
-            #[cfg(debug_assertions)]
-            debug!("Actor waiting for next message");
+            //#[cfg(debug_assertions)]
+            //debug!("Actor waiting for next message");
         }
 
-        #[cfg(debug_assertions)]
-        debug!("Actor quitting due to receiving exit signal");
+        //#[cfg(debug_assertions)]
+        //debug!("Actor quitting due to receiving exit signal");
 
         for exit_handler in exit_handlers {
             exit_handler.send(());
