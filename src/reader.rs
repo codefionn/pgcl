@@ -27,8 +27,8 @@ impl CLIActor {
 
     #[must_use]
     pub async fn run(self) -> anyhow::Result<i32> {
-        #[cfg(debug_assertions)]
-        debug!("Started {}", stringify!(CLIActor));
+        //#[cfg(debug_assertions)]
+        //debug!("Started {}", stringify!(CLIActor));
 
         let mut rl = Editor::<()>::new()?;
         rl.set_auto_add_history(true);

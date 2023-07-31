@@ -699,13 +699,13 @@ async fn build_system(
     builtins_map: BTreeMap<String, Syntax>,
 ) -> SystemHandler {
     let has_restrict = builtins_map.get("restrict") == Some(&Syntax::ValAtom("true".to_string()));
-    #[cfg(debug_assertions)]
-    debug!("has_restrict: {has_restrict}");
+    //#[cfg(debug_assertions)]
+    //debug!("has_restrict: {has_restrict}");
 
     let has_restrict_insecure =
         builtins_map.get("restrict_insecure") == Some(&Syntax::ValAtom("true".to_string()));
-    #[cfg(debug_assertions)]
-    debug!("has_restrict_insecure: {has_restrict_insecure}");
+    //#[cfg(debug_assertions)]
+    //debug!("has_restrict_insecure: {has_restrict_insecure}");
 
     // List all systemcalls here
     let mut builtins_map: BTreeMap<String, Syntax> = builtins_map
@@ -742,8 +742,8 @@ async fn build_system(
         if has_restrict {
             for syscall_type in all_syscalls {
                 new_builtins_map.entry(syscall_type).or_insert_with(|| {
-                    #[cfg(debug_assertions)]
-                    debug!("{syscall_type:?}");
+                    //#[cfg(debug_assertions)]
+                    //debug!("{syscall_type:?}");
                     Syntax::ValAtom("error".to_string())
                 });
             }
@@ -753,8 +753,8 @@ async fn build_system(
                 .filter(|syscall| syscall.is_secure())
             {
                 new_builtins_map.entry(syscall_type).or_insert_with(|| {
-                    #[cfg(debug_assertions)]
-                    debug!("{syscall_type:?}");
+                    //#[cfg(debug_assertions)]
+                    //debug!("{syscall_type:?}");
                     Syntax::ValAtom("error".to_string())
                 });
             }
@@ -886,8 +886,8 @@ async fn import_lib(
                 )
                 .await?;
 
-                #[cfg(debug_assertions)]
-                debug!("Imported {} as {}", module_path_str, ctx.get_id());
+                //#[cfg(debug_assertions)]
+                //debug!("Imported {} as {}", module_path_str, ctx.get_id());
 
                 Ok(Syntax::Context(
                     ctx.get_id(),
@@ -1099,8 +1099,8 @@ pub async fn execute_code(
         .try_collect()?;
 
     let typed = parse_to_typed(toks);
-    #[cfg(debug_assertions)]
-    debug!("{:?}", typed);
+    //#[cfg(debug_assertions)]
+    //debug!("{:?}", typed);
     let typed = typed?;
     Executor::new(&mut ctx, system, runner, show_steps)
         .execute(typed, true)

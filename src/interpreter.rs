@@ -72,8 +72,8 @@ impl InterpreterLexerActor {
         //debug!("Started {}", stringify!(InterpreterLexerActor));
 
         while let Some(msg) = self.rx.recv().await {
-            #[cfg(debug_assertions)]
-            debug!("Interpreter: {:?}", msg);
+            //#[cfg(debug_assertions)]
+            //debug!("Interpreter: {:?}", msg);
 
             match msg {
                 LineMessage::Line(line, tx_confirm) => {
@@ -170,8 +170,8 @@ impl InterpreterExecuteActor {
         let mut leftover_tokens: Vec<Vec<(SyntaxKind, String)>> = Vec::new();
 
         while let Some(msg) = self.rx.recv().await {
-            #[cfg(debug_assertions)]
-            debug!("Interpreter: {:?}", msg);
+            //#[cfg(debug_assertions)]
+            //debug!("Interpreter: {:?}", msg);
 
             match msg {
                 LexerMessage::Line(lexer_result, tx_confirm) => {
