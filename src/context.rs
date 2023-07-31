@@ -69,6 +69,10 @@ impl PrivateContext {
         self.globals.values().cloned().collect()
     }
 
+    pub async fn get_values(&mut self) -> Vec<Syntax> {
+        self.values.values().flatten().cloned().collect()
+    }
+
     pub fn insert_into_values(
         &mut self,
         id: &String,
@@ -570,6 +574,10 @@ impl Context {
         self.ctx.lock().await.get_globals().await
     }
 
+    pub async fn get_values(&mut self) -> Vec<Syntax> {
+        self.ctx.lock().await.get_values().await
+    }
+
     pub async fn insert_into_values(
         &mut self,
         id: &String,
@@ -720,6 +728,10 @@ impl ContextHandler {
 
     pub async fn get_globals(&mut self) -> Vec<Syntax> {
         self.holder.get(self.id).await.unwrap().get_globals().await
+    }
+
+    pub async fn get_values(&mut self) -> Vec<Syntax> {
+        self.holder.get(self.id).await.unwrap().get_values().await
     }
 
     pub async fn insert_into_values(

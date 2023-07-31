@@ -38,6 +38,9 @@ impl Runner {
                     for syntax in ctx.get_globals().await {
                         mark_used(&mut self.system, &syntax).await;
                     }
+                    for syntax in ctx.get_values().await {
+                        mark_used(&mut self.system, &syntax).await;
+                    }
                 }
                 result.send(());
             }
