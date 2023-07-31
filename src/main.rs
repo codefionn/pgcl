@@ -70,6 +70,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .await
         .map_err(|err| anyhow!("{:?}", err))?;
+        std::mem::drop(runner);
 
         systems.exit().await;
 

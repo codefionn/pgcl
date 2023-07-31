@@ -203,9 +203,9 @@ impl PrivateSystem {
                 Ok(Syntax::ValAny())
             }
             (SystemCallType::Actor, Syntax::Tuple(init, actor_fn)) => {
-                let (handle, tx) =
+                let (handle, tx, running) =
                     crate::actor::create_actor(ctx.clone(), system.clone(), *init, *actor_fn).await;
-                let id = system.create_actor(handle, tx).await;
+                let id = system.create_actor(handle, tx, running).await;
 
                 Ok(Syntax::Signal(SignalType::Actor, id))
             }

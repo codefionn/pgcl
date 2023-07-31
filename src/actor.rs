@@ -1,3 +1,5 @@
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+
 use log::{debug, error};
 use tokio::{sync::mpsc, sync::{oneshot, RwLock}, task::JoinHandle};
 
@@ -23,34 +25,37 @@ impl std::fmt::Debug for Message {
     }
 }
 
-pub async fn create_actor(
+struct Actor {
     ctx: ContextHandler,
     system: SystemHandler,
     init: Syntax,
     actor_fn: Syntax,
-) -> (JoinHandle<()>, mpsc::Sender<Message>) {
-    let (tx, mut rx) = mpsc::channel(256);
+    tx: mpsc::Sender<Message>,
+    rx: mpsc::Receiver<Message>,
+    running: Arc<AtomicBool>
+}
 
-    let handle = tokio::spawn(async move {
-        let mut ctx = ctx.clone();
-        let mut system = system.clone();
-        let mut runner = Runner::new(&mut system).await.unwrap();
-        let mut executor = RwLock::new(Executor::new(&mut ctx, &mut system, &mut runner, false));
-        let mut init = init.clone();
+impl Actor {
+    async fn run_actor(mut self) {
+        let mut runner = Runner::new(&mut self.system).await.unwrap();
+        let mut executor = RwLock::new(Executor::new(&mut self.ctx, &mut self.system, &mut runner, false));
+        let mut init = self.init.clone();
 
         let mut exit_handlers: Vec<oneshot::Sender<()>> = Vec::new();
 
-        while let Some(msg) = rx.recv().await {
+        while let Some(msg) = self.rx.recv().await {
             #[cfg(debug_assertions)]
             debug!("Actor received message: {:?}", msg);
 
             match msg {
                 Message::Signal(expr) => {
+                    self.running.store(true, Ordering::Relaxed);
+
                     let expr = executor.write().await
                         .execute(
                             Syntax::Call(
                                 Box::new(Syntax::Call(
-                                    Box::new(actor_fn.clone()),
+                                    Box::new(self.actor_fn.clone()),
                                     Box::new(init.clone()),
                                 )),
                                 Box::new(expr),
@@ -69,6 +74,8 @@ pub async fn create_actor(
                             error!("Actor failed: {:?}", err);
                         }
                     }
+
+                    self.running.store(false, Ordering::Relaxed);
                 }
                 Message::Wakeup() => {
                     let mut executor = executor.write().await;
@@ -91,15 +98,45 @@ pub async fn create_actor(
         for exit_handler in exit_handlers {
             exit_handler.send(());
         }
+    }
+}
+
+pub async fn create_actor(
+    ctx: ContextHandler,
+    system: SystemHandler,
+    init: Syntax,
+    actor_fn: Syntax,
+) -> (JoinHandle<()>, mpsc::Sender<Message>, Arc<AtomicBool>) {
+    let (tx, mut rx) = mpsc::channel(256);
+    let running = Arc::new(AtomicBool::new(false));
+
+    let handle = tokio::spawn({
+        let running = running.clone();
+        let tx = tx.clone();
+
+        let actor = Actor {
+            ctx,
+            system,
+            init,
+            actor_fn,
+            tx,
+            rx,
+            running
+        };
+
+        async move {
+            actor.run_actor().await;
+        }
     });
 
-    (handle, tx)
+    (handle, tx, running)
 }
 
 pub struct ActorHandle {
     pub tx: mpsc::Sender<crate::actor::Message>,
     pub handle: JoinHandle<()>,
     pub used: bool,
+    pub running: Arc<AtomicBool>
 }
 
 impl ActorHandle {

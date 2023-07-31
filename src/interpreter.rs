@@ -140,6 +140,8 @@ impl InterpreterExecuteActor {
     }
 
     async fn run(mut self) -> anyhow::Result<()> {
+        let mut exit_handle = None;
+
         #[cfg(debug_assertions)]
         debug!("Started {}", stringify!(InterpreterExecuteActor));
 
@@ -263,12 +265,21 @@ impl InterpreterExecuteActor {
                     executor.runner_handle(&[]).await;
                 }
                 LexerMessage::Exit() => {
-                    self.system.exit().await;
+                    exit_handle = Some(tokio::spawn({
+                        let mut system = self.system.clone();
+                        async move {
+                            system.exit().await
+                        }
+                    }));
                 }
                 LexerMessage::RealExit() => {
                     break;
                 }
             }
+        }
+
+        if let Some(exit_handle) = exit_handle {
+            exit_handle.await;
         }
 
         Ok(())
