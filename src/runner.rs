@@ -62,7 +62,7 @@ async fn mark_used(system: &mut SystemHandler, syntax: &Syntax) {
         match syntax {
             Syntax::Signal(signal_type, id) => {
                 // Nur wenn hier noch nicht markiert erneut einfügen
-                if already_marked.insert(id) {
+                if already_marked.insert((signal_type, id)) {
                     system.mark_use_signal(signal_type.clone(), *id).await;
                 }
             }
