@@ -14,6 +14,7 @@ mod reader;
 mod runner;
 mod syscall;
 mod system;
+mod gc;
 
 #[cfg(test)]
 mod tests;

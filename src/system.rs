@@ -133,9 +133,10 @@ struct SystemActor {
     tx: mpsc::Sender<SystemActorMessage>,
     runners: HashMap<usize, mpsc::Sender<RunnerMessage>>,
     last_runner_id: usize,
-    gc_running: Option<JoinHandle<()>>,
     tx_lexer: Option<mpsc::Sender<LexerMessage>>,
+    gc_running: Option<JoinHandle<()>>,
     gc_result: Vec<oneshot::Sender<()>>,
+    gc_even: bool,
     running: Arc<AtomicBool>,
     exit_handles: Vec<oneshot::Sender<()>>
 }
@@ -162,10 +163,11 @@ impl SystemActor {
                 runners: Default::default(),
                 last_runner_id: 0,
                 gc_running: None,
+                gc_even: true,
+                gc_result: Default::default(),
                 rx,
                 tx,
                 tx_lexer: None,
-                gc_result: Default::default(),
                 running: Arc::new(AtomicBool::new(true)),
                 exit_handles: Default::default()
             };
@@ -429,13 +431,16 @@ impl SystemActor {
         let runners_tx: Vec<mpsc::Sender<RunnerMessage>> = self.runners.values().into_iter().cloned().collect();
         let mut tx_lexer = self.tx_lexer.clone();
         let mut actors: Vec<mpsc::Sender<crate::actor::Message>> = self.actors.values_mut().map(|actor| actor.tx.clone()).collect();
+
+        let gc_even = self.gc_even;
+        self.gc_even = !gc_even;
         self.gc_running = Some(tokio::spawn(async move {
             //#[cfg(debug_assertions)]
             //debug!("GC: Waiting for {} runners", runners_tx.len());
 
             let runners_tx = join_all(runners_tx.into_iter().map(|tx| async move {
                 let (result_tx, result_rx) = oneshot::channel();
-                tx.send(RunnerMessage::Mark(result_tx)).await;
+                tx.send(RunnerMessage::Mark(gc_even, result_tx)).await;
                 
                 (tx, result_rx)
             })).await;

@@ -1,9 +1,11 @@
 sys = import sys
 { fib } = (import "fib.pgcl")
 
-myactor = sys.actor 0 \x \y
-  sys.println (fib 10);
-  x + 1
 
-myactor
-myactor @two
+let 
+  myactor = $ sys.actor 0 \x \y (
+    sys.println (fib 10);
+    x + 1
+  )
+in 
+  myactor @two

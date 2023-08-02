@@ -369,6 +369,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             Some(SyntaxKind::ParenLeft) => {
                 self.next(); // skip
                 self.tuple.push(true);
+                self.skip_newlines();
 
                 // Special case for operators-as-functions
                 if self.peek_nth(0).map(|tok| tok.is_bi_op()).unwrap_or(false)
@@ -404,6 +405,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                         .start_node_at(checkpoint, SyntaxKind::Root.into());
                     self.builder.finish_node();
                 }
+
+                self.skip_newlines();
 
                 if self
                     .peek()
@@ -479,6 +482,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
 
                 self.builder.start_node(SyntaxKind::KwLet.into());
                 self.parse_let_args(SyntaxKind::KwIn);
+                self.skip_newlines();
 
                 self.parse_expr(false);
                 self.builder.finish_node();
@@ -579,6 +583,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             self.parse_expr(false);
 
             self.builder.finish_node();
+
+            self.skip_newlines();
 
             if self
                 .peek()

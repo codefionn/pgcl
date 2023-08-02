@@ -9,7 +9,12 @@ use futures::future::join_all;
 use log::debug;
 use tokio::sync::Mutex;
 
-use crate::execute::Syntax;
+use crate::{execute::Syntax, gc::mark_used, system::SystemHandler};
+
+pub enum PrivateContextMark {
+    OddMark,
+    EvenMark
+}
 
 pub struct PrivateContext {
     id: usize,
@@ -20,6 +25,7 @@ pub struct PrivateContext {
     fns: HashMap<String, Vec<(Vec<Syntax>, Syntax)>>,
     errors: Vec<String>,
     globals: HashMap<String, Syntax>,
+    marked: PrivateContextMark
 }
 
 impl PrivateContext {
@@ -32,6 +38,7 @@ impl PrivateContext {
             fns: Default::default(),
             errors: Default::default(),
             globals: Default::default(),
+            marked: PrivateContextMark::OddMark // unmarked
         }
     }
 
@@ -418,6 +425,27 @@ impl PrivateContext {
             (expr0, expr1) => expr0.eval_equal(expr1).await,
         }
     }
+
+    pub async fn mark(&mut self, system: &mut SystemHandler, even: bool) {
+        match self.marked {
+            PrivateContextMark::OddMark if !even => {
+                return;
+            }
+            PrivateContextMark::EvenMark if even => {
+                return;
+            }
+            _ => {}
+        }
+
+        self.marked = match even {
+            true => PrivateContextMark::EvenMark,
+            false => PrivateContextMark::OddMark
+        };
+
+        for syntax in self.globals.values().into_iter().chain(self.values.values().into_iter().flatten()) {
+            mark_used(&mut *system, syntax).await;
+        }
+    }
 }
 
 async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
@@ -578,6 +606,10 @@ impl Context {
         self.ctx.lock().await.get_values().await
     }
 
+    pub async fn mark(&mut self, system: &mut SystemHandler, even: bool) {
+        self.ctx.lock().await.mark(system, even).await
+    }
+
     pub async fn insert_into_values(
         &mut self,
         id: &String,
@@ -676,6 +708,16 @@ impl PrivateContextHandler {
     pub fn get_path(&mut self, name: &String) -> Option<Context> {
         self.path_to_ctx.get(name).cloned()
     }
+
+    pub async fn mark(&mut self, system: &mut SystemHandler, even: bool) {
+        join_all(self.id_to_ctx.values_mut().map(|ctx| {
+            let mut system = system.clone();
+
+            async move {
+                ctx.mark(&mut system, even).await;
+            }
+        })).await;
+    }
 }
 
 #[derive(Clone)]
@@ -732,6 +774,10 @@ impl ContextHandler {
 
     pub async fn get_values(&mut self) -> Vec<Syntax> {
         self.holder.get(self.id).await.unwrap().get_values().await
+    }
+
+    pub async fn mark(&mut self, system: &mut SystemHandler, even: bool) {
+        self.holder.mark(system, even).await
     }
 
     pub async fn insert_into_values(
@@ -855,5 +901,9 @@ impl ContextHolder {
 
     pub async fn get_path(&mut self, name: &String) -> Option<Context> {
         self.handler.lock().await.get_path(name)
+    }
+
+    pub async fn mark(&mut self, system: &mut SystemHandler, even: bool) {
+        self.handler.lock().await.mark(system, even).await;
     }
 }
