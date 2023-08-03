@@ -1,4 +1,4 @@
-use std::collections::{VecDeque, HashSet};
+use std::collections::{HashSet, VecDeque};
 
 use crate::{execute::Syntax, system::SystemHandler};
 
@@ -15,9 +15,7 @@ pub async fn mark_used(system: &mut SystemHandler, syntax: &Syntax) {
                     system.mark_use_signal(signal_type.clone(), *id).await;
                 }
             }
-            _ => {
-                broadsearch.extend(syntax.exprs().into_iter())
-            }
+            _ => broadsearch.extend(syntax.exprs().into_iter()),
         }
     }
 }

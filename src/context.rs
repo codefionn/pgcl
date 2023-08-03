@@ -6,14 +6,13 @@ use std::{
 
 use async_recursion::async_recursion;
 use futures::future::join_all;
-use log::debug;
 use tokio::sync::Mutex;
 
 use crate::{execute::Syntax, gc::mark_used, system::SystemHandler};
 
 pub enum PrivateContextMark {
     OddMark,
-    EvenMark
+    EvenMark,
 }
 
 pub struct PrivateContext {
@@ -25,7 +24,7 @@ pub struct PrivateContext {
     fns: HashMap<String, Vec<(Vec<Syntax>, Syntax)>>,
     errors: Vec<String>,
     globals: HashMap<String, Syntax>,
-    marked: PrivateContextMark
+    marked: PrivateContextMark,
 }
 
 impl PrivateContext {
@@ -38,7 +37,7 @@ impl PrivateContext {
             fns: Default::default(),
             errors: Default::default(),
             globals: Default::default(),
-            marked: PrivateContextMark::OddMark // unmarked
+            marked: PrivateContextMark::OddMark, // unmarked
         }
     }
 
@@ -439,10 +438,15 @@ impl PrivateContext {
 
         self.marked = match even {
             true => PrivateContextMark::EvenMark,
-            false => PrivateContextMark::OddMark
+            false => PrivateContextMark::OddMark,
         };
 
-        for syntax in self.globals.values().into_iter().chain(self.values.values().into_iter().flatten()) {
+        for syntax in self
+            .globals
+            .values()
+            .into_iter()
+            .chain(self.values.values().into_iter().flatten())
+        {
             mark_used(&mut *system, syntax).await;
         }
     }
@@ -716,7 +720,8 @@ impl PrivateContextHandler {
             async move {
                 ctx.mark(&mut system, even).await;
             }
-        })).await;
+        }))
+        .await;
     }
 }
 

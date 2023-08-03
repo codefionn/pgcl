@@ -10,8 +10,9 @@ use crate::{
     lexer::Token,
     parser::{print_ast, Parser, SyntaxKind},
     reader::{ExecutedMessage, LineMessage},
+    runner::Runner,
     system::SystemHandler,
-    Args, runner::Runner,
+    Args,
 };
 
 /// Actor for interpreting input lines from the CLI
@@ -158,7 +159,12 @@ impl InterpreterExecuteActor {
         let mut main_system: SystemHandler = self.system.get_handler(0).await.unwrap();
         main_system.set_lexer(self.tx).await;
         let mut runner = Runner::new(&mut main_system).await?;
-        let mut executor = Executor::new(&mut main_ctx, &mut main_system, &mut runner, self.args.verbose);
+        let mut executor = Executor::new(
+            &mut main_ctx,
+            &mut main_system,
+            &mut runner,
+            self.args.verbose,
+        );
 
         // Save the length of the error vec in the main context
         // This helps to only output current errors
@@ -262,14 +268,14 @@ impl InterpreterExecuteActor {
                         .map_err(|err| anyhow::anyhow!("{err:?}"))?;
                 }
                 LexerMessage::Wakeup() => {
-                    executor.runner_handle(&[]).await;
+                    if let Err(err) = executor.runner_handle(&[]).await {
+                        log::error!("{:?}", err);
+                    }
                 }
                 LexerMessage::Exit() => {
                     exit_handle = Some(tokio::spawn({
                         let mut system = self.system.clone();
-                        async move {
-                            system.exit().await
-                        }
+                        async move { system.exit().await }
                     }));
                 }
                 LexerMessage::RealExit() => {
@@ -279,7 +285,9 @@ impl InterpreterExecuteActor {
         }
 
         if let Some(exit_handle) = exit_handle {
-            exit_handle.await;
+            if let Err(err) = exit_handle.await {
+                log::error!("{}", err);
+            }
         }
 
         Ok(())

@@ -1,12 +1,20 @@
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use log::{debug, error};
-use tokio::{sync::mpsc, sync::{oneshot, RwLock}, task::JoinHandle};
+use tokio::{
+    sync::mpsc,
+    sync::{oneshot, RwLock},
+    task::JoinHandle,
+};
 
 use crate::{
     context::ContextHandler,
     execute::{Executor, Syntax},
-    system::SystemHandler, runner::Runner,
+    runner::Runner,
+    system::SystemHandler,
 };
 
 pub enum Message {
@@ -32,13 +40,18 @@ struct Actor {
     actor_fn: Syntax,
     tx: mpsc::Sender<Message>,
     rx: mpsc::Receiver<Message>,
-    running: Arc<AtomicBool>
+    running: Arc<AtomicBool>,
 }
 
 impl Actor {
     async fn run_actor(mut self) {
         let mut runner = Runner::new(&mut self.system).await.unwrap();
-        let mut executor = RwLock::new(Executor::new(&mut self.ctx, &mut self.system, &mut runner, false));
+        let mut executor = RwLock::new(Executor::new(
+            &mut self.ctx,
+            &mut self.system,
+            &mut runner,
+            false,
+        ));
         let mut init = self.init.clone();
 
         let mut exit_handlers: Vec<oneshot::Sender<()>> = Vec::new();
@@ -51,7 +64,9 @@ impl Actor {
                 Message::Signal(expr) => {
                     self.running.store(true, Ordering::Relaxed);
 
-                    let expr = executor.write().await
+                    let expr = executor
+                        .write()
+                        .await
                         .execute(
                             Syntax::Call(
                                 Box::new(Syntax::Call(
@@ -79,7 +94,9 @@ impl Actor {
                 }
                 Message::Wakeup() => {
                     let mut executor = executor.write().await;
-                    executor.runner_handle(&[&init, &self.actor_fn]).await;
+                    if let Err(err) = executor.runner_handle(&[&init, &self.actor_fn]).await {
+                        log::error!("{:?}", err);
+                    }
                 }
                 Message::Exit(exit_handle) => {
                     exit_handlers.push(exit_handle);
@@ -96,7 +113,9 @@ impl Actor {
         //debug!("Actor quitting due to receiving exit signal");
 
         for exit_handler in exit_handlers {
-            exit_handler.send(());
+            if let Err(err) = exit_handler.send(()) {
+                log::error!("{:?}", err);
+            }
         }
     }
 }
@@ -121,7 +140,7 @@ pub async fn create_actor(
             actor_fn,
             tx,
             rx,
-            running
+            running,
         };
 
         async move {
@@ -136,14 +155,14 @@ pub struct ActorHandle {
     pub tx: mpsc::Sender<crate::actor::Message>,
     pub handle: JoinHandle<()>,
     pub used: bool,
-    pub running: Arc<AtomicBool>
+    pub running: Arc<AtomicBool>,
 }
 
 impl ActorHandle {
     pub async fn destroy(self) -> JoinHandle<()> {
         let (tx, rx) = oneshot::channel();
         if let Ok(()) = self.tx.send(crate::actor::Message::Exit(tx)).await {
-            rx.await;
+            let _ = rx.await;
         }
 
         self.handle

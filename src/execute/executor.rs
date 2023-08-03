@@ -7,10 +7,11 @@ use crate::{
     execute::{BiOpType, SignalType, Syntax},
     lexer::Token,
     parser::{Parser, SyntaxKind},
-    system::{SystemCallType, SystemHandler}, runner::Runner,
+    runner::Runner,
+    system::{SystemCallType, SystemHandler},
 };
 use async_recursion::async_recursion;
-use futures::{future::join_all, StreamExt, TryStreamExt, Future};
+use futures::{future::join_all, Future, StreamExt, TryStreamExt};
 use log::debug;
 use rowan::GreenNodeBuilder;
 
@@ -41,8 +42,9 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
         }
     }
 
-    pub async fn runner_handle(&mut self, exprs: &[&Syntax]) {
-        self.runner.handle(Some(&mut self.ctx), exprs).await;
+    pub async fn runner_handle(&mut self, exprs: &[&Syntax]) -> Result<(), InterpreterError> {
+        self.runner.handle(Some(&mut self.ctx), exprs).await
+            .map_err(|err| InterpreterError::InternalError(format!("{}", err)))
     }
 
     pub fn get_ctx(&mut self) -> &mut ContextHandler {
@@ -133,7 +135,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                         let mut executor = Executor::new(ctx, system, &mut runner, show_steps);
                         result.push((
                             executor.execute_once(lhs, false, no_change).await?,
-                            executor.execute_once(rhs, false, no_change).await?
+                            executor.execute_once(rhs, false, no_change).await?,
                         ))
                     }
 
@@ -281,7 +283,8 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     InterpreterError::InternalError(format!("Expected system handler")),
                 )?;
                 let mut runner = Runner::new(self.system).await.unwrap();
-                let mut executor = Executor::new(&mut ctx, &mut system, &mut runner, self.show_steps);
+                let mut executor =
+                    Executor::new(&mut ctx, &mut system, &mut runner, self.show_steps);
 
                 // Create a new contextual with the contents evaulated in the given context
                 // The contextual is reduced away if possible in the next execution step
@@ -605,7 +608,8 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
 
                         async move {
                             let mut runner = Runner::new(&mut system).await.unwrap();
-                            let mut executor = Executor::new(&mut ctx, &mut system, &mut runner, show_steps);
+                            let mut executor =
+                                Executor::new(&mut ctx, &mut system, &mut runner, show_steps);
                             Ok((
                                 key,
                                 (executor.execute_once(val, false, no_change).await?, is_id),
@@ -629,7 +633,8 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
             Syntax::Contextual(ctx_id, system_id, expr) => {
                 let holder = self.ctx.get_holder();
                 let mut ctx = holder.clone().get_handler(ctx_id).await.unwrap();
-                let mut executor = Executor::new(&mut ctx, self.system, self.runner, self.show_steps);
+                let mut executor =
+                    Executor::new(&mut ctx, self.system, self.runner, self.show_steps);
                 Ok(Syntax::Contextual(
                     ctx_id,
                     system_id,
@@ -682,7 +687,8 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
             }
 
             old = expr.clone();
-            self.runner.handle(Some(&mut self.ctx), &[&expr]).await;
+            self.runner.handle(Some(&mut self.ctx), &[&expr]).await
+                .map_err(|err| InterpreterError::InternalError(format!("{}", err)))?;
         }
 
         //debug!("{}", expr);

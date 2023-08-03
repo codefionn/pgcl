@@ -1,7 +1,7 @@
 use async_recursion::async_recursion;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use futures::{
-    future::{join_all, OptionFuture},
+    future::OptionFuture,
     StreamExt,
 };
 use num::pow::Pow;
@@ -988,13 +988,12 @@ impl Syntax {
             Self::If(box cond, box expr_true, box expr_false) => {
                 vec![cond, expr_true, expr_false]
             }
-            Self::IfLet(asgs, box expr_true, box expr_false) => {
-                asgs.iter()
-                    .map(|(lhs, rhs)| vec![lhs, rhs])
-                    .flatten()
-                    .chain([expr_true, expr_false].into_iter())
-                    .collect()
-            },
+            Self::IfLet(asgs, box expr_true, box expr_false) => asgs
+                .iter()
+                .map(|(lhs, rhs)| vec![lhs, rhs])
+                .flatten()
+                .chain([expr_true, expr_false].into_iter())
+                .collect(),
             Self::UnexpectedArguments()
             | Self::ValAny()
             | Self::ValInt(_)
@@ -1003,12 +1002,8 @@ impl Syntax {
             | Self::ValAtom(_) => vec![],
             Self::Lst(lst) => lst.iter().collect(),
             Self::LstMatch(lst) => lst.iter().collect(),
-            Self::Map(map) => {
-                map.iter().map(|e| &e.1 .0).collect()
-            }
-            Self::MapMatch(map) => {
-                map.iter().filter_map(|e| e.2.as_ref()).collect()
-            }
+            Self::Map(map) => map.iter().map(|e| &e.1 .0).collect(),
+            Self::MapMatch(map) => map.iter().filter_map(|e| e.2.as_ref()).collect(),
             Self::ExplicitExpr(expr) => vec![expr],
             Self::Pipe(expr) => vec![expr],
             Self::Context(_, _, _) => vec![],

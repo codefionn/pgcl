@@ -6,6 +6,7 @@ mod actor;
 mod context;
 mod errors;
 mod execute;
+mod gc;
 mod interpreter;
 mod lexer;
 mod parser;
@@ -14,7 +15,6 @@ mod reader;
 mod runner;
 mod syscall;
 mod system;
-mod gc;
 
 #[cfg(test)]
 mod tests;

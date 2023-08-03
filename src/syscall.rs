@@ -6,7 +6,8 @@ use crate::{
     errors::InterpreterError,
     execute::{Executor, SignalType, Syntax},
     rational::BigRational,
-    system::SystemHandler, runner::Runner,
+    runner::Runner,
+    system::SystemHandler,
 };
 use bigdecimal::{BigDecimal, ToPrimitive};
 use futures::SinkExt;
@@ -157,7 +158,6 @@ impl PrivateSystem {
                 let expr = Executor::new(ctx, system, runner, show_steps)
                     .execute(expr, false)
                     .await?;
-                std::mem::drop(runner);
 
                 let diff = now.elapsed().as_secs_f64();
                 let diff: BigRational = BigRational::from_f64(diff).unwrap();

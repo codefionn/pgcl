@@ -1,18 +1,26 @@
-use std::collections::{VecDeque, HashSet};
+use std::collections::{HashSet, VecDeque};
 
-use tokio::sync::{oneshot, mpsc};
+use tokio::sync::{mpsc, oneshot};
 
-use crate::{system::SystemHandler, execute::Syntax, context::{Context, ContextHandler}, gc::mark_used};
+use crate::{
+    context::{Context, ContextHandler},
+    execute::Syntax,
+    gc::mark_used,
+    system::SystemHandler,
+};
 
 pub enum RunnerMessage {
-    Mark(/* gc_even: */ bool, /* result: */ oneshot::Sender<()>),
-    Sweep(/* result: */ oneshot::Sender<()>)
+    Mark(
+        /* gc_even: */ bool,
+        /* result: */ oneshot::Sender<()>,
+    ),
+    Sweep(/* result: */ oneshot::Sender<()>),
 }
 
 pub struct Runner {
     id: usize,
     rx: mpsc::Receiver<RunnerMessage>,
-    system: SystemHandler
+    system: SystemHandler,
 }
 
 impl Runner {
@@ -23,11 +31,15 @@ impl Runner {
         Ok(Runner {
             id,
             rx,
-            system: system.clone()
+            system: system.clone(),
         })
     }
 
-    pub async fn handle(&mut self, ctx: Option<&mut ContextHandler>, syntax_exprs: &[&Syntax]) -> anyhow::Result<()> {
+    pub async fn handle(
+        &mut self,
+        ctx: Option<&mut ContextHandler>,
+        syntax_exprs: &[&Syntax],
+    ) -> anyhow::Result<()> {
         let msg = self.rx.try_recv()?;
         match msg {
             RunnerMessage::Mark(gc_even, result) => {
@@ -37,10 +49,10 @@ impl Runner {
                 if let Some(ctx) = ctx {
                     ctx.mark(&mut self.system, gc_even).await;
                 }
-                result.send(());
+                let _ = result.send(());
             }
             RunnerMessage::Sweep(result) => {
-                result.send(());
+                let _ = result.send(());
             }
         }
 
