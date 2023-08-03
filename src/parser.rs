@@ -622,7 +622,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         first: bool,
         tokens: &[SyntaxKind],
         next: fn(&mut Self, bool) -> bool,
-        check_newlines: bool
+        check_newlines: bool,
     ) -> bool {
         let checkpoint = self.builder.checkpoint();
         if !next(self, first) {
@@ -640,7 +640,11 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     i += 1;
                 }
 
-                if this.peek_nth(i).map(|t| tokens.contains(&t)).unwrap_or(false) {
+                if this
+                    .peek_nth(i)
+                    .map(|t| tokens.contains(&t))
+                    .unwrap_or(false)
+                {
                     for _ in 0..i {
                         this.next(); // skip newlines
                     }

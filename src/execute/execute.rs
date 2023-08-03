@@ -1,9 +1,6 @@
 use async_recursion::async_recursion;
 use bigdecimal::{BigDecimal, ToPrimitive};
-use futures::{
-    future::OptionFuture,
-    StreamExt,
-};
+use futures::{future::OptionFuture, StreamExt};
 use num::pow::Pow;
 use num::FromPrimitive;
 use num::Zero;

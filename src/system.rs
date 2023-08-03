@@ -288,13 +288,16 @@ impl SystemActor {
 
                 let tx = self.tx.clone();
                 /*let actors_tx: Vec<mpsc::Sender<crate::actor::Message>> =
-                    self.actors.values().map(|actor| actor.tx.clone()).collect();*/
+                self.actors.values().map(|actor| actor.tx.clone()).collect();*/
 
                 let running = self.running.clone();
                 tokio::spawn(async move {
                     {
                         let (tx_result, rx_result) = oneshot::channel();
-                        if let Ok(_) = tx.send(SystemActorMessage::CollectGarbage(Some(tx_result))).await {
+                        if let Ok(_) = tx
+                            .send(SystemActorMessage::CollectGarbage(Some(tx_result)))
+                            .await
+                        {
                             let _ = rx_result.await;
                         }
 
@@ -374,8 +377,9 @@ impl SystemActor {
 
         let mut to_drop_actors_ids: Vec<usize> = Vec::new();
         for (id, actor) in &self.actors {
-            if !actor.used && !actor.running.load(Ordering::Relaxed) { // When an actor was started
-                                                                       // during collection do this
+            if !actor.used && !actor.running.load(Ordering::Relaxed) {
+                // When an actor was started
+                // during collection do this
                 to_drop_actors_ids.push(*id);
             }
         }
@@ -803,7 +807,10 @@ impl SystemHandler {
             .send(SystemActorMessage::RecvMessage(id, tx))
             .await?;
 
-        Ok(rx.await.map_err(|err| anyhow!("recv_message: {}", err))?.unwrap())
+        Ok(rx
+            .await
+            .map_err(|err| anyhow!("recv_message: {}", err))?
+            .unwrap())
     }
 
     pub async fn set_lexer(&mut self, tx_lexer: mpsc::Sender<LexerMessage>) {
