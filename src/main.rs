@@ -24,7 +24,7 @@ use std::path::PathBuf;
 use anyhow::anyhow;
 use clap::Parser;
 use context::ContextHolder;
-use log::{debug, LevelFilter};
+use log::LevelFilter;
 use runner::Runner;
 use system::SystemHandler;
 use tokio::sync::mpsc;
@@ -70,12 +70,10 @@ async fn main() -> anyhow::Result<()> {
             args.verbose,
         )
         .await
-        .map_err(|err| anyhow!("{:?}", err))?;
+        .map_err(|err| anyhow!("main: {:?}", err))?;
         std::mem::drop(runner);
 
         systems.exit().await;
-
-        debug!("Exiting main");
     } else {
         let (tx_cli, rx_cli) = mpsc::channel(1);
         let cli_actor = reader::CLIActor::new(tx_cli);

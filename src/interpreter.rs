@@ -81,7 +81,7 @@ impl InterpreterLexerActor {
                     if line.trim().is_empty() {
                         tx_confirm
                             .send(ExecutedMessage::Continue())
-                            .map_err(|err| anyhow::anyhow!("{:?}", err))?;
+                            .map_err(|err| anyhow::anyhow!("Actor-Line: {:?}", err))?;
 
                         continue;
                     }
@@ -189,7 +189,7 @@ impl InterpreterExecuteActor {
                             },
                         )
                         .try_collect()
-                        .map_err(|err| anyhow::anyhow!("{err:?}"))?;
+                        .map_err(|err| anyhow::anyhow!("Interpreter-Line: {err:?}"))?;
 
                     let mut success = false;
                     let mut exit_code = None;
@@ -265,7 +265,7 @@ impl InterpreterExecuteActor {
                             None => ExecutedMessage::Continue(),
                             Some(id) => ExecutedMessage::Exit(id),
                         })
-                        .map_err(|err| anyhow::anyhow!("{err:?}"))?;
+                        .map_err(|err| anyhow::anyhow!("Interpreter-Line: {err:?}"))?;
                 }
                 LexerMessage::Wakeup() => {
                     if let Err(err) = executor.runner_handle(&[]).await {

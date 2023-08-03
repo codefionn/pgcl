@@ -40,19 +40,20 @@ impl Runner {
         ctx: Option<&mut ContextHandler>,
         syntax_exprs: &[&Syntax],
     ) -> anyhow::Result<()> {
-        let msg = self.rx.try_recv()?;
-        match msg {
-            RunnerMessage::Mark(gc_even, result) => {
-                for syntax in syntax_exprs {
-                    mark_used(&mut self.system, syntax).await;
+        if let Ok(msg) = self.rx.try_recv() {
+            match msg {
+                RunnerMessage::Mark(gc_even, result) => {
+                    for syntax in syntax_exprs {
+                        mark_used(&mut self.system, syntax).await;
+                    }
+                    if let Some(ctx) = ctx {
+                        ctx.mark(&mut self.system, gc_even).await;
+                    }
+                    let _ = result.send(());
                 }
-                if let Some(ctx) = ctx {
-                    ctx.mark(&mut self.system, gc_even).await;
+                RunnerMessage::Sweep(result) => {
+                    let _ = result.send(());
                 }
-                let _ = result.send(());
-            }
-            RunnerMessage::Sweep(result) => {
-                let _ = result.send(());
             }
         }
 

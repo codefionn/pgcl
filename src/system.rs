@@ -802,7 +802,7 @@ impl SystemHandler {
             .send(SystemActorMessage::RecvMessage(id, tx))
             .await?;
 
-        Ok(rx.await.map_err(|err| anyhow!("{}", err))?.unwrap())
+        Ok(rx.await.map_err(|err| anyhow!("recv_message: {}", err))?.unwrap())
     }
 
     pub async fn set_lexer(&mut self, tx_lexer: mpsc::Sender<LexerMessage>) {

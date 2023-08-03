@@ -313,7 +313,7 @@ impl PrivateSystem {
             (SystemCallType::RecvMsg, Syntax::Signal(SignalType::Message, id)) => system
                 .recv_message(id)
                 .await
-                .map_err(|err| InterpreterError::InternalError(format!("{}", err))),
+                .map_err(|err| InterpreterError::InternalError(format!("RecvMsg: {}", err))),
             (syscall, expr) => Ok(Syntax::Call(
                 Box::new(Syntax::Id("syscall".to_string())),
                 Box::new(Syntax::Tuple(

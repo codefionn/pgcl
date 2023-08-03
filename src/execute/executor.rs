@@ -44,7 +44,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
 
     pub async fn runner_handle(&mut self, exprs: &[&Syntax]) -> Result<(), InterpreterError> {
         self.runner.handle(Some(&mut self.ctx), exprs).await
-            .map_err(|err| InterpreterError::InternalError(format!("{}", err)))
+            .map_err(|err| InterpreterError::InternalError(format!("runner_handle: {}", err)))
     }
 
     pub fn get_ctx(&mut self) -> &mut ContextHandler {
@@ -688,7 +688,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
 
             old = expr.clone();
             self.runner.handle(Some(&mut self.ctx), &[&expr]).await
-                .map_err(|err| InterpreterError::InternalError(format!("{}", err)))?;
+                .map_err(|err| InterpreterError::InternalError(format!("execute: {}", err)))?;
         }
 
         //debug!("{}", expr);
@@ -846,7 +846,7 @@ async fn import_lib(
         async {
             handle
                 .await
-                .map_err(|err| InterpreterError::InternalError(err.to_string()))
+                .map_err(|err| InterpreterError::InternalError(format!("Import library: {}", err)))
         }
     };
 
