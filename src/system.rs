@@ -226,7 +226,7 @@ impl SystemActor {
 
         for exit_handle in self.exit_handles {
             if let Err(err) = exit_handle.send(()) {
-                log::error!("{:?}", err);
+                log::error!("exit: {:?}", err);
             }
         }
     }
@@ -287,8 +287,8 @@ impl SystemActor {
                 self.exit_handles.push(result);
 
                 let tx = self.tx.clone();
-                let actors_tx: Vec<mpsc::Sender<crate::actor::Message>> =
-                    self.actors.values().map(|actor| actor.tx.clone()).collect();
+                /*let actors_tx: Vec<mpsc::Sender<crate::actor::Message>> =
+                    self.actors.values().map(|actor| actor.tx.clone()).collect();*/
 
                 let running = self.running.clone();
                 tokio::spawn(async move {
@@ -315,13 +315,13 @@ impl SystemActor {
                         }
                     }
 
-                    #[cfg(debug_assertions)]
+                    /*#[cfg(debug_assertions)]
                     log::debug!("Exiting {} actors", actors_tx.len());
                     let mut actors_wait_handlers = Vec::new();
                     for actor_tx in actors_tx {
                         let (tx, rx) = oneshot::channel();
                         if let Err(err) = actor_tx.send(crate::actor::Message::Exit(tx)).await {
-                            log::error!("{}", err);
+                            log::error!("exit-actor: {}", err);
                         } else {
                             actors_wait_handlers.push(rx);
                         }
@@ -332,10 +332,10 @@ impl SystemActor {
                     }
 
                     //#[cfg(debug_assertions)]
-                    //log::debug!("Exited actors");
+                    //log::debug!("Exited actors");*/
 
                     if let Err(err) = tx.send(SystemActorMessage::RealExit()).await {
-                        log::error!("{}", err);
+                        log::error!("real-exit: {}", err);
                     }
                 });
             }
@@ -374,7 +374,8 @@ impl SystemActor {
 
         let mut to_drop_actors_ids: Vec<usize> = Vec::new();
         for (id, actor) in &self.actors {
-            if !actor.used {
+            if !actor.used && !actor.running.load(Ordering::Relaxed) { // When an actor was started
+                                                                       // during collection do this
                 to_drop_actors_ids.push(*id);
             }
         }
@@ -416,7 +417,7 @@ impl SystemActor {
 
         for gc_result in self.gc_result.drain(..) {
             if let Err(err) = gc_result.send(()) {
-                log::error!("{:?}", err);
+                log::error!("gc-exit: {:?}", err);
             }
         }
 
@@ -504,7 +505,7 @@ impl SystemActor {
             }
 
             if let Err(err) = runners.await {
-                log::error!("{}", err);
+                log::error!("gc-runners-await: {}", err);
             }
 
             tx.send(SystemActorMessage::FinishedCollectGarbage())
@@ -603,7 +604,7 @@ impl SystemActor {
 
         join_all(self.actors.drain().map(|(handle, actor)| async move {
             if let Err(err) = actor.destroy().await.await {
-                log::error!("{}", err);
+                log::error!("destroy-actor: {}", err);
             }
         }))
         .await;
@@ -811,16 +812,16 @@ impl SystemHandler {
             .send(SystemActorMessage::SetLexer(tx_lexer))
             .await
         {
-            log::error!("{}", err);
+            log::error!("set_lexer: {}", err);
         }
     }
 
     pub async fn exit(&mut self) {
         let (tx, rx) = oneshot::channel();
         if let Err(err) = self.system.send(SystemActorMessage::Exit(tx)).await {
-            log::error!("{}", err);
+            log::error!("send-exit: {}", err);
         } else if let Err(err) = rx.await {
-            log::error!("{}", err);
+            log::error!("send-exit-await: {}", err);
         }
     }
 
@@ -832,7 +833,7 @@ impl SystemHandler {
             .ok();
 
         if let Err(err) = rx.await {
-            log::error!("{}", err);
+            log::error!("mark_use_signal: {err}");
         }
     }
 
