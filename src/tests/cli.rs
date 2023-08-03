@@ -231,6 +231,18 @@ fn test_immediate() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_pipe() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin(r"4 | (+) 1")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^5\n$")?);
+
+    Ok(())
+}
+
+#[test]
 fn test_import_natural() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
 
