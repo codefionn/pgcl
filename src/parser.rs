@@ -622,13 +622,37 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
         first: bool,
         tokens: &[SyntaxKind],
         next: fn(&mut Self, bool) -> bool,
+        check_newlines: bool
     ) -> bool {
         let checkpoint = self.builder.checkpoint();
         if !next(self, first) {
             return false;
         }
 
-        while self.peek().map(|t| tokens.contains(&t)).unwrap_or(false) {
+        let mut success_peek = if !check_newlines {
+            |this: &mut Self, tokens: &[SyntaxKind]| {
+                this.peek().map(|t| tokens.contains(&t)).unwrap_or(false)
+            }
+        } else {
+            |this: &mut Self, tokens: &[SyntaxKind]| {
+                let mut i = 0;
+                while this.peek_nth(i) == Some(SyntaxKind::NewLine) {
+                    i += 1;
+                }
+
+                if this.peek_nth(i).map(|t| tokens.contains(&t)).unwrap_or(false) {
+                    for _ in 0..i {
+                        this.next(); // skip newlines
+                    }
+
+                    true
+                } else {
+                    false
+                }
+            }
+        };
+
+        while success_peek(self, tokens) {
             self.builder
                 .start_node_at(checkpoint, SyntaxKind::BiOp.into());
             self.bump();
@@ -641,7 +665,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     }
 
     fn parse_period(&mut self, first: bool, next: fn(&mut Self, bool) -> bool) -> bool {
-        self.handle_operation(first, &[SyntaxKind::OpPeriod], next)
+        self.handle_operation(first, &[SyntaxKind::OpPeriod], next, false)
     }
 
     /// Parse a lambda/function call expression
@@ -674,11 +698,12 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 SyntaxKind::OpLt,
             ],
             Self::parse_add,
+            false,
         )
     }
 
     fn parse_pow(&mut self, first: bool) -> bool {
-        self.handle_operation(first, &[SyntaxKind::OpPow], Self::parse_call)
+        self.handle_operation(first, &[SyntaxKind::OpPow], Self::parse_call, false)
     }
 
     fn parse_mul(&mut self, first: bool) -> bool {
@@ -686,6 +711,7 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             first,
             &[SyntaxKind::OpMul, SyntaxKind::OpDiv],
             Self::parse_pow,
+            false,
         )
     }
 
@@ -694,23 +720,24 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
             first,
             &[SyntaxKind::OpAdd, SyntaxKind::OpSub],
             Self::parse_mul,
+            false,
         )
     }
 
     fn parse_pipe(&mut self, first: bool) -> bool {
-        self.handle_operation(first, &[SyntaxKind::OpPipe], Self::parse_cmp)
+        self.handle_operation(first, &[SyntaxKind::OpPipe], Self::parse_cmp, true)
     }
 
     fn parse_tuple(&mut self, first: bool) -> bool {
         if self.is_tuple() {
-            self.handle_operation(first, &[SyntaxKind::OpComma], Self::parse_pipe)
+            self.handle_operation(first, &[SyntaxKind::OpComma], Self::parse_pipe, false)
         } else {
             self.parse_pipe(first)
         }
     }
 
     fn parse_asg(&mut self, first: bool) -> bool {
-        self.handle_operation(first, &[SyntaxKind::OpAsg], Self::parse_tuple)
+        self.handle_operation(first, &[SyntaxKind::OpAsg], Self::parse_tuple, false)
     }
 
     fn parse_expr(&mut self, first: bool) -> bool {

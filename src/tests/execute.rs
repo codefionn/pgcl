@@ -103,6 +103,24 @@ async fn add_with_pipe() {
         )
         .await
     );
+    assert_eq!(
+        Ok(r"3".to_string()),
+        parse_to_str(
+            "1\n| \\x x + 2",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok(r"3".to_string()),
+        parse_to_str(
+            "1\n\n| \\x x + 2",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
 }
 
 #[tokio::test]
