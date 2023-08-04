@@ -430,7 +430,11 @@ impl Context {
         rhs: &Syntax,
         values_defined_here: &mut Vec<String>,
     ) -> bool {
-        self.ctx.lock().await.set_values_in_context(holder, lhs, rhs, values_defined_here).await
+        self.ctx
+            .lock()
+            .await
+            .set_values_in_context(holder, lhs, rhs, values_defined_here)
+            .await
     }
 }
 
@@ -623,7 +627,8 @@ impl ContextHandler {
             .ctx
             .lock()
             .await
-            .set_values_in_context(&mut self.get_holder(), lhs, rhs, values_defined_here).await
+            .set_values_in_context(&mut self.get_holder(), lhs, rhs, values_defined_here)
+            .await
     }
 }
 
@@ -732,9 +737,7 @@ pub async fn set_values_in_context_one(
             let str1: Vec<char> = str1.chars().collect();
             for i in 0..lst0.len() {
                 let str1 = Syntax::ValStr(format!("{}", str1[i]));
-                if !set_values_in_context(ctx, holder, &lst0[i], &str1, values_defined_here)
-                    .await
-                {
+                if !set_values_in_context(ctx, holder, &lst0[i], &str1, values_defined_here).await {
                     return ComparisonResult::Matched(false);
                 }
             }
@@ -769,9 +772,7 @@ pub async fn set_values_in_context_one(
                 if i == end_idx {
                     let str1: String = str1.into_iter().collect();
                     let str1 = Syntax::ValStr(str1);
-                    if !set_values_in_context(ctx, holder, expr, &str1, values_defined_here)
-                        .await
-                    {
+                    if !set_values_in_context(ctx, holder, expr, &str1, values_defined_here).await {
                         return ComparisonResult::Matched(false);
                     }
 
@@ -796,14 +797,8 @@ pub async fn set_values_in_context_one(
                     let c: String = str1.drain(0..len).collect();
                     let expr_str1 = Syntax::ValStr(c);
 
-                    if !set_values_in_context(
-                        ctx,
-                        holder,
-                        expr,
-                        &expr_str1,
-                        values_defined_here,
-                    )
-                    .await
+                    if !set_values_in_context(ctx, holder, expr, &expr_str1, values_defined_here)
+                        .await
                     {
                         return ComparisonResult::Matched(false);
                     }
@@ -826,9 +821,7 @@ pub async fn set_values_in_context_one(
                         .await;
                     }
 
-                    if !set_values_in_context(ctx, holder, val, rhs, values_defined_here)
-                        .await
-                    {
+                    if !set_values_in_context(ctx, holder, val, rhs, values_defined_here).await {
                         return ComparisonResult::Matched(false);
                     }
                 } else {
@@ -862,8 +855,7 @@ pub async fn set_values_in_context_one(
                     }
 
                     if let Some(val) = val {
-                        if !set_values_in_context(ctx, holder, val, rhs, values_defined_here)
-                            .await
+                        if !set_values_in_context(ctx, holder, val, rhs, values_defined_here).await
                         {
                             return ComparisonResult::Matched(false);
                         }
@@ -902,8 +894,14 @@ pub async fn set_values_in_context_one(
                     }
 
                     if let Some(val) = val {
-                        if !PrivateContext::set_values_in_context(private_ctx, holder, val, &rhs, values_defined_here)
-                            .await
+                        if !PrivateContext::set_values_in_context(
+                            private_ctx,
+                            holder,
+                            val,
+                            &rhs,
+                            values_defined_here,
+                        )
+                        .await
                         {
                             return ComparisonResult::Matched(false);
                         }

@@ -366,20 +366,25 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     } else {
                         // This left-hand side isn't prepended by an identifier
                         // => Maybe it's a normal assignment of a let expression?
-                        let rhs = self.execute(*rhs, false).await?;
-                        if !self
-                            .ctx
-                            .set_values_in_context(&lhs.clone(), &rhs, &mut values_defined_here)
-                            .await
-                        {
-                            self.ctx.remove_values(&mut values_defined_here).await;
-                            self.ctx
-                                .push_error(
-                                    format!("{lhs} must be assignable to {rhs} but is not",),
-                                )
-                                .await;
+                        let old = rhs.clone();
+                        let rhs = self.execute_once(*rhs, false, no_change).await?;
+                        if no_change && *old == rhs {
+                            if !self
+                                .ctx
+                                .set_values_in_context(&lhs.clone(), &rhs, &mut values_defined_here)
+                                .await
+                            {
+                                self.ctx.remove_values(&mut values_defined_here).await;
+                                self.ctx
+                                    .push_error(
+                                        format!("{lhs} must be assignable to {rhs} but is not",),
+                                    )
+                                    .await;
+                            } else {
+                                values_defined_here.clear();
+                            }
                         } else {
-                            values_defined_here.clear();
+                            return Ok(Syntax::Asg(lhs, Box::new(rhs)));
                         }
                     }
 
@@ -390,13 +395,14 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 if no_change {
                     // no changes happen in the RHS of the assignment
                     // => evaulate the let expression
-                    if !local_ctx.set_values_in_context(
-                        &mut self.ctx.get_holder(),
-                        &lhs,
-                        &rhs,
-                        &mut values_defined_here,
-                    )
-                    .await
+                    if !local_ctx
+                        .set_values_in_context(
+                            &mut self.ctx.get_holder(),
+                            &lhs,
+                            &rhs,
+                            &mut values_defined_here,
+                        )
+                        .await
                     {
                         local_ctx.remove_values(&mut values_defined_here);
 
