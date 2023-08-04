@@ -152,14 +152,14 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     if old_asgs == asgs {
                         for (lhs, rhs) in asgs {
                             let rhs = self.execute(rhs.clone(), false).await?;
-                            if !local_ctx
-                                .set_values_in_context(
-                                    &mut self.ctx.get_holder(),
-                                    &lhs,
-                                    &rhs,
-                                    &mut values_defined_here,
-                                )
-                                .await
+                            if !PrivateContext::set_values_in_context(
+                                &mut local_ctx,
+                                &mut self.ctx.get_holder(),
+                                &lhs,
+                                &rhs,
+                                &mut values_defined_here,
+                            )
+                            .await
                             {
                                 local_ctx.remove_values(&mut values_defined_here);
                                 return Ok(*expr_false);
@@ -369,13 +369,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                         let rhs = self.execute(*rhs, false).await?;
                         if !self
                             .ctx
-                            .clone()
-                            .set_values_in_context(
-                                &mut self.ctx.get_holder(),
-                                &lhs.clone(),
-                                &rhs,
-                                &mut values_defined_here,
-                            )
+                            .set_values_in_context(&lhs.clone(), &rhs, &mut values_defined_here)
                             .await
                         {
                             self.ctx.remove_values(&mut values_defined_here).await;
@@ -396,14 +390,13 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 if no_change {
                     // no changes happen in the RHS of the assignment
                     // => evaulate the let expression
-                    if !local_ctx
-                        .set_values_in_context(
-                            &mut self.ctx.get_holder(),
-                            &lhs,
-                            &rhs,
-                            &mut values_defined_here,
-                        )
-                        .await
+                    if !local_ctx.set_values_in_context(
+                        &mut self.ctx.get_holder(),
+                        &lhs,
+                        &rhs,
+                        &mut values_defined_here,
+                    )
+                    .await
                     {
                         local_ctx.remove_values(&mut values_defined_here);
 

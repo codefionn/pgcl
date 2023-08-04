@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     path::PathBuf,
     sync::Arc,
 };
@@ -165,266 +165,6 @@ impl PrivateContext {
         }
     }
 
-    #[async_recursion]
-    pub async fn set_values_in_context(
-        &mut self,
-        holder: &mut ContextHolder,
-        lhs: &Syntax,
-        rhs: &Syntax,
-        values_defined_here: &mut Vec<String>,
-    ) -> bool {
-        match (lhs, rhs) {
-            (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => {
-                let a = self
-                    .set_values_in_context(holder, a0, a1, values_defined_here)
-                    .await;
-                let b = self
-                    .set_values_in_context(holder, b0, b1, values_defined_here)
-                    .await;
-                a && b
-            }
-            (Syntax::Call(a0, b0), Syntax::Call(a1, b1)) => {
-                let a = self
-                    .set_values_in_context(holder, a0, a1, values_defined_here)
-                    .await;
-                let b = self
-                    .set_values_in_context(holder, b0, b1, values_defined_here)
-                    .await;
-                a && b
-            }
-            (Syntax::ValAny(), _) => true,
-            (Syntax::Id(id), expr) => {
-                self.insert_into_values(id, expr.clone(), values_defined_here);
-                true
-            }
-            (Syntax::BiOp(op0, a0, b0), Syntax::BiOp(op1, a1, b1)) => {
-                if op0 != op1 {
-                    false
-                } else {
-                    let a = self
-                        .set_values_in_context(holder, a0, a1, values_defined_here)
-                        .await;
-                    let b = self
-                        .set_values_in_context(holder, b0, b1, values_defined_here)
-                        .await;
-                    a && b
-                }
-            }
-            (Syntax::Lst(lst0), Syntax::Lst(lst1)) if lst0.len() == lst1.len() => {
-                for i in 0..lst0.len() {
-                    if !self
-                        .set_values_in_context(holder, &lst0[i], &lst1[i], values_defined_here)
-                        .await
-                    {
-                        return false;
-                    }
-                }
-
-                true
-            }
-            (Syntax::Lst(lst0), Syntax::ValStr(str1)) if lst0.len() == str1.chars().count() => {
-                let str1: Vec<char> = str1.chars().collect();
-                for i in 0..lst0.len() {
-                    let str1 = Syntax::ValStr(format!("{}", str1[i]));
-                    if !self
-                        .set_values_in_context(holder, &lst0[i], &str1, values_defined_here)
-                        .await
-                    {
-                        return false;
-                    }
-                }
-
-                true
-            }
-            (Syntax::LstMatch(lst0), Syntax::Lst(lst1))
-                if lst0.len() >= 2 && lst1.len() + 1 >= lst0.len() =>
-            {
-                let mut lst1: &[Syntax] = lst1;
-                for i in 0..lst0.len() {
-                    if i == lst0.len() - 1 {
-                        let lst1 = Syntax::Lst(lst1.into());
-                        if !self
-                            .set_values_in_context(holder, &lst0[i], &lst1, values_defined_here)
-                            .await
-                        {
-                            return false;
-                        }
-
-                        break;
-                    } else {
-                        let lst1_val = &lst1[0];
-                        lst1 = &lst1[1..];
-                        if !self
-                            .set_values_in_context(holder, &lst0[i], lst1_val, values_defined_here)
-                            .await
-                        {
-                            return false;
-                        }
-                    }
-                }
-
-                true
-            }
-            (Syntax::LstMatch(lst0), Syntax::ValStr(str1))
-                if lst0.len() >= 2 && str1.chars().count() + 1 >= lst0.len() =>
-            {
-                let mut str1: Vec<char> = str1.chars().collect();
-                let end_idx = lst0.len() - 1;
-                for (i, expr) in lst0.iter().enumerate() {
-                    if i == end_idx {
-                        let str1: String = str1.into_iter().collect();
-                        let str1 = Syntax::ValStr(str1);
-                        if !self
-                            .set_values_in_context(holder, expr, &str1, values_defined_here)
-                            .await
-                        {
-                            return false;
-                        }
-
-                        break;
-                    } else {
-                        if str1.is_empty() {
-                            return false;
-                        }
-
-                        let len = match &expr {
-                            Syntax::ValStr(s) => {
-                                let len = s.len();
-                                if str1.len() < len {
-                                    return false;
-                                }
-
-                                len
-                            }
-                            _ => 1,
-                        };
-
-                        let c: String = str1.drain(0..len).collect();
-                        let expr_str1 = Syntax::ValStr(c);
-
-                        if !self
-                            .set_values_in_context(holder, expr, &expr_str1, values_defined_here)
-                            .await
-                        {
-                            return false;
-                        }
-                    }
-                }
-
-                true
-            }
-            (Syntax::Map(lhs), Syntax::Map(rhs)) => {
-                for (key, (val, is_id)) in lhs.iter() {
-                    if let Some((rhs, _)) = rhs.get(key) {
-                        if *is_id {
-                            self.set_values_in_context(
-                                holder,
-                                &Syntax::Id(key.clone()),
-                                rhs,
-                                values_defined_here,
-                            )
-                            .await;
-                        }
-
-                        if !self
-                            .set_values_in_context(holder, val, rhs, values_defined_here)
-                            .await
-                        {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                true
-            }
-            (Syntax::MapMatch(lhs), Syntax::Map(rhs)) => {
-                for (key, key_into, val, is_id) in lhs.iter() {
-                    if let Some((rhs, _)) = rhs.get(key) {
-                        if *is_id {
-                            self.set_values_in_context(
-                                holder,
-                                &Syntax::Id(key.clone()),
-                                rhs,
-                                values_defined_here,
-                            )
-                            .await;
-                        } else if let Some(key) = key_into {
-                            self.set_values_in_context(
-                                holder,
-                                &Syntax::Id(key.clone()),
-                                rhs,
-                                values_defined_here,
-                            )
-                            .await;
-                        }
-
-                        if let Some(val) = val {
-                            if !self
-                                .set_values_in_context(holder, val, rhs, values_defined_here)
-                                .await
-                            {
-                                return false;
-                            }
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                true
-            }
-            (Syntax::MapMatch(lhs), Syntax::Context(ctx_id, system_id, _)) => {
-                let mut ctx = holder.get(*ctx_id).await.unwrap();
-
-                for (key, key_into, val, is_id) in lhs.iter() {
-                    if let Some(rhs) = ctx.get_global(key).await {
-                        if *is_id {
-                            self.set_values_in_context(
-                                holder,
-                                &Syntax::Id(key.clone()),
-                                &Syntax::Contextual(*ctx_id, *system_id, Box::new(rhs.clone())),
-                                values_defined_here,
-                            )
-                            .await;
-                        } else if let Some(key) = key_into {
-                            self.set_values_in_context(
-                                holder,
-                                &Syntax::Id(key.clone()),
-                                &Syntax::Contextual(*ctx_id, *system_id, Box::new(rhs.clone())),
-                                values_defined_here,
-                            )
-                            .await;
-                        }
-
-                        if let Some(val) = val {
-                            if !self
-                                .set_values_in_context(holder, val, &rhs, values_defined_here)
-                                .await
-                            {
-                                return false;
-                            }
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                true
-            }
-            (Syntax::ExplicitExpr(lhs), rhs) => {
-                self.set_values_in_context(holder, lhs, rhs, values_defined_here)
-                    .await
-            }
-            (lhs, Syntax::ExplicitExpr(rhs)) => {
-                self.set_values_in_context(holder, lhs, rhs, values_defined_here)
-                    .await
-            }
-            (expr0, expr1) => expr0.eval_equal(expr1).await,
-        }
-    }
-
     pub async fn mark(&mut self, system: &mut SystemHandler, even: bool) {
         match self.marked {
             PrivateContextMark::OddMark if !even => {
@@ -450,6 +190,21 @@ impl PrivateContext {
             mark_used(&mut *system, syntax).await;
         }
     }
+
+    pub async fn set_values_in_context(
+        &mut self,
+        holder: &mut ContextHolder,
+        lhs: &Syntax,
+        rhs: &Syntax,
+        values_defined_here: &mut Vec<String>,
+    ) -> bool {
+        set_values_in_context(self, holder, lhs, rhs, values_defined_here).await
+    }
+}
+
+enum ComparisonResult {
+    Continue(Vec<(Syntax, Syntax)>),
+    Matched(bool),
 }
 
 async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
@@ -661,6 +416,13 @@ impl Context {
             .await
     }
 
+    pub fn handler(&self, holder: ContextHolder) -> ContextHandler {
+        ContextHandler {
+            id: self.get_id(),
+            holder,
+        }
+    }
+
     pub async fn set_values_in_context(
         &mut self,
         holder: &mut ContextHolder,
@@ -668,18 +430,7 @@ impl Context {
         rhs: &Syntax,
         values_defined_here: &mut Vec<String>,
     ) -> bool {
-        self.ctx
-            .lock()
-            .await
-            .set_values_in_context(holder, lhs, rhs, values_defined_here)
-            .await
-    }
-
-    pub fn handler(&self, holder: ContextHolder) -> ContextHandler {
-        ContextHandler {
-            id: self.get_id(),
-            holder,
-        }
+        self.ctx.lock().await.set_values_in_context(holder, lhs, rhs, values_defined_here).await
     }
 }
 
@@ -855,23 +606,24 @@ impl ContextHandler {
             .await
     }
 
+    pub fn get_holder(&self) -> ContextHolder {
+        self.holder.clone()
+    }
+
     pub async fn set_values_in_context(
         &mut self,
-        holder: &mut ContextHolder,
         lhs: &Syntax,
         rhs: &Syntax,
         values_defined_here: &mut Vec<String>,
     ) -> bool {
         self.holder
-            .get(self.id)
+            .get(self.get_id())
             .await
             .unwrap()
-            .set_values_in_context(holder, lhs, rhs, values_defined_here)
+            .ctx
+            .lock()
             .await
-    }
-
-    pub fn get_holder(&self) -> ContextHolder {
-        self.holder.clone()
+            .set_values_in_context(&mut self.get_holder(), lhs, rhs, values_defined_here).await
     }
 }
 
@@ -910,5 +662,265 @@ impl ContextHolder {
 
     pub async fn mark(&mut self, system: &mut SystemHandler, even: bool) {
         self.handler.lock().await.mark(system, even).await;
+    }
+}
+
+#[async_recursion]
+pub async fn set_values_in_context(
+    ctx: &mut PrivateContext,
+    holder: &mut ContextHolder,
+    lhs: &Syntax,
+    rhs: &Syntax,
+    values_defined_here: &mut Vec<String>,
+) -> bool {
+    let mut comparisons: VecDeque<(Syntax, Syntax)> = Default::default();
+    comparisons.push_front((lhs.clone(), rhs.clone()));
+    while let Some((lhs, rhs)) = comparisons.pop_front() {
+        match set_values_in_context_one(ctx, holder, &lhs, &rhs, values_defined_here).await {
+            ComparisonResult::Matched(result) => {
+                if !result {
+                    return false;
+                }
+            }
+            ComparisonResult::Continue(result) => {
+                comparisons.extend(result.into_iter());
+            }
+        }
+    }
+
+    true
+}
+
+pub async fn set_values_in_context_one(
+    ctx: &mut PrivateContext,
+    holder: &mut ContextHolder,
+    lhs: &Syntax,
+    rhs: &Syntax,
+    values_defined_here: &mut Vec<String>,
+) -> ComparisonResult {
+    match (lhs, rhs) {
+        (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => {
+            ComparisonResult::Continue(vec![(*a0.clone(), *a1.clone()), (*b0.clone(), *b1.clone())])
+        }
+        (Syntax::Call(a0, b0), Syntax::Call(a1, b1)) => {
+            ComparisonResult::Continue(vec![(*a0.clone(), *a1.clone()), (*b0.clone(), *b1.clone())])
+        }
+        (Syntax::ValAny(), _) => ComparisonResult::Matched(true),
+        (Syntax::Id(id), expr) => {
+            ctx.insert_into_values(id, expr.clone(), values_defined_here);
+            ComparisonResult::Matched(true)
+        }
+        (Syntax::BiOp(op0, a0, b0), Syntax::BiOp(op1, a1, b1)) => {
+            if op0 != op1 {
+                ComparisonResult::Matched(false)
+            } else {
+                ComparisonResult::Continue(vec![
+                    (*a0.clone(), *a1.clone()),
+                    (*b0.clone(), *b1.clone()),
+                ])
+            }
+        }
+        (Syntax::Lst(lst0), Syntax::Lst(lst1)) if lst0.len() == lst1.len() => {
+            ComparisonResult::Continue(
+                lst0.iter()
+                    .zip(lst1.iter())
+                    .map(|(lhs, rhs)| (lhs.clone(), rhs.clone()))
+                    .collect(),
+            )
+        }
+        (Syntax::Lst(lst0), Syntax::ValStr(str1)) if lst0.len() == str1.chars().count() => {
+            let str1: Vec<char> = str1.chars().collect();
+            for i in 0..lst0.len() {
+                let str1 = Syntax::ValStr(format!("{}", str1[i]));
+                if !set_values_in_context(ctx, holder, &lst0[i], &str1, values_defined_here)
+                    .await
+                {
+                    return ComparisonResult::Matched(false);
+                }
+            }
+
+            ComparisonResult::Matched(true)
+        }
+        (Syntax::LstMatch(lst0), Syntax::Lst(lst1))
+            if lst0.len() >= 2 && lst1.len() + 1 >= lst0.len() =>
+        {
+            let mut result = Vec::new();
+            let mut lst1: &[Syntax] = lst1;
+            for i in 0..lst0.len() {
+                if i == lst0.len() - 1 {
+                    let lst1 = Syntax::Lst(lst1.into());
+                    result.push((lst0[i].clone(), lst1));
+                    break;
+                } else {
+                    let lst1_val = lst1[0].clone();
+                    lst1 = &lst1[1..];
+                    result.push((lst0[i].clone(), lst1_val));
+                }
+            }
+
+            ComparisonResult::Continue(result)
+        }
+        (Syntax::LstMatch(lst0), Syntax::ValStr(str1))
+            if lst0.len() >= 2 && str1.chars().count() + 1 >= lst0.len() =>
+        {
+            let mut str1: Vec<char> = str1.chars().collect();
+            let end_idx = lst0.len() - 1;
+            for (i, expr) in lst0.iter().enumerate() {
+                if i == end_idx {
+                    let str1: String = str1.into_iter().collect();
+                    let str1 = Syntax::ValStr(str1);
+                    if !set_values_in_context(ctx, holder, expr, &str1, values_defined_here)
+                        .await
+                    {
+                        return ComparisonResult::Matched(false);
+                    }
+
+                    break;
+                } else {
+                    if str1.is_empty() {
+                        return ComparisonResult::Matched(false);
+                    }
+
+                    let len = match &expr {
+                        Syntax::ValStr(s) => {
+                            let len = s.len();
+                            if str1.len() < len {
+                                return ComparisonResult::Matched(false);
+                            }
+
+                            len
+                        }
+                        _ => 1,
+                    };
+
+                    let c: String = str1.drain(0..len).collect();
+                    let expr_str1 = Syntax::ValStr(c);
+
+                    if !set_values_in_context(
+                        ctx,
+                        holder,
+                        expr,
+                        &expr_str1,
+                        values_defined_here,
+                    )
+                    .await
+                    {
+                        return ComparisonResult::Matched(false);
+                    }
+                }
+            }
+
+            ComparisonResult::Matched(true)
+        }
+        (Syntax::Map(lhs), Syntax::Map(rhs)) => {
+            for (key, (val, is_id)) in lhs.iter() {
+                if let Some((rhs, _)) = rhs.get(key) {
+                    if *is_id {
+                        set_values_in_context(
+                            ctx,
+                            holder,
+                            &Syntax::Id(key.clone()),
+                            rhs,
+                            values_defined_here,
+                        )
+                        .await;
+                    }
+
+                    if !set_values_in_context(ctx, holder, val, rhs, values_defined_here)
+                        .await
+                    {
+                        return ComparisonResult::Matched(false);
+                    }
+                } else {
+                    return ComparisonResult::Matched(false);
+                }
+            }
+
+            ComparisonResult::Matched(true)
+        }
+        (Syntax::MapMatch(lhs), Syntax::Map(rhs)) => {
+            for (key, key_into, val, is_id) in lhs.iter() {
+                if let Some((rhs, _)) = rhs.get(key) {
+                    if *is_id {
+                        set_values_in_context(
+                            ctx,
+                            holder,
+                            &Syntax::Id(key.clone()),
+                            rhs,
+                            values_defined_here,
+                        )
+                        .await;
+                    } else if let Some(key) = key_into {
+                        set_values_in_context(
+                            ctx,
+                            holder,
+                            &Syntax::Id(key.clone()),
+                            rhs,
+                            values_defined_here,
+                        )
+                        .await;
+                    }
+
+                    if let Some(val) = val {
+                        if !set_values_in_context(ctx, holder, val, rhs, values_defined_here)
+                            .await
+                        {
+                            return ComparisonResult::Matched(false);
+                        }
+                    }
+                } else {
+                    return ComparisonResult::Matched(false);
+                }
+            }
+
+            ComparisonResult::Matched(true)
+        }
+        (Syntax::MapMatch(lhs), Syntax::Context(ctx_id, system_id, _)) => {
+            let private_ctx = ctx;
+            let mut ctx = holder.get(*ctx_id).await.unwrap();
+
+            for (key, key_into, val, is_id) in lhs.iter() {
+                if let Some(rhs) = ctx.get_global(key).await {
+                    if *is_id {
+                        PrivateContext::set_values_in_context(
+                            private_ctx,
+                            holder,
+                            &Syntax::Id(key.clone()),
+                            &Syntax::Contextual(*ctx_id, *system_id, Box::new(rhs.clone())),
+                            values_defined_here,
+                        )
+                        .await;
+                    } else if let Some(key) = key_into {
+                        PrivateContext::set_values_in_context(
+                            private_ctx,
+                            holder,
+                            &Syntax::Id(key.clone()),
+                            &Syntax::Contextual(*ctx_id, *system_id, Box::new(rhs.clone())),
+                            values_defined_here,
+                        )
+                        .await;
+                    }
+
+                    if let Some(val) = val {
+                        if !PrivateContext::set_values_in_context(private_ctx, holder, val, &rhs, values_defined_here)
+                            .await
+                        {
+                            return ComparisonResult::Matched(false);
+                        }
+                    }
+                } else {
+                    return ComparisonResult::Matched(false);
+                }
+            }
+
+            ComparisonResult::Matched(true)
+        }
+        (Syntax::ExplicitExpr(lhs), rhs) => {
+            ComparisonResult::Continue(vec![(*lhs.clone(), rhs.clone())])
+        }
+        (lhs, Syntax::ExplicitExpr(rhs)) => {
+            ComparisonResult::Continue(vec![(lhs.clone(), *rhs.clone())])
+        }
+        (expr0, expr1) => ComparisonResult::Matched(expr0.eval_equal(expr1).await),
     }
 }
