@@ -2,9 +2,9 @@ use std::collections::{HashSet, VecDeque};
 
 use crate::{execute::Syntax, system::SystemHandler};
 
-pub async fn mark_used(system: &mut SystemHandler, syntax: &Syntax) {
+pub async fn mark_used(system: &mut SystemHandler, exprs: &[&Syntax]) {
     let mut broadsearch: VecDeque<&Syntax> = VecDeque::new();
-    broadsearch.push_front(syntax);
+    broadsearch.extend(exprs);
     let mut already_marked = HashSet::new();
 
     while let Some(syntax) = broadsearch.pop_front() {

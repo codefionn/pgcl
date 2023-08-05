@@ -181,14 +181,12 @@ impl PrivateContext {
             false => PrivateContextMark::OddMark,
         };
 
-        for syntax in self
+        mark_used(&mut *system, &self
             .globals
             .values()
             .into_iter()
             .chain(self.values.values().into_iter().flatten())
-        {
-            mark_used(&mut *system, syntax).await;
-        }
+            .collect::<Vec<&Syntax>>()).await;
     }
 
     pub async fn set_values_in_context(

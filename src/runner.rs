@@ -43,9 +43,7 @@ impl Runner {
         if let Ok(msg) = self.rx.try_recv() {
             match msg {
                 RunnerMessage::Mark(gc_even, result) => {
-                    for syntax in syntax_exprs {
-                        mark_used(&mut self.system, syntax).await;
-                    }
+                    mark_used(&mut self.system, syntax_exprs).await;
                     if let Some(ctx) = ctx {
                         ctx.mark(&mut self.system, gc_even).await;
                     }
