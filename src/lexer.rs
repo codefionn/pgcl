@@ -90,6 +90,9 @@ pub enum Token {
     #[token("$")]
     OpImmediate,
 
+    #[token("=>")]
+    OpMatchCase,
+
     #[token(";")]
     Semicolon,
 
@@ -114,6 +117,9 @@ pub enum Token {
 
     #[token("in")]
     KwIn,
+
+    #[token("match")]
+    KwMatch,
 
     #[token("_")]
     Any,
@@ -152,8 +158,8 @@ impl Token {
             let slice = match tok.clone() {
                 Lambda | ParenLeft | ParenRight | LstLeft | LstRight | MapLeft | MapRight
                 | OpPow | OpAdd | OpSub | OpMul | OpDiv | Unpack | OpPeriod | OpComma | OpAsg
-                | OpEq | OpStrictEq | OpNeq | OpStrictNeq | OpMap | KwIn | KwLet | NewLine
-                | Semicolon | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe | OpImmediate | KwIf
+                | OpEq | OpStrictEq | OpNeq | OpStrictNeq | OpMap | KwIn | KwMatch | KwLet | NewLine
+                | Semicolon | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe | OpImmediate | OpMatchCase | KwIf
                 | KwElse | KwThen | Error => lex.slice().to_string(),
 
                 Flt(x) => x.to_string(),
@@ -200,6 +206,7 @@ impl TryInto<SyntaxKind> for Token {
             Token::OpMap => Ok(SyntaxKind::OpMap),
             Token::OpPipe => Ok(SyntaxKind::OpPipe),
             Token::OpImmediate => Ok(SyntaxKind::OpImmediate),
+            Token::OpMatchCase => Ok(SyntaxKind::OpMatchCase),
             Token::Semicolon => Ok(SyntaxKind::Semicolon),
             Token::KwIf => Ok(SyntaxKind::If),
             Token::KwThen => Ok(SyntaxKind::KwThen),
@@ -208,6 +215,7 @@ impl TryInto<SyntaxKind> for Token {
             Token::Int(_) => Ok(SyntaxKind::Int),
             Token::KwLet => Ok(SyntaxKind::KwLet),
             Token::KwIn => Ok(SyntaxKind::KwIn),
+            Token::KwMatch => Ok(SyntaxKind::KwMatch),
             Token::Any => Ok(SyntaxKind::Any),
             Token::Id(_) => Ok(SyntaxKind::Id),
             Token::Atom(_) => Ok(SyntaxKind::Atom),

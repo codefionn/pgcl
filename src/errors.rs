@@ -9,6 +9,8 @@ pub enum InterpreterError {
     UnexpectedTokenEmpty(),
     UnexpectedExpressionEmpty(SyntaxKind),
     ExpectedExpression(),
+    ExpectedMatchCase(),
+    NoMatchCaseMatched(),
     ExpectedRHSExpression(),
     ExpectedLHSExpression(),
     ExpectedIdentifier(),

@@ -41,6 +41,7 @@ pub enum SyntaxKind {
     OpMap,
     OpPipe,
     OpImmediate,
+    OpMatchCase,
     NewLine,
     Pipe,
 
@@ -56,6 +57,7 @@ pub enum SyntaxKind {
     IfLet,
     KwThen,
     KwElse,
+    KwMatch,
     Any,
     Id,
     Atom,
@@ -485,6 +487,56 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 self.skip_newlines();
 
                 self.parse_expr(false);
+                self.builder.finish_node();
+
+                true
+            }
+            Some(SyntaxKind::KwMatch) => {
+                self.next(); // skip match
+                self.skip_newlines();
+
+                self.builder.start_node(SyntaxKind::KwMatch.into());
+                self.parse_expr(false);
+                self.skip_newlines();
+
+                if self.peek() == Some(SyntaxKind::KwThen) {
+                    self.next();
+                } else {
+                    self.errors.push("Expected 'then' after match expression".to_string());
+                }
+
+                self.skip_newlines();
+
+                loop {
+                    if !self.parse_expr(false) {
+                        break;
+                    }
+
+                    self.skip_newlines();
+
+                    if self.peek() == Some(SyntaxKind::OpMatchCase) {
+                        self.next();
+                        self.skip_newlines();
+                        self.parse_expr(false);
+                        self.skip_newlines();
+                    } else {
+                        self.errors.push("Expected '=>' case operator".to_string());
+                    }
+
+                    if self.peek() == Some(SyntaxKind::OpComma) {
+                        self.next();
+                        self.skip_newlines();
+                    } else {
+                        break;
+                    }
+                }
+
+                if self.peek() == Some(SyntaxKind::Semicolon) {
+                    self.next();
+                } else {
+                    self.errors.push("Expected semicolon ';'".to_string());
+                }
+
                 self.builder.finish_node();
 
                 true
@@ -962,6 +1014,25 @@ impl TryInto<Syntax> for SyntaxElement {
 
                         let expr: SyntaxElement = children.last().unwrap().clone();
                         build_let(&asgs, expr)
+                    }
+                    SyntaxKind::KwMatch => {
+                        let expr = children.next();
+                        if expr.is_none() {
+                            return Err(InterpreterError::ExpectedExpression());
+                        }
+
+                        let expr = expr.unwrap().try_into()?;
+                        let mut children = children.map(|expr| expr.try_into());
+                        let mut chunks = Vec::new();
+                        while let (Some(lhs), Some(rhs)) = (children.next(), children.next()) {
+                            chunks.push((lhs?, rhs?));
+                        }
+
+                        if !chunks.is_empty() {
+                            Ok(Syntax::Match(Box::new(expr), chunks))
+                        } else {
+                            Err(InterpreterError::ExpectedMatchCase())
+                        }
                     }
                     SyntaxKind::UnOp => {
                         let op = children

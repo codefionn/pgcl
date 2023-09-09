@@ -81,6 +81,7 @@ pub enum Syntax {
         /* expr_true: */ Box<Syntax>,
         /* expr_false: */ Box<Syntax>,
     ),
+    Match(Box<Syntax>, Vec<(Syntax, Syntax)>),
     Id(/* id: */ String),
     Map(
         /* map: */ BTreeMap<String, (Syntax, /* is_id: */ bool)>,
@@ -227,6 +228,19 @@ impl Syntax {
                         Box::new(expr_false.reduce().await),
                     )
                 }
+            },
+            Self::Match(expr, cases) => {
+                Self::Match(
+                    Box::new(expr.reduce().await),
+                    futures::stream::iter(
+                        cases
+                            .into_iter()
+                            .map(|(lhs, rhs)| async { (lhs.reduce().await, rhs.reduce().await) }),
+                    )
+                    .buffered(4)
+                    .collect()
+                    .await
+                )
             }
             expr @ Self::FnOp(_) => expr,
             Self::Call(box Self::Call(box Self::FnOp(BiOpType::OpComma), lhs), rhs) => {
@@ -823,6 +837,17 @@ impl Syntax {
                     Self::IfLet(asgs, Box::new(expr_true.await), Box::new(expr_false.await))
                 }
             }
+            Self::Match(expr, cases) => {
+                let cases: Vec<(Syntax, Syntax)> = futures::stream::iter(
+                    cases.into_iter()
+                        .map(|(lhs, rhs)| async { (lhs, rhs.replace_args(key, value).await) }),
+                )
+                    .buffered(4)
+                    .collect()
+                    .await;
+
+                Self::Match(Box::new(expr.replace_args(key,value).await), cases)
+            }
             Self::UnexpectedArguments() => self,
             Self::ValAny() => self,
             Self::ValInt(_) => self,
@@ -890,6 +915,9 @@ impl Syntax {
         }
     }
 
+    /// ## Return
+    ///
+    /// Returns (identifiers, containing expresions)
     fn get_one_arg<'a>(&'a self) -> (Vec<&'a String>, Vec<&'a Syntax>) {
         match self {
             Self::Id(id) => (vec![id], vec![]),
@@ -909,6 +937,14 @@ impl Syntax {
                     .map(|(lhs, rhs)| vec![lhs, rhs])
                     .flatten()
                     .chain([expr_true, expr_false].into_iter())
+                    .collect(),
+            ),
+            Self::Match(box expr, cases) => (
+                vec![],
+                cases.iter()
+                    .map(|(lhs, rhs)| vec![lhs, rhs])
+                    .flatten()
+                    .chain([expr].into_iter())
                     .collect(),
             ),
             Self::UnexpectedArguments()
@@ -990,6 +1026,12 @@ impl Syntax {
                 .map(|(lhs, rhs)| vec![lhs, rhs])
                 .flatten()
                 .chain([expr_true, expr_false].into_iter())
+                .collect(),
+            Self::Match(box expr, cases) => cases
+                .iter()
+                .map(|(lhs, rhs)| vec![lhs, rhs])
+                .flatten()
+                .chain([expr].into_iter())
                 .collect(),
             Self::UnexpectedArguments()
             | Self::ValAny()
@@ -1106,6 +1148,13 @@ impl std::fmt::Display for Syntax {
                     ),
                     expr_true,
                     expr_false
+                ),
+                Self::Match(expr, cases) => format!(
+                    "match {expr} then {}",
+                        cases.iter().map(|(lhs, rhs)| format!("{lhs} => {rhs}")).fold(
+                            String::new(),
+                            |x, y| if x.is_empty() { y } else { format!("{x}, {y}") }
+                        )
                 ),
                 Self::If(cond, lhs, rhs) => format!("if {cond} then {lhs} else {rhs}"),
                 Self::Id(id) => id.to_string(),

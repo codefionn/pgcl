@@ -1895,3 +1895,106 @@ async fn test_fn_op() {
         .await
     );
 }
+
+#[tokio::test]
+async fn test_match() {
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "match @true then @true => 4, @false => 2;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("2".to_string()),
+        parse_to_str(
+            "match @false then @true => 4, @false => 2;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "match @true then @true => 4, _ => 2;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("2".to_string()),
+        parse_to_str(
+            "match @false then @true => 4, _ => 2;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("2".to_string()),
+        parse_to_str(
+            "match @false then @true => 4, @false => 2, _ => 1;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "match 2 + 2 then 4 => 4, _ => 2;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "match 2 + 2 then x => x, _ => 2;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "match 2 + 2 then x => x;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "match\n 2 + 2 \nthen\n x =>\n x\n,\n _ => 2;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "match\n 2 + 2 \nthen\n x\n =>\n x\n,\n _ => 2;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("4".to_string()),
+        parse_to_str(
+            "match 2 + 2\nthen\n x => x\n;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+}

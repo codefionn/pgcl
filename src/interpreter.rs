@@ -1,4 +1,4 @@
-use log::debug;
+use log::{debug, warn};
 use rowan::GreenNodeBuilder;
 use tokio::sync::{mpsc, oneshot};
 
@@ -250,6 +250,8 @@ impl InterpreterExecuteActor {
                             }
 
                             break; // Success! (at least at parsing)
+                        } else {
+                            warn!("{:?}", typed);
                         }
                     }
 

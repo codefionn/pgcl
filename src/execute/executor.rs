@@ -185,6 +185,49 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     Ok(Syntax::IfLet(asgs, expr_true, expr_false))
                 }
             }
+            Syntax::Match(expr, cases) => {
+                let mut new_cases = Vec::new();
+                for (case_match, case_expr) in cases {
+                    if case_match == Syntax::ValAny() {
+                        new_cases.push((case_match, case_expr));
+                        continue;
+                    }
+
+                    if PrivateContext::set_values_in_context(
+                        &mut local_ctx,
+                        &mut self.ctx.get_holder(),
+                        &case_match,
+                        &expr,
+                        &mut values_defined_here,
+                    )
+                    .await
+                    {
+                        let mut case_expr = case_expr;
+                        for (key, value) in local_ctx
+                            .remove_values(&mut values_defined_here)
+                            .into_iter()
+                        {
+                             case_expr = case_expr.replace_args(&key, &value).await;
+                        }
+
+                        return Ok(case_expr);
+                    }
+
+                    new_cases.push((case_match, case_expr));
+                }
+
+                let old_expr = expr.clone();
+                let expr = self.execute_once(*expr, false, no_change).await?;
+                if no_change && *old_expr == expr {
+                    if let Some(default_case_expr) = new_cases.into_iter().filter(|(lhs, rhs)| *lhs == Syntax::ValAny()).map(|(_, rhs)| rhs).next() {
+                        Ok(default_case_expr)
+                    } else {
+                        Err(InterpreterError::NoMatchCaseMatched())
+                    }
+                } else {
+                    Ok(Syntax::Match(Box::new(expr), new_cases))
+                }
+            }
             Syntax::Call(box Syntax::Signal(signal_type, signal_id), expr) => match signal_type {
                 SignalType::Actor => {
                     if let Some(tx) = self.system.get_actor(signal_id).await {
