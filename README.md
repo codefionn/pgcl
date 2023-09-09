@@ -46,6 +46,7 @@ The interpreter uses
 * [ ] Correctly garbage collect contexts (especially imports)
 * [ ] Save memory with more shared memory between expressions in context
 * [ ] Reduce problems with stack in Rust-code (*recursion*)
+* [ ] Regular expression support
 
 ## Structures
 
