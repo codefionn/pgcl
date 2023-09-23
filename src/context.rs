@@ -182,12 +182,16 @@ impl PrivateContext {
             false => PrivateContextMark::OddMark,
         };
 
-        mark_used(&mut *system, &self
-            .globals
-            .values()
-            .into_iter()
-            .chain(self.values.values().into_iter().flatten())
-            .collect::<Vec<&Syntax>>()).await;
+        mark_used(
+            &mut *system,
+            &self
+                .globals
+                .values()
+                .into_iter()
+                .chain(self.values.values().into_iter().flatten())
+                .collect::<Vec<&Syntax>>(),
+        )
+        .await;
     }
 
     pub async fn set_values_in_context(
@@ -916,26 +920,39 @@ pub async fn set_values_in_context_one(
             ComparisonResult::Matched(Regex::new(re).unwrap().is_match(s))
         }
         (Syntax::Call(box Syntax::ValRg(re), rest), Syntax::ValStr(s)) => {
-            ComparisonResult::Continue(vec![(*rest.clone(), eval_regex(&Regex::new(re).unwrap(), s))])
+            ComparisonResult::Continue(vec![(
+                *rest.clone(),
+                eval_regex(&Regex::new(re).unwrap(), s),
+            )])
         }
         (Syntax::ExplicitExpr(lhs), rhs) => {
             ComparisonResult::Continue(vec![(*lhs.clone(), rhs.clone())])
         }
         (lhs, Syntax::ExplicitExpr(rhs)) => {
-            ComparisonResult::Continue(vec![(lhs.clone(), *rhs.clone())]) }
+            ComparisonResult::Continue(vec![(lhs.clone(), *rhs.clone())])
+        }
         (expr0, expr1) => ComparisonResult::Matched(expr0.eval_equal(expr1).await),
     }
 }
 
 fn eval_regex(re: &Regex, s: &str) -> Syntax {
     if let Some(captures) = re.captures(s) {
-        Syntax::Tuple(Box::new(Syntax::ValAtom("true".to_string())), Box::new(Syntax::Lst(
-                        captures.iter().map(|capture| match capture {
-                            Some(capture) => Syntax::ValStr(capture.as_str().to_string()),
-                            None => Syntax::ValAtom("none".to_string())
-                        }).collect()
-                )))
+        Syntax::Tuple(
+            Box::new(Syntax::ValAtom("true".to_string())),
+            Box::new(Syntax::Lst(
+                captures
+                    .iter()
+                    .map(|capture| match capture {
+                        Some(capture) => Syntax::ValStr(capture.as_str().to_string()),
+                        None => Syntax::ValAtom("none".to_string()),
+                    })
+                    .collect(),
+            )),
+        )
     } else {
-        Syntax::Tuple(Box::new(Syntax::ValAtom("false".to_string())), Box::new(Syntax::Lst(Vec::new())))
+        Syntax::Tuple(
+            Box::new(Syntax::ValAtom("false".to_string())),
+            Box::new(Syntax::Lst(Vec::new())),
+        )
     }
 }

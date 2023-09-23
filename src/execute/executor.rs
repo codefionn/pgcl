@@ -23,6 +23,7 @@ pub struct Executor<'a, 'b, 'c> {
     // Hide the change in the debug mode (to create more meaningful output)
     hide_change: bool,
     show_steps: bool,
+    debug: bool,
 }
 
 impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
@@ -31,6 +32,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
         system: &'b mut SystemHandler,
         runner: &'c mut Runner,
         show_steps: bool,
+        debug: bool,
     ) -> Self {
         Self {
             ctx,
@@ -38,6 +40,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
             runner,
             hide_change: false,
             show_steps,
+            debug,
         }
     }
 
@@ -130,11 +133,12 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     ctx: &mut ContextHandler,
                     system: &mut SystemHandler,
                     show_steps: bool,
+                    debug: bool,
                 ) -> Result<Vec<(Syntax, Syntax)>, InterpreterError> {
                     let mut result = Vec::new();
                     for (lhs, rhs) in asgs {
                         let mut runner = Runner::new(system).await.unwrap();
-                        let mut executor = Executor::new(ctx, system, &mut runner, show_steps);
+                        let mut executor = Executor::new(ctx, system, &mut runner, show_steps, debug);
                         result.push((
                             executor.execute_once(lhs, false, no_change).await?,
                             executor.execute_once(rhs, false, no_change).await?,
@@ -147,7 +151,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 if no_change {
                     let old_asgs = asgs.clone();
                     let asgs =
-                        execute_asgs(asgs, true, self.ctx, self.system, self.show_steps).await?;
+                        execute_asgs(asgs, true, self.ctx, self.system, self.show_steps, self.debug).await?;
 
                     if old_asgs == asgs {
                         for (lhs, rhs) in asgs {
@@ -180,7 +184,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     }
                 } else {
                     let asgs =
-                        execute_asgs(asgs, false, self.ctx, self.system, self.show_steps).await?;
+                        execute_asgs(asgs, false, self.ctx, self.system, self.show_steps, self.debug).await?;
 
                     Ok(Syntax::IfLet(asgs, expr_true, expr_false))
                 }
@@ -207,7 +211,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                             .remove_values(&mut values_defined_here)
                             .into_iter()
                         {
-                             case_expr = case_expr.replace_args(&key, &value).await;
+                            case_expr = case_expr.replace_args(&key, &value).await;
                         }
 
                         return Ok(case_expr);
@@ -219,7 +223,12 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 let old_expr = expr.clone();
                 let expr = self.execute_once(*expr, false, no_change).await?;
                 if no_change && *old_expr == expr {
-                    if let Some(default_case_expr) = new_cases.into_iter().filter(|(lhs, rhs)| *lhs == Syntax::ValAny()).map(|(_, rhs)| rhs).next() {
+                    if let Some(default_case_expr) = new_cases
+                        .into_iter()
+                        .filter(|(lhs, rhs)| *lhs == Syntax::ValAny())
+                        .map(|(_, rhs)| rhs)
+                        .next()
+                    {
                         Ok(default_case_expr)
                     } else {
                         Err(InterpreterError::NoMatchCaseMatched())
@@ -265,6 +274,67 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     },
                 ),
             },
+            Syntax::Call(
+                box Syntax::Id(id),
+                box Syntax::Tuple(box Syntax::Tuple(lhs, rhs), msg),
+            ) if id == "assert" || id == "debug_assert" => {
+                if id == "debug_assert" && !self.debug {
+                    return Ok(Syntax::ValAtom("true".to_string()));
+                }
+
+                let new_lhs = self.execute_once(*lhs.clone(), false, no_change).await?;
+                let new_rhs = self.execute_once(*rhs.clone(), false, no_change).await?;
+                if no_change && new_lhs == *lhs && new_rhs == *rhs {
+                    let success = new_lhs.eval_equal(&new_rhs).await;
+                    let result = if success {
+                        Ok(Syntax::ValAtom("true".to_string()))
+                    } else {
+                        log::error!("Assertion failed: {msg}");
+
+                        Ok(Syntax::ValAtom("false".to_string()))
+                    };
+                    
+                    // Don't wait for this
+                    let mut system = self.system.clone();
+                    system.add_assert(new_lhs, new_rhs, Some(msg.to_string()), success).await;
+
+                    result
+                } else {
+                    Ok(Syntax::Call(
+                        Box::new(Syntax::Id("assert".to_string())),
+                        Box::new(Syntax::Tuple(Box::new(Syntax::Tuple(Box::new(new_lhs), Box::new(new_rhs))), msg)),
+                    ))
+                }
+            }
+            Syntax::Call(box Syntax::Id(id), box Syntax::Tuple(lhs, rhs)) if id == "assert" || id == "debug_assert" => {
+                if id == "debug_assert" && !self.debug {
+                    return Ok(Syntax::ValAtom("true".to_string()));
+                }
+
+                let new_lhs = self.execute_once(*lhs.clone(), false, no_change).await?;
+                let new_rhs = self.execute_once(*rhs.clone(), false, no_change).await?;
+                if no_change && new_lhs == *lhs && new_rhs == *rhs {
+                    let success = new_lhs.eval_equal(&new_rhs).await;
+                    let result = if new_lhs.eval_equal(&new_rhs).await {
+                        Ok(Syntax::ValAtom("true".to_string()))
+                    } else {
+                        log::error!("Assertion failed: {new_lhs} == {new_rhs}");
+
+                        Ok(Syntax::ValAtom("false".to_string()))
+                    };
+                    
+                    // Don't wait for this
+                    let mut system = self.system.clone();
+                    system.add_assert(new_lhs, new_rhs, None, success).await;
+
+                    result
+                } else {
+                    Ok(Syntax::Call(
+                        Box::new(Syntax::Id("assert".to_string())),
+                        Box::new(Syntax::Tuple(Box::new(new_lhs), Box::new(new_rhs))),
+                    ))
+                }
+            }
             Syntax::Call(box Syntax::Id(id), body) => {
                 self.hide_change = true;
 
@@ -278,6 +348,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     expr,
                     &mut values_defined_here,
                     self.show_steps,
+                    self.debug,
                 )
                 .await
             }
@@ -312,6 +383,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                             expr.clone(),
                             &mut values_defined_here,
                             self.show_steps,
+                            self.debug,
                         )
                         .await?,
                     ),
@@ -329,7 +401,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 )?;
                 let mut runner = Runner::new(self.system).await.unwrap();
                 let mut executor =
-                    Executor::new(&mut ctx, &mut system, &mut runner, self.show_steps);
+                    Executor::new(&mut ctx, &mut system, &mut runner, self.show_steps, self.debug);
 
                 // Create a new contextual with the contents evaulated in the given context
                 // The contextual is reduced away if possible in the next execution step
@@ -419,9 +491,9 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                             {
                                 self.ctx.remove_values(&mut values_defined_here).await;
                                 self.ctx
-                                    .push_error(
-                                        format!("{lhs} must be assignable to {rhs} but is not",),
-                                    )
+                                    .push_error(format!(
+                                        "{lhs} must be assignable to {rhs} but is not",
+                                    ))
                                     .await;
                             } else {
                                 values_defined_here.clear();
@@ -649,11 +721,12 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                         let mut ctx = ctx.clone();
                         let mut system = self.system.clone();
                         let show_steps = self.show_steps;
+                        let debug = self.debug;
 
                         async move {
                             let mut runner = Runner::new(&mut system).await.unwrap();
                             let mut executor =
-                                Executor::new(&mut ctx, &mut system, &mut runner, show_steps);
+                                Executor::new(&mut ctx, &mut system, &mut runner, show_steps, debug);
                             Ok((
                                 key,
                                 (executor.execute_once(val, false, no_change).await?, is_id),
@@ -678,7 +751,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 let holder = self.ctx.get_holder();
                 let mut ctx = holder.clone().get_handler(ctx_id).await.unwrap();
                 let mut executor =
-                    Executor::new(&mut ctx, self.system, self.runner, self.show_steps);
+                    Executor::new(&mut ctx, self.system, self.runner, self.show_steps, self.debug);
                 Ok(Syntax::Contextual(
                     ctx_id,
                     system_id,
@@ -882,6 +955,7 @@ async fn import_lib(
     path: String,
     builtins_map: BTreeMap<String, Syntax>,
     show_steps: bool,
+    debug: bool,
 ) -> Result<Syntax, InterpreterError> {
     let system = {
         let ctx = ctx.clone();
@@ -904,7 +978,7 @@ async fn import_lib(
         let path = path.clone();
         move |&p| p == path
     }) {
-        import_std_lib(ctx, &mut system.await?, runner, path, show_steps).await
+        import_std_lib(ctx, &mut system.await?, runner, path, show_steps, debug).await
     } else if let Some(ctx_path) = ctx.get_path().await {
         let mut module_path = ctx_path.join(path.clone());
         // Normalize the path
@@ -935,6 +1009,7 @@ async fn import_lib(
                     &mut system,
                     runner,
                     show_steps,
+                    debug,
                 )
                 .await?;
 
@@ -957,7 +1032,7 @@ async fn import_lib(
         ctx.push_error("Import can only be done in real modules".to_string())
             .await;
 
-        let result = import_std_lib(ctx, &mut system.await?, runner, path, show_steps).await;
+        let result = import_std_lib(ctx, &mut system.await?, runner, path, show_steps, debug).await;
         if let Err(InterpreterError::ImportFileDoesNotExist(_)) = result {
             Err(InterpreterError::ContextNotInFile(ctx.get_name().await))
         } else {
@@ -977,6 +1052,7 @@ async fn make_call(
     original_expr: Syntax,
     values_defined_here: &mut Vec<String>,
     show_steps: bool,
+    debug: bool,
 ) -> Result<Syntax, InterpreterError> {
     if let Some(value) = ctx.get_from_values(&id, values_defined_here).await {
         Ok(Syntax::Call(Box::new(value), body))
@@ -1000,7 +1076,7 @@ async fn make_call(
                 ))
             }
             ("import", Syntax::Id(id)) | ("import", Syntax::ValStr(id)) => {
-                import_lib(ctx, system, runner, id, Default::default(), show_steps).await
+                import_lib(ctx, system, runner, id, Default::default(), show_steps, debug).await
             }
             ("import", Syntax::Contextual(ctx_id, system_id, body @ box Syntax::Id(_)))
             | ("import", Syntax::Contextual(ctx_id, system_id, body @ box Syntax::ValStr(_))) => {
@@ -1017,6 +1093,7 @@ async fn make_call(
                     original_expr,
                     values_defined_here,
                     show_steps,
+                    debug,
                 )
                 .await
             }
@@ -1032,6 +1109,7 @@ async fn make_call(
                         .map(|(key, (value, _))| (key, value))
                         .collect(),
                     show_steps,
+                    debug,
                 )
                 .await
             }
@@ -1064,6 +1142,7 @@ async fn make_call(
                     original_expr,
                     values_defined_here,
                     show_steps,
+                    debug,
                 )
                 .await
             }
@@ -1074,7 +1153,7 @@ async fn make_call(
                     Ok(syscall) => {
                         system
                             .clone()
-                            .do_syscall(ctx, system, runner, no_change, syscall, *expr, show_steps)
+                            .do_syscall(ctx, system, runner, no_change, syscall, *expr, show_steps, debug)
                             .await
                     }
                     Err(_) => Ok(original_expr),
@@ -1092,6 +1171,7 @@ async fn import_std_lib(
     runner: &mut Runner,
     path: String,
     show_steps: bool,
+    debug: bool,
 ) -> Result<Syntax, InterpreterError> {
     if let Some(ctx) = ctx.get_holder().get_path(&path).await {
         Ok(Syntax::Context(ctx.get_id(), system.get_id(), path))
@@ -1110,7 +1190,7 @@ async fn import_std_lib(
         };
 
         let holder = &mut ctx.get_holder();
-        let ctx = execute_code(&path, None, code, holder, system, runner, show_steps).await?;
+        let ctx = execute_code(&path, None, code, holder, system, runner, show_steps, debug).await?;
 
         Ok(Syntax::Context(ctx.get_id(), system.get_id(), path))
     }
@@ -1132,6 +1212,7 @@ pub async fn execute_code(
     system: &mut SystemHandler,
     runner: &mut Runner,
     show_steps: bool,
+    debug: bool,
 ) -> Result<ContextHandler, InterpreterError> {
     let mut ctx = holder
         .create_context(name.to_owned(), path)
@@ -1154,7 +1235,7 @@ pub async fn execute_code(
     //#[cfg(debug_assertions)]
     //debug!("{:?}", typed);
     let typed = typed?;
-    Executor::new(&mut ctx, system, runner, show_steps)
+    Executor::new(&mut ctx, system, runner, show_steps, debug)
         .execute(typed, true)
         .await?;
 

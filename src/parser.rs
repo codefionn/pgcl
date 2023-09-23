@@ -508,7 +508,8 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 if self.peek() == Some(SyntaxKind::KwThen) {
                     self.next();
                 } else {
-                    self.errors.push("Expected 'then' after match expression".to_string());
+                    self.errors
+                        .push("Expected 'then' after match expression".to_string());
                 }
 
                 self.skip_newlines();

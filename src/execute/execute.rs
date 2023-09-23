@@ -232,20 +232,18 @@ impl Syntax {
                         Box::new(expr_false.reduce().await),
                     )
                 }
-            },
-            Self::Match(expr, cases) => {
-                Self::Match(
-                    Box::new(expr.reduce().await),
-                    futures::stream::iter(
-                        cases
-                            .into_iter()
-                            .map(|(lhs, rhs)| async { (lhs.reduce().await, rhs.reduce().await) }),
-                    )
-                    .buffered(4)
-                    .collect()
-                    .await
-                )
             }
+            Self::Match(expr, cases) => Self::Match(
+                Box::new(expr.reduce().await),
+                futures::stream::iter(
+                    cases
+                        .into_iter()
+                        .map(|(lhs, rhs)| async { (lhs.reduce().await, rhs.reduce().await) }),
+                )
+                .buffered(4)
+                .collect()
+                .await,
+            ),
             expr @ Self::FnOp(_) => expr,
             Self::Call(box Self::ValRg(re), box Self::ValStr(s)) => {
                 let re = Regex::new(re.as_str()).unwrap();
@@ -851,14 +849,15 @@ impl Syntax {
             }
             Self::Match(expr, cases) => {
                 let cases: Vec<(Syntax, Syntax)> = futures::stream::iter(
-                    cases.into_iter()
+                    cases
+                        .into_iter()
                         .map(|(lhs, rhs)| async { (lhs, rhs.replace_args(key, value).await) }),
                 )
-                    .buffered(4)
-                    .collect()
-                    .await;
+                .buffered(4)
+                .collect()
+                .await;
 
-                Self::Match(Box::new(expr.replace_args(key,value).await), cases)
+                Self::Match(Box::new(expr.replace_args(key, value).await), cases)
             }
             Self::UnexpectedArguments() => self,
             Self::ValAny() => self,
@@ -954,7 +953,8 @@ impl Syntax {
             ),
             Self::Match(box expr, cases) => (
                 vec![],
-                cases.iter()
+                cases
+                    .iter()
                     .map(|(lhs, rhs)| vec![lhs, rhs])
                     .flatten()
                     .chain([expr].into_iter())
@@ -1166,10 +1166,14 @@ impl std::fmt::Display for Syntax {
                 ),
                 Self::Match(expr, cases) => format!(
                     "match {expr} then {}",
-                        cases.iter().map(|(lhs, rhs)| format!("{lhs} => {rhs}")).fold(
-                            String::new(),
-                            |x, y| if x.is_empty() { y } else { format!("{x}, {y}") }
-                        )
+                    cases
+                        .iter()
+                        .map(|(lhs, rhs)| format!("{lhs} => {rhs}"))
+                        .fold(String::new(), |x, y| if x.is_empty() {
+                            y
+                        } else {
+                            format!("{x}, {y}")
+                        })
                 ),
                 Self::If(cond, lhs, rhs) => format!("if {cond} then {lhs} else {rhs}"),
                 Self::Id(id) => id.to_string(),

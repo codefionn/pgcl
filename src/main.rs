@@ -24,6 +24,7 @@ use std::path::PathBuf;
 use anyhow::anyhow;
 use clap::Parser;
 use context::ContextHolder;
+use errors::InterpreterError;
 use log::LevelFilter;
 use runner::Runner;
 use system::SystemHandler;
@@ -34,6 +35,10 @@ pub struct Args {
     /// Be verbose (more messages)
     #[arg(short, long, default_value_t = false)]
     verbose: bool,
+
+    /// Enter debug mode
+    #[arg(short, long, default_value_t = false)]
+    debug: bool,
 
     /// Script to execute
     #[arg(value_name = "FILE")]
@@ -60,7 +65,8 @@ async fn main() -> anyhow::Result<()> {
         let mut systems = SystemHandler::default();
         let mut runner = Runner::new(&mut systems).await?;
 
-        crate::execute::execute_code(
+        let mut exit_code = 0;
+        match crate::execute::execute_code(
             &filepath.to_string_lossy(),
             filepath.parent().map(|path| path.to_path_buf()),
             code.as_str(),
@@ -68,12 +74,32 @@ async fn main() -> anyhow::Result<()> {
             &mut systems,
             &mut runner,
             args.verbose,
+            args.debug,
         )
-        .await
-        .map_err(|err| anyhow!("main: {:?}", err))?;
+        .await {
+            Ok(_) => {},
+            Err(InterpreterError::ProgramTerminatedByUser(id)) => {
+                exit_code = id;
+            },
+            Err(err) => {
+                std::mem::drop(runner);
+                systems.exit().await;
+
+                return Err(anyhow!("main: {:?}", err));
+            }
+        };
         std::mem::drop(runner);
 
+        let mut exit_code = 0;
+        if exit_code == 0 && systems.has_failed_asserts().await {
+            exit_code = 1;
+        }
+
         systems.exit().await;
+
+        if exit_code != 0 {
+            std::process::exit(exit_code);
+        }
     } else {
         let (tx_cli, rx_cli) = mpsc::channel(1);
         let cli_actor = reader::CLIActor::new(tx_cli);

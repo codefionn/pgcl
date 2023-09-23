@@ -1,11 +1,6 @@
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{
-    context::ContextHandler,
-    execute::Syntax,
-    gc::mark_used,
-    system::SystemHandler,
-};
+use crate::{context::ContextHandler, execute::Syntax, gc::mark_used, system::SystemHandler};
 
 pub enum RunnerMessage {
     Mark(

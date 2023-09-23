@@ -1,6 +1,6 @@
 ///! This module is for transforming a PGCL code/line into tokens
 use logos::Logos;
-use num::{Num, BigInt};
+use num::{BigInt, Num};
 
 use crate::{errors::InterpreterError, parser::SyntaxKind};
 
@@ -160,11 +160,13 @@ impl Token {
         while let Some(tok) = lex.next() {
             use Token::*;
             let slice = match tok.clone() {
-                Ok(Lambda | ParenLeft | ParenRight | LstLeft | LstRight | MapLeft | MapRight
-                | OpPow | OpAdd | OpSub | OpMul | OpDiv | Unpack | OpPeriod | OpComma | OpAsg
-                | OpEq | OpStrictEq | OpNeq | OpStrictNeq | OpMap | KwIn | KwMatch | KwLet | NewLine
-                | Semicolon | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe | OpImmediate | OpMatchCase | KwIf
-                | KwElse | KwThen) => lex.slice().to_string(),
+                Ok(
+                    Lambda | ParenLeft | ParenRight | LstLeft | LstRight | MapLeft | MapRight
+                    | OpPow | OpAdd | OpSub | OpMul | OpDiv | Unpack | OpPeriod | OpComma | OpAsg
+                    | OpEq | OpStrictEq | OpNeq | OpStrictNeq | OpMap | KwIn | KwMatch | KwLet
+                    | NewLine | Semicolon | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe
+                    | OpImmediate | OpMatchCase | KwIf | KwElse | KwThen,
+                ) => lex.slice().to_string(),
 
                 Ok(Flt(x)) => x.to_string(),
                 Ok(Int(x)) => x.to_string(),
@@ -242,8 +244,7 @@ fn dec_to_big_rational(num: &str) -> num::BigRational {
 
 #[inline]
 fn hex_to_big_rational(num: &str) -> Result<num::BigRational, <Token as Logos>::Error> {
-    num::BigRational::from_str_radix(&num[2..], 16)
-        .map_err(|_| InterpreterError::NumberTooBig())
+    num::BigRational::from_str_radix(&num[2..], 16).map_err(|_| InterpreterError::NumberTooBig())
 }
 
 #[inline]
@@ -265,10 +266,16 @@ fn parse_string(mystr: &str) -> Result<String, InterpreterError> {
             Some('\"') => result += "\"",
             Some('\'') => result += "\'",
             Some(c) => {
-                return Err(InterpreterError::InvalidEscapeSequence(c.to_string(), mystr.to_owned()));
-            },
+                return Err(InterpreterError::InvalidEscapeSequence(
+                    c.to_string(),
+                    mystr.to_owned(),
+                ));
+            }
             None => {
-                return Err(InterpreterError::InvalidEscapeSequence(String::new(), mystr.to_owned()));
+                return Err(InterpreterError::InvalidEscapeSequence(
+                    String::new(),
+                    mystr.to_owned(),
+                ));
             }
         }
 
@@ -288,6 +295,6 @@ fn parse_re(re: &str) -> Result<String, InterpreterError> {
     if re.is_empty() {
         Err(InterpreterError::InvalidRegex(String::new()))
     } else {
-        Ok(re[2..re.len()-1].to_owned())
+        Ok(re[2..re.len() - 1].to_owned())
     }
 }

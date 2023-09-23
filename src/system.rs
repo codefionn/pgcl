@@ -44,11 +44,12 @@ impl System {
         syscall: SystemCallType,
         expr: Syntax,
         show_steps: bool,
+        debug: bool,
     ) -> Result<Syntax, InterpreterError> {
         self.private_system
             .lock()
             .await
-            .do_syscall(ctx, system, runner, no_change, syscall, expr, show_steps)
+            .do_syscall(ctx, system, runner, no_change, syscall, expr, show_steps, debug)
             .await
     }
 
@@ -86,6 +87,8 @@ enum SystemActorMessage {
     ),
     RecvMessage(usize, oneshot::Sender<Option<Syntax>>),
     SetLexer(mpsc::Sender<LexerMessage>),
+    Assert(Syntax, Syntax, Option<String>, bool),
+    HasFailedAsserts(oneshot::Sender<bool>),
     Exit(oneshot::Sender<()>),
     RealExit(),
 }
@@ -113,6 +116,12 @@ impl std::fmt::Debug for SystemActorMessage {
             Self::CreateRunner(_, _) => f.write_str("CreateRunner()"),
             Self::DropRunner(id) => f.write_str(format!("DropRunner({})", id).as_str()),
             Self::SetLexer(_) => f.write_str(format!("SetLexer()").as_str()),
+            Self::Assert(lhs, rhs, msg, success) => if let Some(msg) = msg {
+                f.write_str(format!("RaiseAssert({lhs}, {rhs}, {msg}, {:?})", success).as_str())
+            } else {
+                f.write_str(format!("RaiseAssert({lhs}, {rhs}, {:?})", success).as_str())
+            },
+            Self::HasFailedAsserts(_) => f.write_str("HasFailedAsserts()")
         }
     }
 }
@@ -121,6 +130,13 @@ struct MessageHandle {
     pub tx: mpsc::Sender<crate::actor::Message>,
     pub rx: mpsc::Receiver<crate::actor::Message>,
     pub used: bool,
+}
+
+struct Assertion {
+    pub lhs: Syntax,
+    pub rhs: Syntax,
+    pub msg: Option<String>,
+    pub success: bool,
 }
 
 struct SystemActor {
@@ -140,6 +156,7 @@ struct SystemActor {
     gc_even: bool,
     running: Arc<AtomicBool>,
     exit_handles: Vec<oneshot::Sender<()>>,
+    assertions: Vec<Assertion>,
 }
 
 impl SystemActor {
@@ -170,6 +187,7 @@ impl SystemActor {
                 tx_lexer: None,
                 running: Arc::new(AtomicBool::new(true)),
                 exit_handles: Default::default(),
+                assertions: Vec::new(),
             };
 
             actor.run_actor().await;
@@ -280,6 +298,14 @@ impl SystemActor {
             }
             SystemActorMessage::SetLexer(tx_lexer) => {
                 self.tx_lexer = Some(tx_lexer);
+            }
+            SystemActorMessage::Assert(lhs, rhs, msg, success) => {
+                self.assertions.push(Assertion {
+                    lhs, rhs, msg, success
+                });
+            }
+            SystemActorMessage::HasFailedAsserts(result) => {
+                result.send(self.assertions.iter().any(|assertion| !assertion.success)).ok();
             }
             SystemActorMessage::Exit(result) => {
                 self.exit_handles.push(result);
@@ -664,11 +690,12 @@ impl SystemHandler {
         syscall: SystemCallType,
         expr: Syntax,
         show_steps: bool,
+        debug: bool,
     ) -> Result<Syntax, InterpreterError> {
         self.get_system(self.id)
             .await
             .unwrap()
-            .do_syscall(ctx, system, runner, no_change, syscall, expr, show_steps)
+            .do_syscall(ctx, system, runner, no_change, syscall, expr, show_steps, debug)
             .await
     }
 
@@ -861,5 +888,26 @@ impl SystemHandler {
             .send(SystemActorMessage::DropRunner(id))
             .await
             .ok();
+    }
+
+    pub async fn add_assert(&mut self, lhs: Syntax, rhs: Syntax, msg: Option<String>, success: bool) {
+        self.system
+            .send(SystemActorMessage::Assert(lhs, rhs, msg, success))
+            .await
+            .ok();
+    }
+
+    pub async fn has_failed_asserts(&mut self) -> bool {
+        let (tx, rx) = oneshot::channel();
+        match self.system
+            .send(SystemActorMessage::HasFailedAsserts(tx))
+            .await {
+            Ok(_) => {
+                rx.await.unwrap_or(false)
+            }
+            Err(_) => {
+                false
+            }
+        }
     }
 }

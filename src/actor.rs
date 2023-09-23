@@ -51,6 +51,7 @@ impl Actor {
             &mut self.system,
             &mut runner,
             false,
+            false,
         ));
         let mut init = self.init.clone();
 

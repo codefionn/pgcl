@@ -1,12 +1,12 @@
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug)]
 pub enum LineMessage {
     Line(String, tokio::sync::oneshot::Sender<ExecutedMessage>),
-    Exit(),
+    Exit(/* exit_code: */ oneshot::Sender<i32>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -49,8 +49,13 @@ impl CLIActor {
                             exit_code = code;
 
                             // Ignore the results, because the channel stops working afterwards
-                            self.tx.send(LineMessage::Exit()).await.ok();
+                            let (tx, rx) = oneshot::channel();
+                            self.tx.send(LineMessage::Exit(tx)).await.ok();
                             self.tx.reserve().await.ok(); // Flush the channel
+
+                            if exit_code == 0 {
+                                exit_code = rx.await.unwrap_or(1);
+                            }
 
                             break;
                         }
@@ -58,8 +63,11 @@ impl CLIActor {
                 }
                 Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
                     // Ignore the results, because the channel stops working afterwards
-                    self.tx.send(LineMessage::Exit()).await.ok();
+                    let (tx, rx) = oneshot::channel();
+                    self.tx.send(LineMessage::Exit(tx)).await.ok();
                     self.tx.reserve().await.ok(); // Flush the channel
+
+                    exit_code = rx.await.unwrap_or(1);
 
                     break;
                 }
@@ -69,7 +77,8 @@ impl CLIActor {
                     eprintln!("Error: {err:?}");
 
                     // Ignore the results, because the channel stops working afterwards
-                    self.tx.send(LineMessage::Exit()).await.ok();
+                    let (tx, _) = oneshot::channel();
+                    self.tx.send(LineMessage::Exit(tx)).await.ok();
                     self.tx.reserve().await.ok(); // Flush the channel
 
                     break;

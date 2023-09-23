@@ -1,6 +1,6 @@
 use log::warn;
 use rowan::GreenNodeBuilder;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{
     context::{ContextHandler, ContextHolder},
@@ -89,11 +89,8 @@ impl InterpreterLexerActor {
                     match Token::lex_for_rowan(line.as_str()) {
                         Ok(lex_result) => {
                             self.tx
-                            .send(LexerMessage::Line(
-                                lex_result,
-                                tx_confirm,
-                            ))
-                            .await?;
+                                .send(LexerMessage::Line(lex_result, tx_confirm))
+                                .await?;
                             self.tx.reserve().await?;
                         }
                         Err(err) => {
@@ -101,8 +98,8 @@ impl InterpreterLexerActor {
                         }
                     }
                 }
-                _ => {
-                    self.tx.send(LexerMessage::Exit()).await.ok();
+                LineMessage::Exit(result) => {
+                    self.tx.send(LexerMessage::Exit(result)).await.ok();
                     self.tx.reserve().await.ok();
 
                     break;
@@ -118,10 +115,10 @@ impl InterpreterLexerActor {
 pub enum LexerMessage {
     Line(
         Vec<(Token, String)>,
-        tokio::sync::oneshot::Sender<ExecutedMessage>,
+        oneshot::Sender<ExecutedMessage>,
     ),
     Wakeup(),
-    Exit(),
+    Exit(/* exit_code */ oneshot::Sender<i32>),
     RealExit(),
 }
 
@@ -171,6 +168,7 @@ impl InterpreterExecuteActor {
             &mut main_system,
             &mut runner,
             self.args.verbose,
+            self.args.debug,
         );
 
         // Save the length of the error vec in the main context
@@ -281,11 +279,19 @@ impl InterpreterExecuteActor {
                         log::error!("{:?}", err);
                     }
                 }
-                LexerMessage::Exit() => {
+                LexerMessage::Exit(result) => {
+                    let exit_code = if executor.get_system().has_failed_asserts().await {
+                        1
+                    } else {
+                        0
+                    };
+
                     exit_handle = Some(tokio::spawn({
                         let mut system = self.system.clone();
                         async move { system.exit().await }
                     }));
+
+                    result.send(exit_code).ok();
                 }
                 LexerMessage::RealExit() => {
                     break;

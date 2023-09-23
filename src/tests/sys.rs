@@ -34,7 +34,7 @@ async fn parse(
         let mut runner = Runner::new(system)
             .await
             .map_err(|err| InterpreterError::InternalError(format!("{}", err)))?;
-        Executor::new(ctx, system, &mut runner, false)
+        Executor::new(ctx, system, &mut runner, false, true)
             .execute(ast, true)
             .await
     }

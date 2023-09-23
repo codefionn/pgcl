@@ -112,6 +112,7 @@ impl PrivateSystem {
         syscall: SystemCallType,
         expr: Syntax,
         show_steps: bool,
+        debug: bool,
     ) -> Result<Syntax, InterpreterError> {
         if let Some(expr) = self.map.get(&syscall) {
             return Ok(expr.clone());
@@ -154,7 +155,7 @@ impl PrivateSystem {
             (SystemCallType::MeasureTime, expr) => {
                 let now = Instant::now();
 
-                let expr = Executor::new(ctx, system, runner, show_steps)
+                let expr = Executor::new(ctx, system, runner, show_steps, debug)
                     .execute(expr, false)
                     .await?;
 
@@ -302,9 +303,17 @@ impl PrivateSystem {
                     Ok(Syntax::ValAtom("false".to_string()))
                 }
             }
-            (SystemCallType::ExitThisProgram, Syntax::ValInt(id)) => Err(
-                InterpreterError::ProgramTerminatedByUser(id.to_i32().unwrap_or(1)),
-            ),
+            (SystemCallType::ExitThisProgram, Syntax::ValInt(id)) => {
+                let id = id.to_i32().unwrap_or(1);
+                if id == 0 {
+                    // When exiting successfully fail if an assertion failed
+                    if system.has_failed_asserts().await {
+                        return Err(InterpreterError::ProgramTerminatedByUser(1));
+                    }
+                }
+
+                Err(InterpreterError::ProgramTerminatedByUser(id))
+            },
             (SystemCallType::CreateMsg, Syntax::ValAny()) => {
                 let handle = system.create_message().await;
                 Ok(Syntax::Signal(SignalType::Message, handle))
@@ -318,7 +327,7 @@ impl PrivateSystem {
                 Box::new(Syntax::Tuple(
                     Box::new(Syntax::ValAtom(syscall.to_systemcall().to_string())),
                     Box::new(
-                        Executor::new(ctx, system, runner, show_steps)
+                        Executor::new(ctx, system, runner, show_steps, debug)
                             .execute_once(expr, false, no_change)
                             .await?,
                     ),
