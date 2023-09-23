@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -9,9 +8,9 @@ use std::{
 };
 
 use anyhow::anyhow;
-use futures::{future::join_all, SinkExt};
+use futures::future::join_all;
 use tokio::{
-    sync::{mpsc, oneshot, Mutex, RwLock},
+    sync::{mpsc, oneshot, Mutex},
     task::JoinHandle,
 };
 
@@ -183,10 +182,9 @@ impl SystemActor {
         //#[cfg(debug_assertions)]
         //debug!("System actor: Started");
 
-        let mut exit_handle: Option<oneshot::Sender<()>> = None;
-        let mut watcher = tokio::spawn({
+        tokio::spawn({
             let tx = self.tx.clone();
-            let mut running = self.running.clone();
+            let running = self.running.clone();
             async move {
                 while running.load(Ordering::Relaxed) {
                     tokio::time::sleep(Duration::from_secs(10)).await;
@@ -415,7 +413,7 @@ impl SystemActor {
             }
 
             for msg in to_drop_messages {
-                // Do nothing
+                std::mem::drop(msg);
             }
         });
 
@@ -606,7 +604,7 @@ impl SystemActor {
 
         // We have to return the actors, otherwise the runtime will be locked
 
-        join_all(self.actors.drain().map(|(handle, actor)| async move {
+        join_all(self.actors.drain().map(|(_, actor)| async move {
             if let Err(err) = actor.destroy().await.await {
                 log::error!("destroy-actor: {}", err);
             }

@@ -11,8 +11,7 @@ use crate::{
     system::{SystemCallType, SystemHandler},
 };
 use async_recursion::async_recursion;
-use futures::{future::join_all, Future, StreamExt, TryStreamExt};
-use log::debug;
+use futures::future::join_all;
 use rowan::GreenNodeBuilder;
 
 use super::UnOpType;
@@ -107,6 +106,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
             Syntax::ValInt(_) => Ok(expr),
             Syntax::ValFlt(_) => Ok(expr),
             Syntax::ValStr(_) => Ok(expr),
+            Syntax::ValRg(_) => Ok(expr),
             Syntax::ValAtom(_) => Ok(expr),
             Syntax::Lambda(_, _) => Ok(expr),
             Syntax::Pipe(_) => Ok(expr),
@@ -1141,7 +1141,7 @@ pub async fn execute_code(
         .set_path(name, &holder.get(ctx.get_id()).await.unwrap())
         .await;
 
-    let toks: Vec<(SyntaxKind, String)> = Token::lex_for_rowan(code)
+    let toks: Vec<(SyntaxKind, String)> = Token::lex_for_rowan(code)?
         .into_iter()
         .map(
             |(tok, slice)| -> Result<(SyntaxKind, String), InterpreterError> {

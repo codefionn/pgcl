@@ -10,7 +10,6 @@ use crate::{
     system::SystemHandler,
 };
 use bigdecimal::{BigDecimal, ToPrimitive};
-use futures::SinkExt;
 use log::{debug, error};
 use num::FromPrimitive;
 use tokio::{process::Command, sync::oneshot, time::Instant};

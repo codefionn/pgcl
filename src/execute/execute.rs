@@ -4,6 +4,7 @@ use futures::{future::OptionFuture, StreamExt};
 use num::pow::Pow;
 use num::FromPrimitive;
 use num::Zero;
+use regex::Regex;
 use std::collections::{BTreeMap, HashSet, VecDeque};
 
 use crate::rational::BigRational;
@@ -110,6 +111,8 @@ pub enum Syntax {
     ValFlt(/* num: */ BigRational),
     ValStr(/* str: */ String),
     ValAtom(/* atom: */ String),
+    /// The contained regex is asserted to be correct at anywhere this is created
+    ValRg(/* regex: */ String),
     Signal(SignalType, usize),
     UnexpectedArguments(),
 }
@@ -146,6 +149,7 @@ impl Syntax {
             Self::ValInt(_) => self,
             Self::ValFlt(_) => self,
             Self::ValStr(_) => self,
+            Self::ValRg(_) => self,
             Self::ValAtom(_) => self,
             Self::Pipe(_) => self,
             Self::Signal(_, _) => self,
@@ -243,6 +247,14 @@ impl Syntax {
                 )
             }
             expr @ Self::FnOp(_) => expr,
+            Self::Call(box Self::ValRg(re), box Self::ValStr(s)) => {
+                let re = Regex::new(re.as_str()).unwrap();
+                if re.is_match(s.as_str()) {
+                    Self::ValAtom("true".to_string())
+                } else {
+                    Self::ValAtom("false".to_string())
+                }
+            }
             Self::Call(box Self::Call(box Self::FnOp(BiOpType::OpComma), lhs), rhs) => {
                 Self::Tuple(lhs, rhs)
             }
@@ -853,6 +865,7 @@ impl Syntax {
             Self::ValInt(_) => self,
             Self::ValFlt(_) => self,
             Self::ValStr(_) => self,
+            Self::ValRg(_) => self,
             Self::ValAtom(_) => self,
             Self::Lst(lst) => Self::Lst(
                 futures::stream::iter(
@@ -952,6 +965,7 @@ impl Syntax {
             | Self::ValInt(_)
             | Self::ValFlt(_)
             | Self::ValStr(_)
+            | Self::ValRg(_)
             | Self::ValAtom(_) => (vec![], vec![]),
             Self::Lst(lst) => (vec![], lst.iter().collect()),
             Self::LstMatch(lst) => (vec![], lst.iter().collect()),
@@ -1038,6 +1052,7 @@ impl Syntax {
             | Self::ValInt(_)
             | Self::ValFlt(_)
             | Self::ValStr(_)
+            | Self::ValRg(_)
             | Self::ValAtom(_) => vec![],
             Self::Lst(lst) => lst.iter().collect(),
             Self::LstMatch(lst) => lst.iter().collect(),
@@ -1175,6 +1190,7 @@ impl std::fmt::Display for Syntax {
                 }
                 .to_string(),
                 Self::ValStr(x) => val_str(x),
+                Self::ValRg(x) => val_str(x.as_str()),
                 Self::ValAtom(x) => format!("@{x}"),
                 Self::Lst(lst) => format!(
                     "[{}]",

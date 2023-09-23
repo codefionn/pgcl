@@ -46,7 +46,7 @@ struct Actor {
 impl Actor {
     async fn run_actor(mut self) {
         let mut runner = Runner::new(&mut self.system).await.unwrap();
-        let mut executor = RwLock::new(Executor::new(
+        let executor = RwLock::new(Executor::new(
             &mut self.ctx,
             &mut self.system,
             &mut runner,
@@ -126,7 +126,7 @@ pub async fn create_actor(
     init: Syntax,
     actor_fn: Syntax,
 ) -> (JoinHandle<()>, mpsc::Sender<Message>, Arc<AtomicBool>) {
-    let (tx, mut rx) = mpsc::channel(256);
+    let (tx, rx) = mpsc::channel(256);
     let running = Arc::new(AtomicBool::new(false));
 
     let handle = tokio::spawn({

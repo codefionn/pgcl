@@ -15,7 +15,7 @@ async fn parse(
     ctx: &mut ContextHandler,
     system: &mut SystemHandler,
 ) -> Result<Syntax, InterpreterError> {
-    let toks = Token::lex_for_rowan(line);
+    let toks = Token::lex_for_rowan(line)?;
     let toks: Vec<(SyntaxKind, String)> = toks
         .into_iter()
         .map(
@@ -1992,6 +1992,73 @@ async fn test_match() {
         Ok("4".to_string()),
         parse_to_str(
             "match 2 + 2\nthen\n x => x\n;",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+}
+
+#[tokio::test]
+async fn test_regex() {
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            "r/test/ \"test\"",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            "r/^test$/ \"test\"",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@true, [\"test\"])".to_string()),
+        parse_to_str(
+            "let (r/^test$/ m) = \"test\" in m",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@true, [\"test\", \"te\"])".to_string()),
+        parse_to_str(
+            "let (r/^(te)st$/ m) = \"test\" in m",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@true, [\"test\", \"te\"])".to_string()),
+        parse_to_str(
+            "let (r/^(te)?st$/ m) = \"test\" in m",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@true, [\"st\", @none])".to_string()),
+        parse_to_str(
+            "let (r/^(te)?st$/ m) = \"st\" in m",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@true, [\"test\", \"te\", \"e\"])".to_string()),
+        parse_to_str(
+            "let (r/^(t(e))?st$/ m) = \"test\" in m",
             &mut ContextHandler::async_default().await,
             &mut SystemHandler::default()
         )

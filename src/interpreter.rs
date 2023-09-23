@@ -1,6 +1,6 @@
-use log::{debug, warn};
+use log::warn;
 use rowan::GreenNodeBuilder;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
 use crate::{
     context::{ContextHandler, ContextHolder},
@@ -86,13 +86,20 @@ impl InterpreterLexerActor {
                         continue;
                     }
 
-                    self.tx
-                        .send(LexerMessage::Line(
-                            Token::lex_for_rowan(line.as_str()),
-                            tx_confirm,
-                        ))
-                        .await?;
-                    self.tx.reserve().await?;
+                    match Token::lex_for_rowan(line.as_str()) {
+                        Ok(lex_result) => {
+                            self.tx
+                            .send(LexerMessage::Line(
+                                lex_result,
+                                tx_confirm,
+                            ))
+                            .await?;
+                            self.tx.reserve().await?;
+                        }
+                        Err(err) => {
+                            log::error!("{:?}", err);
+                        }
+                    }
                 }
                 _ => {
                     self.tx.send(LexerMessage::Exit()).await.ok();

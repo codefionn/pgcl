@@ -1,12 +1,16 @@
 ///! This module is for transforming a PGCL code/line into tokens
 use logos::Logos;
-use num::Num;
+use num::{Num, BigInt};
 
 use crate::{errors::InterpreterError, parser::SyntaxKind};
 
 /// PGCL tokens
 #[derive(Logos, Clone, Debug, PartialEq)]
 #[repr(u16)]
+#[logos(skip r"[ \t\f]+")]
+#[logos(skip r"//[^\n\r]*")]
+#[logos(skip r"#[^\n\r]*")]
+#[logos(error = InterpreterError)]
 pub enum Token {
     // cov ignore {
     #[token("\\")]
@@ -131,47 +135,51 @@ pub enum Token {
     Atom(String),
 
     // Yeah, understanding this regex in the future will be kinda hard
+    // u0022 => "
     #[regex(r"\u{0022}([^\u{0022}\\]|\\([0rnt\\\\']|\u{0022}|u\{[A-F0-9][A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?[A-F0-9]?\}))*\u{0022}", |lex| parse_string(lex.slice()))]
     Str(String),
+
+    // Another madness of a regex
+    //#[regex(r"rg\u{0022}([^\u{0022}]|\\\u{0022})*\u{0022}", |lex| parse_re(lex.slice()))]
+    #[regex(r"r/([^ /\n\r\\]|\\/|\\)+/", |lex| parse_re(lex.slice()))]
+    Rg(String),
 
     #[token("\n\r")]
     #[token("\r\n")]
     #[token("\n")]
     #[token("\r")]
     NewLine,
-
-    #[error]
-    #[regex(r"[ \t\f]+", logos::skip)]
-    #[regex(r"//[^\n\r]*", logos::skip)]
-    #[regex(r"#[^\n\r]*", logos::skip)]
-    Error,
     // } cov ignore
 }
 
 impl Token {
-    pub fn lex_for_rowan(text: &str) -> Vec<(Token, String)> {
+    pub fn lex_for_rowan(text: &str) -> Result<Vec<(Token, String)>, InterpreterError> {
         let mut lex = Token::lexer(text);
         let mut result = Vec::new();
 
         while let Some(tok) = lex.next() {
             use Token::*;
             let slice = match tok.clone() {
-                Lambda | ParenLeft | ParenRight | LstLeft | LstRight | MapLeft | MapRight
+                Ok(Lambda | ParenLeft | ParenRight | LstLeft | LstRight | MapLeft | MapRight
                 | OpPow | OpAdd | OpSub | OpMul | OpDiv | Unpack | OpPeriod | OpComma | OpAsg
                 | OpEq | OpStrictEq | OpNeq | OpStrictNeq | OpMap | KwIn | KwMatch | KwLet | NewLine
                 | Semicolon | Any | OpLeq | OpGeq | OpGt | OpLt | OpPipe | OpImmediate | OpMatchCase | KwIf
-                | KwElse | KwThen | Error => lex.slice().to_string(),
+                | KwElse | KwThen) => lex.slice().to_string(),
 
-                Flt(x) => x.to_string(),
-                Int(x) => x.to_string(),
-                Id(x) => x.clone(),
-                Atom(x) => x.clone(),
-                Str(x) => x.clone(),
+                Ok(Flt(x)) => x.to_string(),
+                Ok(Int(x)) => x.to_string(),
+                Ok(Id(x)) => x.clone(),
+                Ok(Atom(x)) => x.clone(),
+                Ok(Str(x)) => x.clone(),
+                Ok(Rg(x)) => x.clone(),
+                Err(err) => {
+                    return Err(err);
+                }
             };
-            result.push((tok, slice));
+            result.push((tok.unwrap(), slice));
         }
 
-        result
+        Ok(result)
     }
 }
 
@@ -220,8 +228,8 @@ impl TryInto<SyntaxKind> for Token {
             Token::Id(_) => Ok(SyntaxKind::Id),
             Token::Atom(_) => Ok(SyntaxKind::Atom),
             Token::Str(_) => Ok(SyntaxKind::Str),
+            Token::Rg(_) => Ok(SyntaxKind::Rg),
             Token::NewLine => Ok(SyntaxKind::NewLine),
-            Token::Error => Err(InterpreterError::UnknownError()),
             tok @ _ => Err(InterpreterError::UnexpectedToken(tok)),
         }
     }
@@ -233,12 +241,13 @@ fn dec_to_big_rational(num: &str) -> num::BigRational {
 }
 
 #[inline]
-fn hex_to_big_rational(num: &str) -> Result<num::BigRational, num::rational::ParseRatioError> {
+fn hex_to_big_rational(num: &str) -> Result<num::BigRational, <Token as Logos>::Error> {
     num::BigRational::from_str_radix(&num[2..], 16)
+        .map_err(|_| InterpreterError::NumberTooBig())
 }
 
 #[inline]
-fn parse_string(mystr: &str) -> Option<String> {
+fn parse_string(mystr: &str) -> Result<String, InterpreterError> {
     let mystr = &mystr[1..mystr.len() - 1];
 
     let mut result = String::with_capacity(mystr.len());
@@ -255,9 +264,11 @@ fn parse_string(mystr: &str) -> Option<String> {
             Some('\\') => result += "\\",
             Some('\"') => result += "\"",
             Some('\'') => result += "\'",
-            _ => {
-                println!("{mystr}");
-                return None;
+            Some(c) => {
+                return Err(InterpreterError::InvalidEscapeSequence(c.to_string(), mystr.to_owned()));
+            },
+            None => {
+                return Err(InterpreterError::InvalidEscapeSequence(String::new(), mystr.to_owned()));
             }
         }
 
@@ -269,5 +280,14 @@ fn parse_string(mystr: &str) -> Option<String> {
         result += &mystr[idx..];
     }
 
-    Some(result)
+    Ok(result)
+}
+
+#[inline]
+fn parse_re(re: &str) -> Result<String, InterpreterError> {
+    if re.is_empty() {
+        Err(InterpreterError::InvalidRegex(String::new()))
+    } else {
+        Ok(re[2..re.len()-1].to_owned())
+    }
 }

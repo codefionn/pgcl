@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 
 use log::warn;
 use num::Num;
+use regex::Regex;
 use rowan::{GreenNodeBuilder, NodeOrToken};
 
 use crate::{
@@ -62,6 +63,7 @@ pub enum SyntaxKind {
     Id,
     Atom,
     Str,
+    Rg,
     Lst,
     LstMatch,
     Map,
@@ -213,6 +215,10 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 true
             }
             Some(SyntaxKind::Str) => {
+                self.bump();
+                true
+            }
+            Some(SyntaxKind::Rg) => {
                 self.bump();
                 true
             }
@@ -1252,6 +1258,12 @@ impl TryInto<Syntax> for SyntaxElement {
                         .map_err(|_| InterpreterError::ExpectedFloat())?,
                 )),
                 SyntaxKind::Str => Ok(Syntax::ValStr(tok.text().to_string())),
+                SyntaxKind::Rg => {
+                    let re = Regex::new(tok.text())
+                        .map_err(|err| InterpreterError::InvalidRegex(err.to_string()))?;
+
+                    Ok(Syntax::ValRg(tok.text().to_string()))
+                }
                 SyntaxKind::Atom => Ok(Syntax::ValAtom(tok.text().to_string())),
                 SyntaxKind::Any => Ok(Syntax::ValAny()),
                 _ => Err(InterpreterError::UnexpectedTokenEmpty()),

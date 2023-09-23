@@ -1,4 +1,3 @@
-use log::debug;
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;

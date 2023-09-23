@@ -1,16 +1,14 @@
 use rowan::GreenNodeBuilder;
 
 use crate::{
-    context::{ContextHandler, ContextHolder},
     errors::InterpreterError,
-    execute::{Executor, Syntax},
+    execute::Syntax,
     lexer::Token,
     parser::{Parser, SyntaxKind},
-    system::SystemHandler,
 };
 
 async fn get_args(line: &str) -> Result<Vec<String>, InterpreterError> {
-    let toks = Token::lex_for_rowan(line);
+    let toks = Token::lex_for_rowan(line)?;
     let toks: Vec<(SyntaxKind, String)> = toks
         .into_iter()
         .map(

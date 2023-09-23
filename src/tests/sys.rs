@@ -1,7 +1,7 @@
 use rowan::GreenNodeBuilder;
 
 use crate::{
-    context::{ContextHandler, ContextHolder},
+    context::ContextHandler,
     errors::InterpreterError,
     execute::{Executor, Syntax},
     lexer::Token,
@@ -15,7 +15,7 @@ async fn parse(
     ctx: &mut ContextHandler,
     system: &mut SystemHandler,
 ) -> Result<Syntax, InterpreterError> {
-    let toks = Token::lex_for_rowan(line);
+    let toks = Token::lex_for_rowan(line)?;
     let toks: Vec<(SyntaxKind, String)> = toks
         .into_iter()
         .map(

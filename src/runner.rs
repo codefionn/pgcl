@@ -1,9 +1,7 @@
-use std::collections::{HashSet, VecDeque};
-
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    context::{Context, ContextHandler},
+    context::ContextHandler,
     execute::Syntax,
     gc::mark_used,
     system::SystemHandler,

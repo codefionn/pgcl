@@ -1,6 +1,6 @@
 use crate::{lexer::Token, parser::SyntaxKind};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum InterpreterError {
     UnknownError(),
     InternalError(String),
@@ -23,6 +23,14 @@ pub enum InterpreterError {
     LetDoesMatch(String),
     ContextNotInFile(String),
     ImportFileDoesNotExist(String),
+    InvalidEscapeSequence(/* seq: */ String, /* subj: */ String),
     NumberTooBig(),
+    InvalidRegex(String),
     ProgramTerminatedByUser(i32),
+}
+
+impl Default for InterpreterError {
+    fn default() -> Self {
+        Self::UnknownError()
+    }
 }

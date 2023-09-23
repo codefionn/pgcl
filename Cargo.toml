@@ -25,7 +25,7 @@ futures = { version = "0.3.27", features = [ "unstable" ] }
 hyper = { version = "0.14.25", features = [ "http1", "http2", "client", "server", "runtime" ] }
 hyper-tls = "0.5.0"
 log = "0.4.17"
-logos = "0.12.1"
+logos = "0.13"
 num = { version = "0.4.0", features = [ "libm", "serde", "alloc" ] }
 regex = "1.7.3"
 rowan = { version = "0.15.10", features = [ "serde" ] }
