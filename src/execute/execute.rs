@@ -1086,6 +1086,16 @@ impl Syntax {
             (Syntax::ValFlt(a), Syntax::ValInt(b)) => *a == *b,
             (Syntax::ValInt(b), Syntax::ValFlt(a)) => *a == *b,
             (Syntax::ValStr(a), Syntax::ValStr(b)) => a == b,
+            (Syntax::Lst(a), Syntax::Lst(b)) if a.len() != b.len() => false,
+            (Syntax::Lst(a), Syntax::Lst(b)) if a.len() == b.len() => {
+                for i in 0..a.len() {
+                    if a[i] != b[i] {
+                        return false;
+                    }
+                }
+
+                true
+            },
             _ => false,
         }
     }

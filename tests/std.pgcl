@@ -1,0 +1,14 @@
+std = $ import std
+
+assert (0, std.id 0)
+assert (1, std.id 1)
+
+assert (0, std.right 0)
+assert ((1 (2 3)), std.right ((1 2) 3))
+assert ((1 (2 (3 4))), std.right (((1 2) 3) 4))
+assert ((1 (2 (3 (4 5)))), std.right ((((1 2) 3) 4) 5))
+
+assert ([], std.map (*) [])
+assert ([2], std.map (\x x + x) [1])
+assert ([2, 4], std.map (\x x + x) [1, 2])
+assert ([1, 4, 9, 16], std.map (\x x * x) [1, 2, 3, 4])

@@ -333,3 +333,14 @@ fn test_debug() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_std() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd
+        .arg("./tests/std.pgcl")
+        .assert()
+        .success();
+
+    Ok(())
+}

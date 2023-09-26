@@ -799,7 +799,8 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 && haschanged
                 && self.show_steps
             {
-                //debug!("{:?}", expr);
+                #[cfg(debug_assertions)]
+                log::debug!("{:?}", expr);
                 println!("{}", expr);
             }
 
