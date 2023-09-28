@@ -137,7 +137,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 ) -> Result<Vec<(Syntax, Syntax)>, InterpreterError> {
                     let mut result = Vec::new();
                     for (lhs, rhs) in asgs {
-                        let mut runner = Runner::new(system).await.unwrap();
+                        let mut runner = Runner::new(system).await.map_err(|err| InterpreterError::CouldNotCreateRunner(Some(err.to_string())))?;
                         let mut executor = Executor::new(ctx, system, &mut runner, show_steps, debug);
                         result.push((
                             executor.execute_once(lhs, false, no_change).await?,
@@ -364,7 +364,8 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
             Syntax::Call(box Syntax::Contextual(ctx_id, system_id, box Syntax::Id(id)), rhs) => {
                 self.hide_change = true;
 
-                let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await.unwrap();
+                let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await
+                    .ok_or(InterpreterError::ExpectedContext(ctx_id))?;
                 let mut system = self.system.get_handler(system_id).await.ok_or(
                     InterpreterError::InternalError(format!("Expected system handler")),
                 )?;
@@ -395,11 +396,11 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 let old_ctx_id = self.ctx.get_id();
                 let old_system_id = self.system.get_id();
 
-                let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await.unwrap();
+                let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await.ok_or(InterpreterError::ExpectedContext(ctx_id))?;
                 let mut system = self.system.get_handler(system_id).await.ok_or(
                     InterpreterError::InternalError(format!("Expected system handler")),
                 )?;
-                let mut runner = Runner::new(self.system).await.unwrap();
+                let mut runner = Runner::new(self.system).await.map_err(|err| InterpreterError::CouldNotCreateRunner(Some(err.to_string())))?;
                 let mut executor =
                     Executor::new(&mut ctx, &mut system, &mut runner, self.show_steps, self.debug);
 
@@ -566,7 +567,8 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 box Syntax::Context(ctx_id, system_id, ctx_name),
                 box Syntax::Id(id),
             ) => {
-                let mut lhs_ctx = self.ctx.get_holder().get(ctx_id).await.unwrap();
+                let mut lhs_ctx = self.ctx.get_holder().get(ctx_id).await.
+                    ok_or(InterpreterError::ExpectedContext(ctx_id))?;
 
                 if let Some(global) = lhs_ctx.get_global(&id).await {
                     Ok(Syntax::Contextual(ctx_id, system_id, Box::new(global)))
@@ -724,7 +726,8 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                         let debug = self.debug;
 
                         async move {
-                            let mut runner = Runner::new(&mut system).await.unwrap();
+                            let mut runner = Runner::new(&mut system).await.
+                                map_err(|err| InterpreterError::CouldNotCreateRunner(Some(err.to_string())))?;
                             let mut executor =
                                 Executor::new(&mut ctx, &mut system, &mut runner, show_steps, debug);
                             Ok((
@@ -749,7 +752,8 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
             }
             Syntax::Contextual(ctx_id, system_id, expr) => {
                 let holder = self.ctx.get_holder();
-                let mut ctx = holder.clone().get_handler(ctx_id).await.unwrap();
+                let mut ctx = holder.clone().get_handler(ctx_id).await
+                    .ok_or(InterpreterError::ExpectedContext(ctx_id))?;
                 let mut executor =
                     Executor::new(&mut ctx, self.system, self.runner, self.show_steps, self.debug);
                 Ok(Syntax::Contextual(
@@ -1081,8 +1085,10 @@ async fn make_call(
             }
             ("import", Syntax::Contextual(ctx_id, system_id, body @ box Syntax::Id(_)))
             | ("import", Syntax::Contextual(ctx_id, system_id, body @ box Syntax::ValStr(_))) => {
-                let mut ctx = ctx.get_holder().get_handler(ctx_id).await.unwrap();
-                let mut system = system.get_handler(system_id).await.unwrap();
+                let mut ctx = ctx.get_holder().get_handler(ctx_id).await
+                    .ok_or(InterpreterError::ExpectedContext(ctx_id))?;
+                let mut system = system.get_handler(system_id).await
+                    .ok_or(InterpreterError::ExpectedSytem(system_id))?;
 
                 make_call(
                     &mut ctx,
@@ -1130,8 +1136,10 @@ async fn make_call(
                     body @ box Syntax::Tuple(box Syntax::ValStr(_), box Syntax::Map(_)),
                 ),
             ) => {
-                let mut ctx = ctx.get_holder().get_handler(ctx_id).await.unwrap();
-                let mut system = system.get_handler(system_id).await.unwrap();
+                let mut ctx = ctx.get_holder().get_handler(ctx_id).await
+                    .ok_or(InterpreterError::ExpectedContext(ctx_id))?;
+                let mut system = system.get_handler(system_id).await
+                    .ok_or(InterpreterError::ExpectedSytem(system_id))?;
 
                 make_call(
                     &mut ctx,
@@ -1220,7 +1228,10 @@ pub async fn execute_code(
         .await
         .handler(holder.clone());
     holder
-        .set_path(name, &holder.get(ctx.get_id()).await.unwrap())
+        .set_path(
+            name,
+            &holder.get(ctx.get_id()).await.ok_or(InterpreterError::ExpectedContext(ctx.get_id()))?
+        )
         .await;
 
     let toks: Vec<(SyntaxKind, String)> = Token::lex_for_rowan(code)?

@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use log::warn;
 use rowan::GreenNodeBuilder;
 use tokio::sync::{mpsc, oneshot};
@@ -160,7 +161,8 @@ impl InterpreterExecuteActor {
             self.ctx.clone(),
         );
 
-        let mut main_system: SystemHandler = self.system.get_handler(0).await.unwrap();
+        let mut main_system: SystemHandler = self.system.get_handler(0).await
+            .ok_or(anyhow!("Handler {} must be available", 0))?;
         main_system.set_lexer(self.tx).await;
         let mut runner = Runner::new(&mut main_system).await?;
         let mut executor = Executor::new(
@@ -221,13 +223,13 @@ impl InterpreterExecuteActor {
                         if let Ok(typed) = typed {
                             success = true;
 
-                            let typed = match typed {
-                                Syntax::Pipe(expr) if self.last_result.is_some() => Syntax::BiOp(
+                            let typed = match (typed, self.last_result.as_ref()) {
+                                (Syntax::Pipe(expr), Some(last_result)) => Syntax::BiOp(
                                     BiOpType::OpPipe,
-                                    Box::new(self.last_result.as_ref().unwrap().clone()),
+                                    Box::new(last_result.clone()),
                                     expr,
                                 ),
-                                _ => typed,
+                                (typed, _) => typed,
                             };
 
                             let reduced: Syntax = typed.reduce().await;
