@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 use crate::{
     actor,
     context::{ContextHandler, ContextHolder, PrivateContext},
-    errors::InterpreterError,
+    errors::{InterpreterError, LexerError},
     execute::{BiOpType, SignalType, Syntax},
     lexer::Token,
     parser::{Parser, SyntaxKind},
@@ -1234,14 +1234,16 @@ pub async fn execute_code(
         )
         .await;
 
-    let toks: Vec<(SyntaxKind, String)> = Token::lex_for_rowan(code)?
+    let toks: Vec<(SyntaxKind, String)> = Token::lex_for_rowan(code)
+        .map_err(|err| err.into())?
         .into_iter()
         .map(
-            |(tok, slice)| -> Result<(SyntaxKind, String), InterpreterError> {
+            |(tok, slice)| -> Result<(SyntaxKind, String), LexerError> {
                 Ok((tok.try_into()?, slice))
             },
         )
-        .try_collect()?;
+        .try_collect()
+        .map_err(|err: LexerError| err.into())?;
 
     let typed = parse_to_typed(toks);
     //#[cfg(debug_assertions)]

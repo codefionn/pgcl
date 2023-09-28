@@ -5,7 +5,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::{
     context::{ContextHandler, ContextHolder},
-    errors::InterpreterError,
+    errors::{InterpreterError, LexerError},
     execute::Executor,
     execute::{BiOpType, Syntax},
     lexer::Token,
@@ -87,7 +87,8 @@ impl InterpreterLexerActor {
                         continue;
                     }
 
-                    match Token::lex_for_rowan(line.as_str()) {
+                    match Token::lex_for_rowan(line.as_str())
+                        .map_err(|err| -> InterpreterError { err.into() }){
                         Ok(lex_result) => {
                             self.tx
                                 .send(LexerMessage::Line(lex_result, tx_confirm))
@@ -195,7 +196,7 @@ impl InterpreterExecuteActor {
                     let toks: Vec<(SyntaxKind, String)> = lexer_result
                         .into_iter()
                         .map(
-                            |(tok, slice)| -> Result<(SyntaxKind, String), InterpreterError> {
+                            |(tok, slice)| -> Result<(SyntaxKind, String), LexerError> {
                                 Ok((tok.try_into()?, slice))
                             },
                         )

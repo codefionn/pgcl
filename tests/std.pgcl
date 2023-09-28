@@ -12,3 +12,13 @@ assert ([], std.map (*) [])
 assert ([2], std.map (\x x + x) [1])
 assert ([2, 4], std.map (\x x + x) [1, 2])
 assert ([1, 4, 9, 16], std.map (\x x * x) [1, 2, 3, 4])
+
+assert (
+  (std.foldl (+) 0 [0, 1, 2, 3, 4, 5]),
+  (5 * (5 + 1)) / 2
+)
+
+assert (
+  (std.foldr (+) 0 [0, 1, 2, 3, 4, 5]),
+  (5 * (5 + 1)) / 2
+)

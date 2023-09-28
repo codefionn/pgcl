@@ -2,7 +2,7 @@
 use logos::Logos;
 use num::{BigInt, Num};
 
-use crate::{errors::InterpreterError, parser::SyntaxKind};
+use crate::{errors::LexerError, parser::SyntaxKind};
 
 /// PGCL tokens
 #[derive(Logos, Clone, Debug, PartialEq)]
@@ -10,7 +10,7 @@ use crate::{errors::InterpreterError, parser::SyntaxKind};
 #[logos(skip r"[ \t\f]+")]
 #[logos(skip r"//[^\n\r]*")]
 #[logos(skip r"#[^\n\r]*")]
-#[logos(error = InterpreterError)]
+#[logos(error = LexerError)]
 pub enum Token {
     // cov ignore {
     #[token("\\")]
@@ -153,7 +153,7 @@ pub enum Token {
 }
 
 impl Token {
-    pub fn lex_for_rowan(text: &str) -> Result<Vec<(Token, String)>, InterpreterError> {
+    pub fn lex_for_rowan(text: &str) -> Result<Vec<(Token, String)>, LexerError> {
         let mut lex = Token::lexer(text);
         let mut result = Vec::new();
 
@@ -186,8 +186,8 @@ impl Token {
 }
 
 impl TryInto<SyntaxKind> for Token {
-    type Error = InterpreterError;
-    fn try_into(self) -> Result<SyntaxKind, InterpreterError> {
+    type Error = LexerError;
+    fn try_into(self) -> Result<SyntaxKind, LexerError> {
         match self {
             Token::Lambda => Ok(SyntaxKind::Lambda),
             Token::ParenLeft => Ok(SyntaxKind::ParenLeft),
@@ -232,7 +232,7 @@ impl TryInto<SyntaxKind> for Token {
             Token::Str(_) => Ok(SyntaxKind::Str),
             Token::Rg(_) => Ok(SyntaxKind::Rg),
             Token::NewLine => Ok(SyntaxKind::NewLine),
-            tok @ _ => Err(InterpreterError::UnexpectedToken(tok)),
+            tok @ _ => Err(LexerError::UnexpectedToken(tok)),
         }
     }
 }
@@ -244,11 +244,11 @@ fn dec_to_big_rational(num: &str) -> num::BigRational {
 
 #[inline]
 fn hex_to_big_rational(num: &str) -> Result<num::BigRational, <Token as Logos>::Error> {
-    num::BigRational::from_str_radix(&num[2..], 16).map_err(|_| InterpreterError::NumberTooBig())
+    num::BigRational::from_str_radix(&num[2..], 16).map_err(|_| LexerError::NumberTooBig())
 }
 
 #[inline]
-fn parse_string(mystr: &str) -> Result<String, InterpreterError> {
+fn parse_string(mystr: &str) -> Result<String, LexerError> {
     let mystr = &mystr[1..mystr.len() - 1];
 
     let mut result = String::with_capacity(mystr.len());
@@ -266,13 +266,13 @@ fn parse_string(mystr: &str) -> Result<String, InterpreterError> {
             Some('\"') => result += "\"",
             Some('\'') => result += "\'",
             Some(c) => {
-                return Err(InterpreterError::InvalidEscapeSequence(
+                return Err(LexerError::InvalidEscapeSequence(
                     c.to_string(),
                     mystr.to_owned(),
                 ));
             }
             None => {
-                return Err(InterpreterError::InvalidEscapeSequence(
+                return Err(LexerError::InvalidEscapeSequence(
                     String::new(),
                     mystr.to_owned(),
                 ));
@@ -291,9 +291,9 @@ fn parse_string(mystr: &str) -> Result<String, InterpreterError> {
 }
 
 #[inline]
-fn parse_re(re: &str) -> Result<String, InterpreterError> {
+fn parse_re(re: &str) -> Result<String, LexerError> {
     if re.is_empty() {
-        Err(InterpreterError::InvalidRegex(String::new()))
+        Err(LexerError::InvalidRegex(String::new()))
     } else {
         Ok(re[2..re.len() - 1].to_owned())
     }

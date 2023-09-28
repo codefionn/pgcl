@@ -1,22 +1,24 @@
 use rowan::GreenNodeBuilder;
 
 use crate::{
-    errors::InterpreterError,
+    errors::{InterpreterError, LexerError},
     execute::Syntax,
     lexer::Token,
     parser::{Parser, SyntaxKind},
 };
 
 async fn parse(line: &str) -> Result<Syntax, InterpreterError> {
-    let toks = Token::lex_for_rowan(line)?;
+    let toks = Token::lex_for_rowan(line)
+        .map_err(|err| err.into())?;
     let toks: Vec<(SyntaxKind, String)> = toks
         .into_iter()
         .map(
-            |(tok, slice)| -> Result<(SyntaxKind, String), InterpreterError> {
+            |(tok, slice)| -> Result<(SyntaxKind, String), LexerError> {
                 Ok((tok.clone().try_into()?, slice.clone()))
             },
         )
-        .try_collect()?;
+        .try_collect()
+        .map_err(|err| err.into())?;
 
     let (ast, errors) = Parser::new(GreenNodeBuilder::new(), toks.into_iter().peekable()).parse();
     if !errors.is_empty() {
