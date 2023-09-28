@@ -96,6 +96,10 @@ impl InterpreterLexerActor {
                         }
                         Err(err) => {
                             log::error!("{:?}", err);
+
+                            tx_confirm
+                                .send(ExecutedMessage::Continue())
+                                .map_err(|err| anyhow::anyhow!("Actor-Line: {:?}", err))?;
                         }
                     }
                 }
