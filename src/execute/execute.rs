@@ -783,7 +783,15 @@ impl Syntax {
     #[async_recursion]
     pub async fn replace_args(self, key: &String, value: &Syntax) -> Syntax {
         match self {
-            expr @ Self::Program(_) => expr,
+            Self::Program(exprs) => Self::Program(
+                futures::stream::iter(
+                    exprs.into_iter()
+                        .map(|expr| async { expr.replace_args(key, value).await }),
+                )
+                .buffered(4)
+                .collect()
+                .await
+            ),
             Self::Id(id) if *id == *key => value.clone(),
             Self::Id(_) => self,
             Self::Lambda(id, expr) if *id != *key => {
