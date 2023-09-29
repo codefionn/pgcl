@@ -1,4 +1,5 @@
 std = $ import std
+sys = $ import sys
 
 assert (0, std.id 0)
 assert (1, std.id 1)
@@ -21,4 +22,54 @@ assert (
 assert (
   (std.foldr (+) 0 [0, 1, 2, 3, 4, 5]),
   (5 * (5 + 1)) / 2
+)
+
+assert (
+  (std.head [1]),
+  1
+)
+
+assert (
+  (std.head [2, 1]),
+  2
+)
+
+assert (
+  (std.tail [2]),
+  []
+)
+
+assert (
+  (std.tail [2, 1]),
+  [1]
+)
+
+assert (
+  (std.tail [3, 2, 1]),
+  [2, 1]
+)
+
+assert (
+  (std.len []),
+  0
+)
+
+assert (
+  (std.len [1]),
+  1
+)
+
+assert (
+  (std.len [1, 2]),
+  2
+)
+
+assert (
+  (std.len [1, 2, 3]),
+  3
+)
+
+let (_, success, failure) = sys.asserts in (
+  sys.println ("Asserts succedded: " + success);
+  sys.println ("Asserts failed: " + failure)
 )
