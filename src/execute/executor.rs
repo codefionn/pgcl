@@ -508,48 +508,42 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 }
             }
             Syntax::Let((lhs, rhs), expr) => {
-                if no_change {
-                    // no changes happen in the RHS of the assignment
-                    // => evaulate the let expression
-                    if !local_ctx
-                        .set_values_in_context(
-                            &mut self.ctx.get_holder(),
-                            &lhs,
-                            &rhs,
-                            &mut values_defined_here,
-                        )
-                        .await
+                if !local_ctx
+                    .set_values_in_context(
+                        &mut self.ctx.get_holder(),
+                        &lhs,
+                        &rhs,
+                        &mut values_defined_here,
+                    )
+                    .await
+                {
+                    local_ctx.remove_values(&mut values_defined_here);
+                } else {
+                    let mut result = (*expr).clone();
+                    for (key, value) in local_ctx
+                        .remove_values(&mut values_defined_here)
+                        .into_iter()
                     {
-                        local_ctx.remove_values(&mut values_defined_here);
-
-                        let new_rhs = self.execute_once(*rhs.clone(), first, no_change).await?;
-                        if *rhs == new_rhs {
-                            self.ctx
-                                .push_error(format!("Let expression failed: {expr}"))
-                                .await;
-
-                            Err(InterpreterError::LetDoesMatch(format!(
-                                "{lhs} = {rhs} does not match"
-                            )))
-                        } else {
-                            Ok(Syntax::Let((lhs, Box::new(new_rhs)), expr))
-                        }
-                    } else {
-                        let mut result = (*expr).clone();
-                        for (key, value) in local_ctx
-                            .remove_values(&mut values_defined_here)
-                            .into_iter()
-                        {
-                            result = result.replace_args(&key, &value).await;
-                        }
-
-                        Ok(result)
+                        result = result.replace_args(&key, &value).await;
                     }
+
+                    return Ok(result);
+                }
+
+                let new_rhs = self.execute_once(*rhs.clone(), first, no_change).await?;
+                if no_change && new_rhs == *rhs {
+                    self.ctx
+                        .push_error(format!("Let expression failed: let {lhs} = {rhs} in {expr}"))
+                        .await;
+                    
+                    Err(InterpreterError::LetDoesMatch(format!(
+                        "{lhs} = {rhs} does not match"
+                    )))
                 } else {
                     Ok(Syntax::Let(
                         (
                             lhs,
-                            Box::new(self.execute_once(*rhs, first, no_change).await?),
+                            Box::new(new_rhs),
                         ),
                         expr,
                     ))
