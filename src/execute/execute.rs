@@ -537,6 +537,12 @@ impl Syntax {
             Self::BiOp(BiOpType::OpAdd, box Self::ValStr(x), box Self::ValStr(y)) => {
                 Self::ValStr(x + y.as_str())
             }
+            Self::BiOp(BiOpType::OpAdd, box Self::ValStr(x), box Self::ValInt(y)) => {
+                Self::ValStr(x + y.to_str_radix(10).as_str())
+            }
+            Self::BiOp(BiOpType::OpAdd, box Self::ValInt(x), box Self::ValStr(y)) => {
+                Self::ValStr(x.to_str_radix(10) + y.as_str())
+            }
             Self::BiOp(BiOpType::OpAdd, box Self::Lst(lhs), box Self::Lst(rhs)) => {
                 let mut lst = Vec::new();
                 lst.extend(lhs.into_iter());
