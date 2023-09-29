@@ -26,6 +26,7 @@ pub enum SystemCallType {
     ExitThisProgram,
     CreateMsg,
     RecvMsg,
+    Asserts,
 }
 
 impl SystemCallType {
@@ -41,6 +42,7 @@ impl SystemCallType {
             Self::ExitThisProgram => "exit",
             Self::CreateMsg => "createmsg",
             Self::RecvMsg => "recvmsg",
+            Self::Asserts => "asserts",
         }
     }
 
@@ -56,6 +58,7 @@ impl SystemCallType {
             Self::ExitThisProgram,
             Self::CreateMsg,
             Self::RecvMsg,
+            Self::Asserts,
         ]
     }
 
@@ -322,6 +325,21 @@ impl PrivateSystem {
                 .recv_message(id)
                 .await
                 .map_err(|err| InterpreterError::InternalError(format!("RecvMsg: {}", err))),
+            (SystemCallType::Asserts, Syntax::ValAny()) => (
+                match system
+                    .count_assertions()
+                    .await {
+                    Ok((len, successes, failures)) => 
+                        Ok(Syntax::Tuple(
+                                Box::new(Syntax::Tuple(
+                                        Box::new(Syntax::ValInt(len.into())),
+                                        Box::new(Syntax::ValInt(successes.into()))
+                                )),
+                                Box::new(Syntax::ValInt(failures.into()))
+                        )),
+                    Err(err) => Err(err),
+                }
+            ),
             (syscall, expr) => Ok(Syntax::Call(
                 Box::new(Syntax::Id("syscall".to_string())),
                 Box::new(Syntax::Tuple(

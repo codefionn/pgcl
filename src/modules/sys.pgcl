@@ -56,3 +56,9 @@ export channel
 ##
 recv_channel handle = syscall (@recvmsg, handle)
 export recv_channel
+
+##
+# Returns asserts done at runtime (all, success, failure)
+##
+asserts = syscall (@asserts, _)
+export asserts

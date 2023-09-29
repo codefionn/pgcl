@@ -88,6 +88,7 @@ enum SystemActorMessage {
     RecvMessage(usize, oneshot::Sender<Option<Syntax>>),
     SetLexer(mpsc::Sender<LexerMessage>),
     Assert(Syntax, Syntax, Option<String>, bool),
+    CountAsserts(oneshot::Sender<(usize, usize, usize)>),
     HasFailedAsserts(oneshot::Sender<bool>),
     Exit(oneshot::Sender<()>),
     RealExit(),
@@ -121,6 +122,7 @@ impl std::fmt::Debug for SystemActorMessage {
             } else {
                 f.write_str(format!("RaiseAssert({lhs}, {rhs}, {:?})", success).as_str())
             },
+            Self::CountAsserts(_) => f.write_str("CountAssert()"),
             Self::HasFailedAsserts(_) => f.write_str("HasFailedAsserts()")
         }
     }
@@ -303,6 +305,17 @@ impl SystemActor {
                 self.assertions.push(Assertion {
                     lhs, rhs, msg, success
                 });
+            }
+            SystemActorMessage::CountAsserts(result) => {
+                let asserts_success = self.assertions.iter()
+                    .filter(|a| a.success)
+                    .count();
+
+                result.send((
+                        self.assertions.len(),
+                        asserts_success,
+                        self.assertions.len() - asserts_success,
+                )).ok();
             }
             SystemActorMessage::HasFailedAsserts(result) => {
                 result.send(self.assertions.iter().any(|assertion| !assertion.success)).ok();
@@ -908,6 +921,16 @@ impl SystemHandler {
             Err(_) => {
                 false
             }
+        }
+    }
+
+    pub async fn count_assertions(&mut self) -> Result<(usize, usize, usize), InterpreterError> {
+        let (tx, rx) = oneshot::channel();
+        match self.system
+            .send(SystemActorMessage::CountAsserts(tx))
+            .await {
+            Ok(()) => rx.await.map_err(|_| InterpreterError::UnknownError()),
+            Err(err) => Err(InterpreterError::UnknownError())
         }
     }
 }
