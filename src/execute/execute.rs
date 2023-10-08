@@ -7,6 +7,7 @@ use num::Zero;
 use regex::Regex;
 use std::collections::{BTreeMap, HashSet, VecDeque};
 
+use crate::lexer::Token;
 use crate::rational::BigRational;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -581,6 +582,55 @@ impl Syntax {
 
                 Self::BiOp(BiOpType::OpAdd, Box::new(Self::Map(map)), rest)
             }
+            Self::BiOp(
+                BiOpType::OpAdd,
+                map @ box Self::Map(_),
+                box Self::Lst(lst)
+            ) if lst.len() == 0 => {
+                *map
+            }
+            Self::BiOp(
+                BiOpType::OpAdd,
+                box Self::Map(mut map),
+                box Self::Lst(mut lst)
+            ) if lst.len() >= 2 => {
+                let first = lst.remove(0);
+                match first {
+                    Self::ValStr(first) => {
+                        let second = lst.remove(0);
+                        let is_id = match Token::lex_for_rowan(first.as_str()) {
+                            Ok(lex_result) if lex_result.len() == 1 => {
+                                lex_result[0].0 == Token::Id(first.clone())
+                            }
+                            _ => false
+                        };
+
+                        map.insert(first, (second, is_id)); // Don't care update the result
+                        Self::BiOp(
+                            BiOpType::OpAdd,
+                            Box::new(Syntax::Map(map)),
+                            Box::new(Syntax::Lst(lst))
+                        )
+                    }
+                    Self::ValInt(id) => {
+                        // Convert the int to a string and add it to the map in the next step
+                        lst.insert(0, Syntax::ValStr(id.to_string()));
+                        Self::BiOp(
+                            BiOpType::OpAdd,
+                            Box::new(Syntax::Map(map)),
+                            Box::new(Syntax::Lst(lst))
+                        )
+                    }
+                    _ => {
+                        lst.insert(0, first);
+                        Self::BiOp(
+                            BiOpType::OpAdd,
+                            Box::new(Syntax::Map(map)),
+                            Box::new(Syntax::Lst(lst))
+                        )
+                    }
+                }
+            }
             Self::BiOp(BiOpType::OpGeq, box Self::ValInt(x), box Self::ValInt(y)) => {
                 (x >= y).into()
             }
@@ -1083,6 +1133,7 @@ impl Syntax {
     }
 
     /// Evaluate, if both statements are equal with type-coercion
+    #[async_recursion]
     pub async fn eval_equal(&self, other: &Self) -> bool {
         match (self, other) {
             (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => a0 == a1 && b0 == b1,
@@ -1110,6 +1161,23 @@ impl Syntax {
 
                 true
             },
+            (Syntax::Map(a), Syntax::Map(b)) if a.len() == b.len() => {
+                for (key, (a_expr, a_is_id)) in a {
+                    if let Some((b_expr, b_is_id)) = b.get(key) {
+                        if a_is_id != b_is_id {
+                            return false;
+                        }
+
+                        if !a_expr.eval_equal(a_expr).await {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+
+                true
+            }
             _ => false,
         }
     }

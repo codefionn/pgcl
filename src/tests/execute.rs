@@ -2067,3 +2067,88 @@ async fn test_regex() {
         .await
     );
 }
+
+
+
+#[tokio::test]
+async fn test_map_add_lst() {
+    assert_eq!(
+        Ok("{}".to_string()),
+        parse_to_str(
+            "{} + []",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok("{ test: 0 }".to_string()),
+        parse_to_str(
+            "{test: 0} + []",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok("{ test0: 0, test1: 1 }".to_string()),
+        parse_to_str(
+            "{test0: 0} + [\"test1\", 1]",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok("{ test0: 0, test1: 1, test2: 2 }".to_string()),
+        parse_to_str(
+            "{test0: 0} + [\"test1\", 1, \"test2\", 2]",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok("{ test0: 3, test1: 1, test2: 2 }".to_string()),
+        parse_to_str(
+            "{test0: 0} + [\"test1\", 1, \"test2\", 2, \"test0\", 3]",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok("{ test: 0 }".to_string()),
+        parse_to_str(
+            "{} + [\"test\", 0]",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok("{ \"0\": 0 }".to_string()),
+        parse_to_str(
+            "{} + [0, 0]",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok("{ \"test-id\": 0 }".to_string()),
+        parse_to_str(
+            "{} + [\"test-id\", 0]",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+}
