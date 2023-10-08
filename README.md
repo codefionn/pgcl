@@ -47,6 +47,7 @@ The interpreter uses
 * [ ] Save memory with more shared memory between expressions in context
 * [ ] Reduce problems with stack in Rust-code (*recursion*)
 * [x] Regular expression support
+* [ ] Simple communication between PGCL instances
 
 ## Structures
 
