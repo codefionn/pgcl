@@ -59,6 +59,7 @@ pub enum Syntax {
     Call(/* rhs: */ Box<Syntax>, /* lhs: */ Box<Syntax>),
     Asg(/* rhs: */ Box<Syntax>, /* lhs: */ Box<Syntax>),
     Tuple(/* rhs: */ Box<Syntax>, /* lhs: */ Box<Syntax>),
+    EmptyTuple(),
     Lst(Vec<Syntax>),
     LstMatch(Vec<Syntax>),
     Let(
@@ -747,7 +748,8 @@ impl Syntax {
             Self::UnexpectedArguments() => self,
             Self::UnOp(UnOpType::OpImmediate, expr) => {
                 Self::UnOp(UnOpType::OpImmediate, Box::new(expr.reduce().await))
-            }
+            },
+            expr @ Self::EmptyTuple() => expr,
         }
     }
 
@@ -808,6 +810,7 @@ impl Syntax {
                 UnOpType::OpImmediate,
                 Box::new(Self::Contextual(ctx_id, system_id, expr)),
             ),
+            expr @ Self::EmptyTuple() => expr,
             expr @ Self::Context(_, _, _) => expr,
             // If a contextual is in a contextual we can use just he inner contextual
             expr @ Self::Contextual(_, _, _) => expr,
@@ -988,6 +991,7 @@ impl Syntax {
                 UnOpType::OpImmediate,
                 Box::new(expr.replace_args(key, value).await),
             ),
+            expr @ Self::EmptyTuple() => expr,
         }
     }
 
@@ -1062,6 +1066,7 @@ impl Syntax {
             Self::Signal(_, _) => (vec![], vec![]),
             Self::FnOp(_) => (vec![], vec![]),
             Self::UnOp(UnOpType::OpImmediate, expr) => (Vec::new(), vec![expr]),
+            Self::EmptyTuple() => (vec![], vec![])
         }
     }
 
@@ -1129,6 +1134,7 @@ impl Syntax {
             Self::Signal(_, _) => vec![],
             Self::FnOp(_) => vec![],
             Self::UnOp(UnOpType::OpImmediate, expr) => vec![expr],
+            Self::EmptyTuple() => vec![],
         }
     }
 
@@ -1177,7 +1183,8 @@ impl Syntax {
                 }
 
                 true
-            }
+            },
+            (Syntax::EmptyTuple(), Syntax::EmptyTuple()) => true,
             _ => false,
         }
     }
@@ -1372,6 +1379,7 @@ impl std::fmt::Display for Syntax {
                 Self::Signal(_, _) => "signal".to_string(),
                 Self::FnOp(op) => format!("({op})"),
                 Self::UnOp(UnOpType::OpImmediate, expr) => format!("$ {}", expr),
+                Self::EmptyTuple() => "()".to_string()
             }
             .as_str(),
         )

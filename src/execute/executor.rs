@@ -759,6 +759,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
             expr @ Syntax::Context(_, _, _) => Ok(expr),
             expr @ Syntax::Signal(_, _) => Ok(expr),
             expr @ Syntax::FnOp(_) => Ok(expr),
+            expr @ Syntax::EmptyTuple() => Ok(expr),
             Syntax::UnOp(UnOpType::OpImmediate, expr) => Ok(*expr),
         }?;
 

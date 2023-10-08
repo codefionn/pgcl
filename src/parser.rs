@@ -397,6 +397,10 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                 let checkpoint = self.builder.checkpoint();
                 let mut expr_cnt = 0;
                 loop {
+                    if self.peek() == Some(SyntaxKind::ParenRight) {
+                        break;
+                    }
+
                     self.parse_expr(false);
 
                     expr_cnt += 1;
@@ -949,11 +953,11 @@ impl TryInto<Syntax> for SyntaxElement {
                         ))
                     }
                     SyntaxKind::ExplicitExpr => {
-                        let child = children
-                            .next()
-                            .ok_or(InterpreterError::ExpectedExpression())?;
-
-                        Ok(Syntax::ExplicitExpr(Box::new(child.try_into()?)))
+                        match children
+                            .next() {
+                            Some(child) => Ok(Syntax::ExplicitExpr(Box::new(child.try_into()?))),
+                            None => Ok(Syntax::EmptyTuple())
+                        }
                     }
                     SyntaxKind::Lambda => {
                         let id = children
