@@ -2218,9 +2218,18 @@ async fn test_infinite_match_map() {
         .await
     );
     assert_eq!(
-        Ok("0".to_string()),
+        Ok("1".to_string()),
         parse_to_str(
             "nat x = (nat (x + 1)) + {} + [\"key\" + x, x]\nlet { key1 } = nat 0 in key1",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("100".to_string()),
+        parse_to_str(
+            "nat x = (nat (x + 1)) + {} + [\"key\" + x, x]\nlet { key100 } = nat 0 in key100",
             &mut ContextHandler::async_default().await,
             &mut SystemHandler::default()
         )
