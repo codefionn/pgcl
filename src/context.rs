@@ -835,7 +835,8 @@ pub async fn set_values_in_context_one(
 
             ComparisonResult::Matched(true)
         }
-        (Syntax::Map(lhs), Syntax::Map(rhs)) => {
+        (Syntax::Map(lhs), Syntax::Map(rhs))
+        | (Syntax::Map(lhs), Syntax::BiOp(BiOpType::OpAdd, _, box Syntax::Map(rhs))) => {
             for (key, (val, is_id)) in lhs.iter() {
                 if let Some((rhs, _)) = rhs.get(key) {
                     if *is_id {
@@ -859,7 +860,8 @@ pub async fn set_values_in_context_one(
 
             ComparisonResult::Matched(true)
         }
-        (Syntax::MapMatch(lhs), Syntax::Map(rhs)) => {
+        (Syntax::MapMatch(lhs), Syntax::Map(rhs))
+        | (Syntax::MapMatch(lhs), Syntax::BiOp(BiOpType::OpAdd, _, box Syntax::Map(rhs))) => {
             for (key, key_into, val, is_id) in lhs.iter() {
                 if let Some((rhs, _)) = rhs.get(key) {
                     if *is_id {

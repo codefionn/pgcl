@@ -588,6 +588,24 @@ impl Syntax {
             {
                 *map
             }
+            Self::BiOp(
+                BiOpType::OpAdd,
+                box Self::BiOp(BiOpType::OpAdd, expr, map @ box Self::Map(_)),
+                lst @ box Self::Lst(_),
+            ) => Self::BiOp(
+                BiOpType::OpAdd,
+                expr,
+                Box::new(Self::BiOp(BiOpType::OpAdd, map, lst)),
+            ),
+            Self::BiOp(
+                BiOpType::OpAdd,
+                box Self::BiOp(BiOpType::OpAdd, expr, lhs @ box Self::Map(_)),
+                rhs @ box Self::Map(_),
+            ) => Self::BiOp(
+                BiOpType::OpAdd,
+                expr,
+                Box::new(Self::BiOp(BiOpType::OpAdd, rhs, lhs)),
+            ),
             Self::BiOp(BiOpType::OpAdd, box Self::Map(mut map), box Self::Lst(mut lst))
                 if lst.len() >= 2 =>
             {
