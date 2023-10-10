@@ -30,11 +30,50 @@ use runner::Runner;
 use system::SystemHandler;
 use tokio::sync::mpsc;
 
+#[derive(Debug, Clone, Copy, PartialOrd, PartialEq, Ord, Eq)]
+#[repr(u8)]
+pub enum VerboseLevel {
+    None,
+    Statements,
+    Debug,
+    Trace,
+}
+
+impl Default for VerboseLevel {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl From<&str> for VerboseLevel {
+    fn from(value: &str) -> Self {
+        match value {
+            "none" => Self::None,
+            "statements" => Self::Statements,
+            "debug" => Self::Debug,
+            "trace" => Self::Trace,
+            _ => Self::None,
+        }
+    }
+}
+
+impl From<u8> for VerboseLevel {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Self::None,
+            1 => Self::Statements,
+            2 => Self::Debug,
+            3 => Self::Trace,
+            _ => Self::None,
+        }
+    }
+}
+
 #[derive(Parser, Clone, Debug)]
 pub struct Args {
     /// Be verbose (more messages)
-    #[arg(short, long, default_value_t = false)]
-    verbose: bool,
+    #[arg(short = 'v', global = true, long, action = clap::ArgAction::Count)]
+    verbose: u8,
 
     /// Enter debug mode
     #[arg(short, long, default_value_t = false)]
@@ -49,11 +88,12 @@ pub struct Args {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
+    let verbose: VerboseLevel = args.verbose.into();
     env_logger::builder()
-        .filter_level(if args.verbose {
-            LevelFilter::Debug
-        } else {
-            LevelFilter::Info
+        .filter_level(match verbose {
+            VerboseLevel::Debug => LevelFilter::Debug,
+            VerboseLevel::Trace => LevelFilter::Trace,
+            _ => LevelFilter::Info,
         })
         .filter_module("rustyline", LevelFilter::Warn)
         .init();
@@ -73,7 +113,7 @@ async fn main() -> anyhow::Result<()> {
             &mut holder,
             &mut systems,
             &mut runner,
-            args.verbose,
+            verbose,
             args.debug,
         )
         .await

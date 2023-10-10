@@ -8,6 +8,7 @@ use crate::{
     rational::BigRational,
     runner::Runner,
     system::SystemHandler,
+    VerboseLevel,
 };
 use bigdecimal::{BigDecimal, ToPrimitive};
 use log::{debug, error};
@@ -114,7 +115,7 @@ impl PrivateSystem {
         no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
-        show_steps: bool,
+        show_steps: VerboseLevel,
         debug: bool,
     ) -> Result<Syntax, InterpreterError> {
         if let Some(expr) = self.map.get(&syscall) {

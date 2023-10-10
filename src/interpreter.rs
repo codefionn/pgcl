@@ -13,7 +13,7 @@ use crate::{
     reader::{ExecutedMessage, LineMessage},
     runner::Runner,
     system::SystemHandler,
-    Args,
+    Args, VerboseLevel,
 };
 
 /// Actor for interpreting input lines from the CLI
@@ -175,7 +175,7 @@ impl InterpreterExecuteActor {
             &mut main_ctx,
             &mut main_system,
             &mut runner,
-            self.args.verbose,
+            self.args.verbose.into(),
             self.args.debug,
         );
 
@@ -326,7 +326,8 @@ fn parse_to_typed(
         eprintln!("{errors:?}");
     }
 
-    if args.verbose {
+    let verbose: VerboseLevel = args.verbose.into();
+    if verbose >= VerboseLevel::Debug {
         print_ast(0, &ast);
     }
 

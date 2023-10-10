@@ -15,6 +15,7 @@ use crate::{
     execute::{Executor, Syntax},
     runner::Runner,
     system::SystemHandler,
+    VerboseLevel,
 };
 
 pub enum Message {
@@ -50,7 +51,7 @@ impl Actor {
             &mut self.ctx,
             &mut self.system,
             &mut runner,
-            false,
+            VerboseLevel::None,
             false,
         ));
         let mut init = self.init.clone();

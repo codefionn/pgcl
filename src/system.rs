@@ -22,6 +22,7 @@ use crate::{
     execute::{SignalType, Syntax},
     interpreter::LexerMessage,
     runner::{Runner, RunnerMessage},
+    VerboseLevel,
 };
 
 #[derive(Clone)]
@@ -43,7 +44,7 @@ impl System {
         no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
-        show_steps: bool,
+        show_steps: VerboseLevel,
         debug: bool,
     ) -> Result<Syntax, InterpreterError> {
         self.private_system
@@ -450,7 +451,7 @@ impl SystemActor {
 
         tokio::spawn(async move {
             #[cfg(debug_assertions)]
-            log::debug!(
+            log::trace!(
                 "GC: {} actors, {} messages",
                 to_drop_actors.len(),
                 to_drop_messages.len()
@@ -711,7 +712,7 @@ impl SystemHandler {
         no_change: bool,
         syscall: SystemCallType,
         expr: Syntax,
-        show_steps: bool,
+        show_steps: VerboseLevel,
         debug: bool,
     ) -> Result<Syntax, InterpreterError> {
         self.get_system(self.id)

@@ -9,6 +9,7 @@ use crate::{
     parser::{Parser, SyntaxKind},
     runner::Runner,
     system::{SystemCallType, SystemHandler},
+    VerboseLevel,
 };
 use async_recursion::async_recursion;
 use futures::future::join_all;
@@ -22,7 +23,7 @@ pub struct Executor<'a, 'b, 'c> {
     runner: &'c mut Runner,
     // Hide the change in the debug mode (to create more meaningful output)
     hide_change: bool,
-    show_steps: bool,
+    show_steps: VerboseLevel,
     debug: bool,
 }
 
@@ -31,7 +32,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
         ctx: &'a mut ContextHandler,
         system: &'b mut SystemHandler,
         runner: &'c mut Runner,
-        show_steps: bool,
+        show_steps: VerboseLevel,
         debug: bool,
     ) -> Self {
         Self {
@@ -132,7 +133,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     no_change: bool,
                     ctx: &mut ContextHandler,
                     system: &mut SystemHandler,
-                    show_steps: bool,
+                    show_steps: VerboseLevel,
                     debug: bool,
                 ) -> Result<Vec<(Syntax, Syntax)>, InterpreterError> {
                     let mut result = Vec::new();
@@ -850,7 +851,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 && first
                 && expr != Syntax::ValAny()
                 && haschanged
-                && self.show_steps
+                && self.show_steps >= VerboseLevel::Statements
             {
                 #[cfg(debug_assertions)]
                 log::debug!("{:?}", expr);
@@ -1008,7 +1009,7 @@ async fn import_lib(
     runner: &mut Runner,
     path: String,
     builtins_map: BTreeMap<String, Syntax>,
-    show_steps: bool,
+    show_steps: VerboseLevel,
     debug: bool,
 ) -> Result<Syntax, InterpreterError> {
     let system = {
@@ -1105,7 +1106,7 @@ async fn make_call(
     body: Box<Syntax>,
     original_expr: Syntax,
     values_defined_here: &mut Vec<String>,
-    show_steps: bool,
+    show_steps: VerboseLevel,
     debug: bool,
 ) -> Result<Syntax, InterpreterError> {
     if let Some(value) = ctx.get_from_values(&id, values_defined_here).await {
@@ -1249,7 +1250,7 @@ async fn import_std_lib(
     system: &mut SystemHandler,
     runner: &mut Runner,
     path: String,
-    show_steps: bool,
+    show_steps: VerboseLevel,
     debug: bool,
 ) -> Result<Syntax, InterpreterError> {
     if let Some(ctx) = ctx.get_holder().get_path(&path).await {
@@ -1291,7 +1292,7 @@ pub async fn execute_code(
     holder: &mut ContextHolder,
     system: &mut SystemHandler,
     runner: &mut Runner,
-    show_steps: bool,
+    show_steps: VerboseLevel,
     debug: bool,
 ) -> Result<ContextHandler, InterpreterError> {
     let mut ctx = holder
