@@ -294,6 +294,30 @@ fn test_assert_import() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_assert_stdin() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.pipe_stdin("./examples/assert_success.pgcl")
+        .unwrap()
+        .assert()
+        .success();
+
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.pipe_stdin("./examples/assert_failure.pgcl")
+        .unwrap()
+        .assert()
+        .failure();
+
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.pipe_stdin("./examples/assert_failure_msg.pgcl")
+        .unwrap()
+        .assert()
+        .failure()
+        .stderr(predicate::str::is_match(r"This is a test").unwrap());
+
+    Ok(())
+}
+
+#[test]
 fn test_debug() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
     cmd.arg("./examples/debug_assert_success.pgcl")
@@ -321,9 +345,51 @@ fn test_debug() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_debug_stdin() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.pipe_stdin("./examples/debug_assert_success.pgcl")
+        .unwrap()
+        .assert()
+        .success();
+
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.pipe_stdin("./examples/debug_assert_failure.pgcl")
+        .unwrap()
+        .assert()
+        .success();
+
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.arg("--debug")
+        .pipe_stdin("./examples/debug_assert_success.pgcl")
+        .unwrap()
+        .assert()
+        .success();
+
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.arg("--debug")
+        .pipe_stdin("./examples/debug_assert_failure.pgcl")
+        .unwrap()
+        .assert()
+        .failure();
+
+    Ok(())
+}
+
+#[test]
 fn test_std() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
     cmd.arg("./tests/std.pgcl").assert().success();
+
+    Ok(())
+}
+
+#[test]
+fn test_std_stdin() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.pipe_stdin("./tests/std.pgcl")
+        .unwrap()
+        .assert()
+        .success();
 
     Ok(())
 }
