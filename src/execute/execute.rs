@@ -583,18 +583,14 @@ impl Syntax {
 
                 Self::BiOp(BiOpType::OpAdd, Box::new(Self::Map(map)), rest)
             }
-            Self::BiOp(
-                BiOpType::OpAdd,
-                map @ box Self::Map(_),
-                box Self::Lst(lst)
-            ) if lst.len() == 0 => {
+            Self::BiOp(BiOpType::OpAdd, map @ box Self::Map(_), box Self::Lst(lst))
+                if lst.len() == 0 =>
+            {
                 *map
             }
-            Self::BiOp(
-                BiOpType::OpAdd,
-                box Self::Map(mut map),
-                box Self::Lst(mut lst)
-            ) if lst.len() >= 2 => {
+            Self::BiOp(BiOpType::OpAdd, box Self::Map(mut map), box Self::Lst(mut lst))
+                if lst.len() >= 2 =>
+            {
                 let first = lst.remove(0);
                 match first {
                     Self::ValStr(first) => {
@@ -603,14 +599,14 @@ impl Syntax {
                             Ok(lex_result) if lex_result.len() == 1 => {
                                 lex_result[0].0 == Token::Id(first.clone())
                             }
-                            _ => false
+                            _ => false,
                         };
 
                         map.insert(first, (second, is_id)); // Don't care update the result
                         Self::BiOp(
                             BiOpType::OpAdd,
                             Box::new(Syntax::Map(map)),
-                            Box::new(Syntax::Lst(lst))
+                            Box::new(Syntax::Lst(lst)),
                         )
                     }
                     Self::ValInt(id) => {
@@ -619,7 +615,7 @@ impl Syntax {
                         Self::BiOp(
                             BiOpType::OpAdd,
                             Box::new(Syntax::Map(map)),
-                            Box::new(Syntax::Lst(lst))
+                            Box::new(Syntax::Lst(lst)),
                         )
                     }
                     _ => {
@@ -627,7 +623,7 @@ impl Syntax {
                         Self::BiOp(
                             BiOpType::OpAdd,
                             Box::new(Syntax::Map(map)),
-                            Box::new(Syntax::Lst(lst))
+                            Box::new(Syntax::Lst(lst)),
                         )
                     }
                 }
@@ -748,7 +744,7 @@ impl Syntax {
             Self::UnexpectedArguments() => self,
             Self::UnOp(UnOpType::OpImmediate, expr) => {
                 Self::UnOp(UnOpType::OpImmediate, Box::new(expr.reduce().await))
-            },
+            }
             expr @ Self::EmptyTuple() => expr,
         }
     }
@@ -838,12 +834,13 @@ impl Syntax {
         match self {
             Self::Program(exprs) => Self::Program(
                 futures::stream::iter(
-                    exprs.into_iter()
+                    exprs
+                        .into_iter()
                         .map(|expr| async { expr.replace_args(key, value).await }),
                 )
                 .buffered(4)
                 .collect()
-                .await
+                .await,
             ),
             Self::Id(id) if *id == *key => value.clone(),
             Self::Id(_) => self,
@@ -1066,7 +1063,7 @@ impl Syntax {
             Self::Signal(_, _) => (vec![], vec![]),
             Self::FnOp(_) => (vec![], vec![]),
             Self::UnOp(UnOpType::OpImmediate, expr) => (Vec::new(), vec![expr]),
-            Self::EmptyTuple() => (vec![], vec![])
+            Self::EmptyTuple() => (vec![], vec![]),
         }
     }
 
@@ -1166,7 +1163,7 @@ impl Syntax {
                 }
 
                 true
-            },
+            }
             (Syntax::Map(a), Syntax::Map(b)) if a.len() == b.len() => {
                 for (key, (a_expr, a_is_id)) in a {
                     if let Some((b_expr, b_is_id)) = b.get(key) {
@@ -1183,7 +1180,7 @@ impl Syntax {
                 }
 
                 true
-            },
+            }
             (Syntax::EmptyTuple(), Syntax::EmptyTuple()) => true,
             _ => false,
         }
@@ -1379,7 +1376,7 @@ impl std::fmt::Display for Syntax {
                 Self::Signal(_, _) => "signal".to_string(),
                 Self::FnOp(op) => format!("({op})"),
                 Self::UnOp(UnOpType::OpImmediate, expr) => format!("$ {}", expr),
-                Self::EmptyTuple() => "()".to_string()
+                Self::EmptyTuple() => "()".to_string(),
             }
             .as_str(),
         )

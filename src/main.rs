@@ -76,11 +76,12 @@ async fn main() -> anyhow::Result<()> {
             args.verbose,
             args.debug,
         )
-        .await {
-            Ok(_) => {},
+        .await
+        {
+            Ok(_) => {}
             Err(InterpreterError::ProgramTerminatedByUser(id)) => {
                 exit_code = id;
-            },
+            }
             Err(err) => {
                 std::mem::drop(runner);
                 systems.exit().await;

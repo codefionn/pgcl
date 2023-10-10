@@ -257,24 +257,17 @@ fn test_import_natural() -> anyhow::Result<()> {
 #[test]
 fn test_assert() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
-    cmd
-        .arg("./examples/assert_success.pgcl")
-        .assert()
-        .success();
+    cmd.arg("./examples/assert_success.pgcl").assert().success();
 
     let mut cmd = Command::cargo_bin("pgcl")?;
-    cmd
-        .arg("./examples/assert_failure.pgcl")
-        .assert()
-        .failure();
+    cmd.arg("./examples/assert_failure.pgcl").assert().failure();
 
     let mut cmd = Command::cargo_bin("pgcl")?;
-    cmd
-        .arg("./examples/assert_failure_msg.pgcl")
+    cmd.arg("./examples/assert_failure_msg.pgcl")
         .assert()
         .failure()
         .stderr(predicate::str::is_match(r"This is a test").unwrap());
-        
+
     Ok(())
 }
 
@@ -282,51 +275,44 @@ fn test_assert() -> anyhow::Result<()> {
 fn test_assert_import() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
 
-    cmd
-        .write_stdin("import \"./examples/assert_success.pgcl\"\n")
+    cmd.write_stdin("import \"./examples/assert_success.pgcl\"\n")
         .assert()
         .success();
 
     let mut cmd = Command::cargo_bin("pgcl")?;
-    cmd
-        .write_stdin("import \"./examples/assert_failure.pgcl\"\n")
+    cmd.write_stdin("import \"./examples/assert_failure.pgcl\"\n")
         .assert()
         .failure();
 
     let mut cmd = Command::cargo_bin("pgcl")?;
-    cmd
-        .write_stdin("import \"./examples/assert_failure_msg.pgcl\"\n")
+    cmd.write_stdin("import \"./examples/assert_failure_msg.pgcl\"\n")
         .assert()
         .failure()
         .stderr(predicate::str::is_match(r"This is a test").unwrap());
-        
+
     Ok(())
 }
 
 #[test]
 fn test_debug() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
-    cmd
+    cmd.arg("./examples/debug_assert_success.pgcl")
+        .assert()
+        .success();
+
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.arg("./examples/debug_assert_failure.pgcl")
+        .assert()
+        .success();
+
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.arg("--debug")
         .arg("./examples/debug_assert_success.pgcl")
         .assert()
         .success();
 
     let mut cmd = Command::cargo_bin("pgcl")?;
-    cmd
-        .arg("./examples/debug_assert_failure.pgcl")
-        .assert()
-        .success();
-
-    let mut cmd = Command::cargo_bin("pgcl")?;
-    cmd
-        .arg("--debug")
-        .arg("./examples/debug_assert_success.pgcl")
-        .assert()
-        .success();
-
-    let mut cmd = Command::cargo_bin("pgcl")?;
-    cmd
-        .arg("--debug")
+    cmd.arg("--debug")
         .arg("./examples/debug_assert_failure.pgcl")
         .assert()
         .failure();
@@ -337,10 +323,7 @@ fn test_debug() -> anyhow::Result<()> {
 #[test]
 fn test_std() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
-    cmd
-        .arg("./tests/std.pgcl")
-        .assert()
-        .success();
+    cmd.arg("./tests/std.pgcl").assert().success();
 
     Ok(())
 }

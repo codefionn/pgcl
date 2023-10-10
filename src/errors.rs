@@ -45,7 +45,7 @@ pub enum LexerError {
     NumberTooBig(),
     UnexpectedToken(Token),
     InvalidRegex(String),
-    InvalidEscapeSequence(String, String)
+    InvalidEscapeSequence(String, String),
 }
 
 impl Default for LexerError {
@@ -57,7 +57,7 @@ impl Default for LexerError {
 impl Into<InterpreterError> for LexerError {
     fn into(self) -> InterpreterError {
         match self {
-            Self::UnknownSymbol() =>  InterpreterError::UnknownSymbol(),
+            Self::UnknownSymbol() => InterpreterError::UnknownSymbol(),
             Self::InvalidRegex(msg) => InterpreterError::InvalidRegex(msg),
             Self::UnexpectedToken(tok) => InterpreterError::UnexpectedToken(tok),
             Self::InvalidEscapeSequence(c, s) => InterpreterError::InvalidEscapeSequence(c, s),

@@ -8,15 +8,12 @@ use crate::{
 };
 
 async fn get_args(line: &str) -> Result<Vec<String>, InterpreterError> {
-    let toks = Token::lex_for_rowan(line)
-        .map_err(|err| err.into())?;
+    let toks = Token::lex_for_rowan(line).map_err(|err| err.into())?;
     let toks: Vec<(SyntaxKind, String)> = toks
         .into_iter()
-        .map(
-            |(tok, slice)| -> Result<(SyntaxKind, String), LexerError> {
-                Ok((tok.clone().try_into()?, slice.clone()))
-            },
-        )
+        .map(|(tok, slice)| -> Result<(SyntaxKind, String), LexerError> {
+            Ok((tok.clone().try_into()?, slice.clone()))
+        })
         .try_collect()
         .map_err(|err: LexerError| err.into())?;
 

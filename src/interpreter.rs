@@ -88,7 +88,8 @@ impl InterpreterLexerActor {
                     }
 
                     match Token::lex_for_rowan(line.as_str())
-                        .map_err(|err| -> InterpreterError { err.into() }){
+                        .map_err(|err| -> InterpreterError { err.into() })
+                    {
                         Ok(lex_result) => {
                             self.tx
                                 .send(LexerMessage::Line(lex_result, tx_confirm))
@@ -119,10 +120,7 @@ impl InterpreterLexerActor {
 
 #[derive(Debug)]
 pub enum LexerMessage {
-    Line(
-        Vec<(Token, String)>,
-        oneshot::Sender<ExecutedMessage>,
-    ),
+    Line(Vec<(Token, String)>, oneshot::Sender<ExecutedMessage>),
     Wakeup(),
     Exit(/* exit_code */ oneshot::Sender<i32>),
     RealExit(),
@@ -166,7 +164,10 @@ impl InterpreterExecuteActor {
             self.ctx.clone(),
         );
 
-        let mut main_system: SystemHandler = self.system.get_handler(0).await
+        let mut main_system: SystemHandler = self
+            .system
+            .get_handler(0)
+            .await
             .ok_or(anyhow!("Handler {} must be available", 0))?;
         main_system.set_lexer(self.tx).await;
         let mut runner = Runner::new(&mut main_system).await?;
@@ -195,11 +196,9 @@ impl InterpreterExecuteActor {
                 LexerMessage::Line(lexer_result, tx_confirm) => {
                     let toks: Vec<(SyntaxKind, String)> = lexer_result
                         .into_iter()
-                        .map(
-                            |(tok, slice)| -> Result<(SyntaxKind, String), LexerError> {
-                                Ok((tok.try_into()?, slice))
-                            },
-                        )
+                        .map(|(tok, slice)| -> Result<(SyntaxKind, String), LexerError> {
+                            Ok((tok.try_into()?, slice))
+                        })
                         .try_collect()
                         .map_err(|err| anyhow::anyhow!("Interpreter-Line: {err:?}"))?;
 

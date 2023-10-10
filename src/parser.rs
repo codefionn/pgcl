@@ -952,13 +952,10 @@ impl TryInto<Syntax> for SyntaxElement {
                             })?,
                         ))
                     }
-                    SyntaxKind::ExplicitExpr => {
-                        match children
-                            .next() {
-                            Some(child) => Ok(Syntax::ExplicitExpr(Box::new(child.try_into()?))),
-                            None => Ok(Syntax::EmptyTuple())
-                        }
-                    }
+                    SyntaxKind::ExplicitExpr => match children.next() {
+                        Some(child) => Ok(Syntax::ExplicitExpr(Box::new(child.try_into()?))),
+                        None => Ok(Syntax::EmptyTuple()),
+                    },
                     SyntaxKind::Lambda => {
                         let id = children
                             .next()

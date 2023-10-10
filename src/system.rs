@@ -49,7 +49,9 @@ impl System {
         self.private_system
             .lock()
             .await
-            .do_syscall(ctx, system, runner, no_change, syscall, expr, show_steps, debug)
+            .do_syscall(
+                ctx, system, runner, no_change, syscall, expr, show_steps, debug,
+            )
             .await
     }
 
@@ -117,13 +119,15 @@ impl std::fmt::Debug for SystemActorMessage {
             Self::CreateRunner(_, _) => f.write_str("CreateRunner()"),
             Self::DropRunner(id) => f.write_str(format!("DropRunner({})", id).as_str()),
             Self::SetLexer(_) => f.write_str(format!("SetLexer()").as_str()),
-            Self::Assert(lhs, rhs, msg, success) => if let Some(msg) = msg {
-                f.write_str(format!("RaiseAssert({lhs}, {rhs}, {msg}, {:?})", success).as_str())
-            } else {
-                f.write_str(format!("RaiseAssert({lhs}, {rhs}, {:?})", success).as_str())
-            },
+            Self::Assert(lhs, rhs, msg, success) => {
+                if let Some(msg) = msg {
+                    f.write_str(format!("RaiseAssert({lhs}, {rhs}, {msg}, {:?})", success).as_str())
+                } else {
+                    f.write_str(format!("RaiseAssert({lhs}, {rhs}, {:?})", success).as_str())
+                }
+            }
             Self::CountAsserts(_) => f.write_str("CountAssert()"),
-            Self::HasFailedAsserts(_) => f.write_str("HasFailedAsserts()")
+            Self::HasFailedAsserts(_) => f.write_str("HasFailedAsserts()"),
         }
     }
 }
@@ -303,22 +307,27 @@ impl SystemActor {
             }
             SystemActorMessage::Assert(lhs, rhs, msg, success) => {
                 self.assertions.push(Assertion {
-                    lhs, rhs, msg, success
+                    lhs,
+                    rhs,
+                    msg,
+                    success,
                 });
             }
             SystemActorMessage::CountAsserts(result) => {
-                let asserts_success = self.assertions.iter()
-                    .filter(|a| a.success)
-                    .count();
+                let asserts_success = self.assertions.iter().filter(|a| a.success).count();
 
-                result.send((
+                result
+                    .send((
                         self.assertions.len(),
                         asserts_success,
                         self.assertions.len() - asserts_success,
-                )).ok();
+                    ))
+                    .ok();
             }
             SystemActorMessage::HasFailedAsserts(result) => {
-                result.send(self.assertions.iter().any(|assertion| !assertion.success)).ok();
+                result
+                    .send(self.assertions.iter().any(|assertion| !assertion.success))
+                    .ok();
             }
             SystemActorMessage::Exit(result) => {
                 self.exit_handles.push(result);
@@ -708,7 +717,9 @@ impl SystemHandler {
         self.get_system(self.id)
             .await
             .unwrap()
-            .do_syscall(ctx, system, runner, no_change, syscall, expr, show_steps, debug)
+            .do_syscall(
+                ctx, system, runner, no_change, syscall, expr, show_steps, debug,
+            )
             .await
     }
 
@@ -903,7 +914,13 @@ impl SystemHandler {
             .ok();
     }
 
-    pub async fn add_assert(&mut self, lhs: Syntax, rhs: Syntax, msg: Option<String>, success: bool) {
+    pub async fn add_assert(
+        &mut self,
+        lhs: Syntax,
+        rhs: Syntax,
+        msg: Option<String>,
+        success: bool,
+    ) {
         self.system
             .send(SystemActorMessage::Assert(lhs, rhs, msg, success))
             .await
@@ -912,25 +929,21 @@ impl SystemHandler {
 
     pub async fn has_failed_asserts(&mut self) -> bool {
         let (tx, rx) = oneshot::channel();
-        match self.system
+        match self
+            .system
             .send(SystemActorMessage::HasFailedAsserts(tx))
-            .await {
-            Ok(_) => {
-                rx.await.unwrap_or(false)
-            }
-            Err(_) => {
-                false
-            }
+            .await
+        {
+            Ok(_) => rx.await.unwrap_or(false),
+            Err(_) => false,
         }
     }
 
     pub async fn count_assertions(&mut self) -> Result<(usize, usize, usize), InterpreterError> {
         let (tx, rx) = oneshot::channel();
-        match self.system
-            .send(SystemActorMessage::CountAsserts(tx))
-            .await {
+        match self.system.send(SystemActorMessage::CountAsserts(tx)).await {
             Ok(()) => rx.await.map_err(|_| InterpreterError::UnknownError()),
-            Err(err) => Err(InterpreterError::UnknownError())
+            Err(err) => Err(InterpreterError::UnknownError()),
         }
     }
 }

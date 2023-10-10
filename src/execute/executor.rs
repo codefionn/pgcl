@@ -137,8 +137,11 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 ) -> Result<Vec<(Syntax, Syntax)>, InterpreterError> {
                     let mut result = Vec::new();
                     for (lhs, rhs) in asgs {
-                        let mut runner = Runner::new(system).await.map_err(|err| InterpreterError::CouldNotCreateRunner(Some(err.to_string())))?;
-                        let mut executor = Executor::new(ctx, system, &mut runner, show_steps, debug);
+                        let mut runner = Runner::new(system).await.map_err(|err| {
+                            InterpreterError::CouldNotCreateRunner(Some(err.to_string()))
+                        })?;
+                        let mut executor =
+                            Executor::new(ctx, system, &mut runner, show_steps, debug);
                         result.push((
                             executor.execute_once(lhs, false, no_change).await?,
                             executor.execute_once(rhs, false, no_change).await?,
@@ -150,8 +153,15 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
 
                 if no_change {
                     let old_asgs = asgs.clone();
-                    let asgs =
-                        execute_asgs(asgs, true, self.ctx, self.system, self.show_steps, self.debug).await?;
+                    let asgs = execute_asgs(
+                        asgs,
+                        true,
+                        self.ctx,
+                        self.system,
+                        self.show_steps,
+                        self.debug,
+                    )
+                    .await?;
 
                     if old_asgs == asgs {
                         for (lhs, rhs) in asgs {
@@ -183,8 +193,15 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                         Ok(Syntax::IfLet(asgs, expr_true, expr_false))
                     }
                 } else {
-                    let asgs =
-                        execute_asgs(asgs, false, self.ctx, self.system, self.show_steps, self.debug).await?;
+                    let asgs = execute_asgs(
+                        asgs,
+                        false,
+                        self.ctx,
+                        self.system,
+                        self.show_steps,
+                        self.debug,
+                    )
+                    .await?;
 
                     Ok(Syntax::IfLet(asgs, expr_true, expr_false))
                 }
@@ -293,20 +310,27 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
 
                         Ok(Syntax::ValAtom("false".to_string()))
                     };
-                    
+
                     // Don't wait for this
                     let mut system = self.system.clone();
-                    system.add_assert(new_lhs, new_rhs, Some(msg.to_string()), success).await;
+                    system
+                        .add_assert(new_lhs, new_rhs, Some(msg.to_string()), success)
+                        .await;
 
                     result
                 } else {
                     Ok(Syntax::Call(
                         Box::new(Syntax::Id("assert".to_string())),
-                        Box::new(Syntax::Tuple(Box::new(Syntax::Tuple(Box::new(new_lhs), Box::new(new_rhs))), msg)),
+                        Box::new(Syntax::Tuple(
+                            Box::new(Syntax::Tuple(Box::new(new_lhs), Box::new(new_rhs))),
+                            msg,
+                        )),
                     ))
                 }
             }
-            Syntax::Call(box Syntax::Id(id), box Syntax::Tuple(lhs, rhs)) if id == "assert" || id == "debug_assert" => {
+            Syntax::Call(box Syntax::Id(id), box Syntax::Tuple(lhs, rhs))
+                if id == "assert" || id == "debug_assert" =>
+            {
                 if id == "debug_assert" && !self.debug {
                     return Ok(Syntax::ValAtom("true".to_string()));
                 }
@@ -322,7 +346,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
 
                         Ok(Syntax::ValAtom("false".to_string()))
                     };
-                    
+
                     // Don't wait for this
                     let mut system = self.system.clone();
                     system.add_assert(new_lhs, new_rhs, None, success).await;
@@ -364,7 +388,11 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
             Syntax::Call(box Syntax::Contextual(ctx_id, system_id, box Syntax::Id(id)), rhs) => {
                 self.hide_change = true;
 
-                let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await
+                let mut ctx = self
+                    .ctx
+                    .get_holder()
+                    .get_handler(ctx_id)
+                    .await
                     .ok_or(InterpreterError::ExpectedContext(ctx_id))?;
                 let mut system = self.system.get_handler(system_id).await.ok_or(
                     InterpreterError::InternalError(format!("Expected system handler")),
@@ -396,13 +424,25 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 let old_ctx_id = self.ctx.get_id();
                 let old_system_id = self.system.get_id();
 
-                let mut ctx = self.ctx.get_holder().get_handler(ctx_id).await.ok_or(InterpreterError::ExpectedContext(ctx_id))?;
+                let mut ctx = self
+                    .ctx
+                    .get_holder()
+                    .get_handler(ctx_id)
+                    .await
+                    .ok_or(InterpreterError::ExpectedContext(ctx_id))?;
                 let mut system = self.system.get_handler(system_id).await.ok_or(
                     InterpreterError::InternalError(format!("Expected system handler")),
                 )?;
-                let mut runner = Runner::new(self.system).await.map_err(|err| InterpreterError::CouldNotCreateRunner(Some(err.to_string())))?;
-                let mut executor =
-                    Executor::new(&mut ctx, &mut system, &mut runner, self.show_steps, self.debug);
+                let mut runner = Runner::new(self.system)
+                    .await
+                    .map_err(|err| InterpreterError::CouldNotCreateRunner(Some(err.to_string())))?;
+                let mut executor = Executor::new(
+                    &mut ctx,
+                    &mut system,
+                    &mut runner,
+                    self.show_steps,
+                    self.debug,
+                );
 
                 // Create a new contextual with the contents evaulated in the given context
                 // The contextual is reduced away if possible in the next execution step
@@ -533,20 +573,16 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 let new_rhs = self.execute_once(*rhs.clone(), first, no_change).await?;
                 if no_change && new_rhs == *rhs {
                     self.ctx
-                        .push_error(format!("Let expression failed: let {lhs} = {rhs} in {expr}"))
+                        .push_error(format!(
+                            "Let expression failed: let {lhs} = {rhs} in {expr}"
+                        ))
                         .await;
-                    
+
                     Err(InterpreterError::LetDoesMatch(format!(
                         "{lhs} = {rhs} does not match"
                     )))
                 } else {
-                    Ok(Syntax::Let(
-                        (
-                            lhs,
-                            Box::new(new_rhs),
-                        ),
-                        expr,
-                    ))
+                    Ok(Syntax::Let((lhs, Box::new(new_rhs)), expr))
                 }
             }
             Syntax::BiOp(BiOpType::OpPeriod, box Syntax::Map(mut map), box Syntax::Id(id)) => {
@@ -561,8 +597,12 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 box Syntax::Context(ctx_id, system_id, ctx_name),
                 box Syntax::Id(id),
             ) => {
-                let mut lhs_ctx = self.ctx.get_holder().get(ctx_id).await.
-                    ok_or(InterpreterError::ExpectedContext(ctx_id))?;
+                let mut lhs_ctx = self
+                    .ctx
+                    .get_holder()
+                    .get(ctx_id)
+                    .await
+                    .ok_or(InterpreterError::ExpectedContext(ctx_id))?;
 
                 if let Some(global) = lhs_ctx.get_global(&id).await {
                     Ok(Syntax::Contextual(ctx_id, system_id, Box::new(global)))
@@ -720,10 +760,16 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                         let debug = self.debug;
 
                         async move {
-                            let mut runner = Runner::new(&mut system).await.
-                                map_err(|err| InterpreterError::CouldNotCreateRunner(Some(err.to_string())))?;
-                            let mut executor =
-                                Executor::new(&mut ctx, &mut system, &mut runner, show_steps, debug);
+                            let mut runner = Runner::new(&mut system).await.map_err(|err| {
+                                InterpreterError::CouldNotCreateRunner(Some(err.to_string()))
+                            })?;
+                            let mut executor = Executor::new(
+                                &mut ctx,
+                                &mut system,
+                                &mut runner,
+                                show_steps,
+                                debug,
+                            );
                             Ok((
                                 key,
                                 (executor.execute_once(val, false, no_change).await?, is_id),
@@ -746,10 +792,18 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
             }
             Syntax::Contextual(ctx_id, system_id, expr) => {
                 let holder = self.ctx.get_holder();
-                let mut ctx = holder.clone().get_handler(ctx_id).await
+                let mut ctx = holder
+                    .clone()
+                    .get_handler(ctx_id)
+                    .await
                     .ok_or(InterpreterError::ExpectedContext(ctx_id))?;
-                let mut executor =
-                    Executor::new(&mut ctx, self.system, self.runner, self.show_steps, self.debug);
+                let mut executor = Executor::new(
+                    &mut ctx,
+                    self.system,
+                    self.runner,
+                    self.show_steps,
+                    self.debug,
+                );
                 Ok(Syntax::Contextual(
                     ctx_id,
                     system_id,
@@ -1076,13 +1130,27 @@ async fn make_call(
                 ))
             }
             ("import", Syntax::Id(id)) | ("import", Syntax::ValStr(id)) => {
-                import_lib(ctx, system, runner, id, Default::default(), show_steps, debug).await
+                import_lib(
+                    ctx,
+                    system,
+                    runner,
+                    id,
+                    Default::default(),
+                    show_steps,
+                    debug,
+                )
+                .await
             }
             ("import", Syntax::Contextual(ctx_id, system_id, body @ box Syntax::Id(_)))
             | ("import", Syntax::Contextual(ctx_id, system_id, body @ box Syntax::ValStr(_))) => {
-                let mut ctx = ctx.get_holder().get_handler(ctx_id).await
+                let mut ctx = ctx
+                    .get_holder()
+                    .get_handler(ctx_id)
+                    .await
                     .ok_or(InterpreterError::ExpectedContext(ctx_id))?;
-                let mut system = system.get_handler(system_id).await
+                let mut system = system
+                    .get_handler(system_id)
+                    .await
                     .ok_or(InterpreterError::ExpectedSytem(system_id))?;
 
                 make_call(
@@ -1131,9 +1199,14 @@ async fn make_call(
                     body @ box Syntax::Tuple(box Syntax::ValStr(_), box Syntax::Map(_)),
                 ),
             ) => {
-                let mut ctx = ctx.get_holder().get_handler(ctx_id).await
+                let mut ctx = ctx
+                    .get_holder()
+                    .get_handler(ctx_id)
+                    .await
                     .ok_or(InterpreterError::ExpectedContext(ctx_id))?;
-                let mut system = system.get_handler(system_id).await
+                let mut system = system
+                    .get_handler(system_id)
+                    .await
                     .ok_or(InterpreterError::ExpectedSytem(system_id))?;
 
                 make_call(
@@ -1157,7 +1230,9 @@ async fn make_call(
                     Ok(syscall) => {
                         system
                             .clone()
-                            .do_syscall(ctx, system, runner, no_change, syscall, *expr, show_steps, debug)
+                            .do_syscall(
+                                ctx, system, runner, no_change, syscall, *expr, show_steps, debug,
+                            )
                             .await
                     }
                     Err(_) => Ok(original_expr),
@@ -1194,7 +1269,8 @@ async fn import_std_lib(
         };
 
         let holder = &mut ctx.get_holder();
-        let ctx = execute_code(&path, None, code, holder, system, runner, show_steps, debug).await?;
+        let ctx =
+            execute_code(&path, None, code, holder, system, runner, show_steps, debug).await?;
 
         Ok(Syntax::Context(ctx.get_id(), system.get_id(), path))
     }
@@ -1225,18 +1301,19 @@ pub async fn execute_code(
     holder
         .set_path(
             name,
-            &holder.get(ctx.get_id()).await.ok_or(InterpreterError::ExpectedContext(ctx.get_id()))?
+            &holder
+                .get(ctx.get_id())
+                .await
+                .ok_or(InterpreterError::ExpectedContext(ctx.get_id()))?,
         )
         .await;
 
     let toks: Vec<(SyntaxKind, String)> = Token::lex_for_rowan(code)
         .map_err(|err| err.into())?
         .into_iter()
-        .map(
-            |(tok, slice)| -> Result<(SyntaxKind, String), LexerError> {
-                Ok((tok.try_into()?, slice))
-            },
-        )
+        .map(|(tok, slice)| -> Result<(SyntaxKind, String), LexerError> {
+            Ok((tok.try_into()?, slice))
+        })
         .try_collect()
         .map_err(|err: LexerError| err.into())?;
 

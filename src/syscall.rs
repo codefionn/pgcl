@@ -316,7 +316,7 @@ impl PrivateSystem {
                 }
 
                 Err(InterpreterError::ProgramTerminatedByUser(id))
-            },
+            }
             (SystemCallType::CreateMsg, Syntax::ValAny()) => {
                 let handle = system.create_message().await;
                 Ok(Syntax::Signal(SignalType::Message, handle))
@@ -325,21 +325,18 @@ impl PrivateSystem {
                 .recv_message(id)
                 .await
                 .map_err(|err| InterpreterError::InternalError(format!("RecvMsg: {}", err))),
-            (SystemCallType::Asserts, Syntax::ValAny()) => (
-                match system
-                    .count_assertions()
-                    .await {
-                    Ok((len, successes, failures)) => 
-                        Ok(Syntax::Tuple(
-                                Box::new(Syntax::Tuple(
-                                        Box::new(Syntax::ValInt(len.into())),
-                                        Box::new(Syntax::ValInt(successes.into()))
-                                )),
-                                Box::new(Syntax::ValInt(failures.into()))
+            (SystemCallType::Asserts, Syntax::ValAny()) => {
+                (match system.count_assertions().await {
+                    Ok((len, successes, failures)) => Ok(Syntax::Tuple(
+                        Box::new(Syntax::Tuple(
+                            Box::new(Syntax::ValInt(len.into())),
+                            Box::new(Syntax::ValInt(successes.into())),
                         )),
+                        Box::new(Syntax::ValInt(failures.into())),
+                    )),
                     Err(err) => Err(err),
-                }
-            ),
+                })
+            }
             (syscall, expr) => Ok(Syntax::Call(
                 Box::new(Syntax::Id("syscall".to_string())),
                 Box::new(Syntax::Tuple(
