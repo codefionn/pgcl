@@ -9,7 +9,7 @@ use futures::future::join_all;
 use regex::Regex;
 use tokio::sync::Mutex;
 
-use crate::{execute::Syntax, gc::mark_used, system::SystemHandler};
+use crate::{execute::{Syntax, BiOpType}, gc::mark_used, system::SystemHandler};
 
 pub enum PrivateContextMark {
     OddMark,
@@ -763,6 +763,25 @@ pub async fn set_values_in_context_one(
                     result.push((lst0[i].clone(), lst1_val));
                 }
             }
+
+            ComparisonResult::Continue(result)
+        }
+        (Syntax::LstMatch(lst0), Syntax::BiOp(BiOpType::OpAdd, box Syntax::Lst(lst1), expr)) if lst0.len() + 1 == lst1.len() => {
+            let mut result = Vec::new();
+            let mut lst1: &[Syntax] = lst1;
+            for i in 0..(lst0.len()-1) {
+                if i == lst0.len() - 1 {
+                    let lst1 = Syntax::Lst(lst1.into());
+                    result.push((lst0[i].clone(), lst1));
+                    break;
+                } else {
+                    let lst1_val = lst1[0].clone();
+                    lst1 = &lst1[1..];
+                    result.push((lst0[i].clone(), lst1_val));
+                }
+            }
+
+            result.push((lst0[lst0.len() - 1].clone(), *expr.clone()));
 
             ComparisonResult::Continue(result)
         }

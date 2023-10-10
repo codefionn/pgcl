@@ -2183,3 +2183,26 @@ async fn test_empty_tuple() {
         .await
     );
 }
+
+#[tokio::test]
+async fn test_infinite_match_list() {
+    assert_eq!(
+        Ok("0".to_string()),
+        parse_to_str(
+            "nat x = [x] + (nat (x + 1))\nlet [x:xs] = nat 0 in x",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+
+    assert_eq!(
+        Ok("(0, 1)".to_string()),
+        parse_to_str(
+            "nat x = [x] + (nat (x + 1))\nlet [x:y:xs] = nat 0 in (x, y)",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+}
