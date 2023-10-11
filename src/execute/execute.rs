@@ -554,19 +554,19 @@ impl Syntax {
             }
             Self::BiOp(
                 BiOpType::OpAdd,
-                box Self::Lst(lhs),
-                box Self::BiOp(BiOpType::OpAdd, box Self::Lst(rhs), rest),
+                lhs @ box Self::Lst(_),
+                box Self::BiOp(BiOpType::OpAdd, rhs @ box Self::Lst(_), rest),
             ) if if let Self::Lst(_) = &*rest {
                 false
             } else {
                 true
             } =>
             {
-                let mut lst = Vec::new();
-                lst.extend(lhs.into_iter());
-                lst.extend(rhs.into_iter());
-
-                Self::BiOp(BiOpType::OpAdd, Box::new(Self::Lst(lst)), rest)
+                Self::BiOp(
+                    BiOpType::OpAdd,
+                    Box::new(Self::BiOp(BiOpType::OpAdd, lhs, rhs).reduce().await),
+                    rest,
+                )
             }
             Self::BiOp(
                 BiOpType::OpAdd,
