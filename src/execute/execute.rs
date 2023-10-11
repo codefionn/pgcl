@@ -119,6 +119,33 @@ pub enum Syntax {
     UnexpectedArguments(),
 }
 
+impl Syntax {
+    fn is_val_int(&self) -> bool {
+        match self {
+            Self::ValInt(_) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Syntax {
+    fn is_val_flt(&self) -> bool {
+        match self {
+            Self::ValFlt(_) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Syntax {
+    fn is_val_str(&self) -> bool {
+        match self {
+            Self::ValStr(_) => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SignalType {
     Actor,
@@ -265,47 +292,63 @@ impl Syntax {
                 BiOpType::OpAdd,
                 box Self::ValInt(x),
                 box Self::BiOp(BiOpType::OpAdd, box Self::ValInt(y), expr),
-            ) => Self::BiOp(BiOpType::OpAdd, Box::new(Self::ValInt(x + y)), expr),
+            ) if !expr.is_val_int() => {
+                Self::BiOp(BiOpType::OpAdd, Box::new(Self::ValInt(x + y)), expr)
+            }
             Self::BiOp(
                 BiOpType::OpSub,
                 box Self::ValInt(x),
                 box Self::BiOp(BiOpType::OpAdd, box Self::ValInt(y), expr),
-            ) => Self::BiOp(BiOpType::OpSub, Box::new(Self::ValInt(x - y)), expr),
+            ) if !expr.is_val_int() => {
+                Self::BiOp(BiOpType::OpSub, Box::new(Self::ValInt(x - y)), expr)
+            }
             Self::BiOp(
                 BiOpType::OpSub,
                 box Self::ValInt(x),
                 box Self::BiOp(BiOpType::OpSub, box Self::ValInt(y), expr),
-            ) => Self::BiOp(BiOpType::OpAdd, Box::new(Self::ValInt(x - y)), expr),
+            ) if !expr.is_val_int() => {
+                Self::BiOp(BiOpType::OpAdd, Box::new(Self::ValInt(x - y)), expr)
+            }
             Self::BiOp(
                 BiOpType::OpAdd,
                 box Self::BiOp(BiOpType::OpAdd, expr, box Self::ValInt(x)),
                 box Self::ValInt(y),
-            ) => Self::BiOp(BiOpType::OpAdd, expr, Box::new(Self::ValInt(x + y))),
+            ) if !expr.is_val_int() => {
+                Self::BiOp(BiOpType::OpAdd, expr, Box::new(Self::ValInt(x + y)))
+            }
             Self::BiOp(
                 BiOpType::OpSub,
                 box Self::BiOp(BiOpType::OpSub, expr, box Self::ValInt(x)),
                 box Self::ValInt(y),
-            ) => Self::BiOp(BiOpType::OpAdd, expr, Box::new(Self::ValInt(-x - y))),
+            ) if !expr.is_val_int() => {
+                Self::BiOp(BiOpType::OpAdd, expr, Box::new(Self::ValInt(-x - y)))
+            }
             Self::BiOp(
                 BiOpType::OpAdd,
                 box Self::BiOp(BiOpType::OpSub, expr, box Self::ValInt(x)),
                 box Self::ValInt(y),
-            ) => Self::BiOp(BiOpType::OpAdd, expr, Box::new(Self::ValInt(-x + y))),
+            ) if !expr.is_val_int() => {
+                Self::BiOp(BiOpType::OpAdd, expr, Box::new(Self::ValInt(-x + y)))
+            }
             Self::BiOp(
                 BiOpType::OpSub,
                 box Self::BiOp(BiOpType::OpAdd, expr, box Self::ValInt(x)),
                 box Self::ValInt(y),
-            ) => Self::BiOp(BiOpType::OpAdd, expr, Box::new(Self::ValInt(x - y))),
+            ) if !expr.is_val_int() => {
+                Self::BiOp(BiOpType::OpAdd, expr, Box::new(Self::ValInt(x - y)))
+            }
             Self::BiOp(
                 BiOpType::OpMul,
                 box Self::ValInt(x),
                 box Self::BiOp(BiOpType::OpMul, box Self::ValInt(y), expr),
-            ) => Self::BiOp(BiOpType::OpMul, Box::new(Self::ValInt(x * y)), expr),
+            ) if !expr.is_val_int() => {
+                Self::BiOp(BiOpType::OpMul, Box::new(Self::ValInt(x * y)), expr)
+            }
             Self::BiOp(
                 BiOpType::OpDiv,
                 box Self::ValInt(x),
                 box Self::BiOp(BiOpType::OpDiv, box Self::ValInt(y), expr),
-            ) => Self::BiOp(
+            ) if !expr.is_val_int() => Self::BiOp(
                 BiOpType::OpMul,
                 Box::new(Self::ValFlt(int_to_flt(x) / int_to_flt(y))),
                 expr,
