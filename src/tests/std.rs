@@ -8,6 +8,7 @@ use crate::{
     parser::{Parser, SyntaxKind},
     runner::Runner,
     system::SystemHandler,
+    VerboseLevel,
 };
 
 async fn parse(
@@ -33,7 +34,7 @@ async fn parse(
         let mut runner = Runner::new(system)
             .await
             .map_err(|err| InterpreterError::InternalError(format!("{}", err)))?;
-        Executor::new(ctx, system, &mut runner, false, true)
+        Executor::new(ctx, system, &mut runner, VerboseLevel::None, true)
             .execute(ast, true)
             .await
     }

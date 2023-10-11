@@ -8,6 +8,7 @@ use crate::{
     parser::{Parser, SyntaxKind},
     runner::Runner,
     system::SystemHandler,
+    VerboseLevel,
 };
 
 async fn parse(
@@ -34,7 +35,7 @@ async fn parse(
         let mut runner = Runner::new(system)
             .await
             .map_err(|err| InterpreterError::InternalError(format!("{}", err)))?;
-        Executor::new(ctx, system, &mut runner, false, true)
+        Executor::new(ctx, system, &mut runner, VerboseLevel::None, true)
             .execute(ast, true)
             .await
     }
@@ -1160,13 +1161,19 @@ async fn test_two_ctx() {
     let mut runner = Runner::new(&mut system).await.unwrap();
     assert_eq!(
         Ok(r"1".to_string()),
-        Executor::new(&mut ctx1, &mut system, &mut runner, false, true)
-            .execute(
-                Syntax::Contextual(ctx0_id, system_id, Box::new(Syntax::Id("x".to_string()))),
-                true
-            )
-            .await
-            .map(|expr| format!("{}", expr))
+        Executor::new(
+            &mut ctx1,
+            &mut system,
+            &mut runner,
+            VerboseLevel::None,
+            true
+        )
+        .execute(
+            Syntax::Contextual(ctx0_id, system_id, Box::new(Syntax::Id("x".to_string()))),
+            true
+        )
+        .await
+        .map(|expr| format!("{}", expr))
     );
 }
 
