@@ -556,12 +556,33 @@ impl Syntax {
                 BiOpType::OpAdd,
                 box Self::Lst(lhs),
                 box Self::BiOp(BiOpType::OpAdd, box Self::Lst(rhs), rest),
-            ) => {
+            ) if if let Self::Lst(_) = &*rest {
+                false
+            } else {
+                true
+            } =>
+            {
                 let mut lst = Vec::new();
                 lst.extend(lhs.into_iter());
                 lst.extend(rhs.into_iter());
 
                 Self::BiOp(BiOpType::OpAdd, Box::new(Self::Lst(lst)), rest)
+            }
+            Self::BiOp(
+                BiOpType::OpAdd,
+                box Self::BiOp(BiOpType::OpAdd, expr, lhs @ box Self::Lst(_)),
+                rhs @ box Self::Lst(_),
+            ) if if let Self::Lst(_) = &*expr {
+                false
+            } else {
+                true
+            } =>
+            {
+                Self::BiOp(
+                    BiOpType::OpAdd,
+                    expr,
+                    Box::new(Self::BiOp(BiOpType::OpAdd, lhs, rhs)),
+                )
             }
             Self::BiOp(BiOpType::OpAdd, box Self::Map(lhs), box Self::Map(rhs)) => {
                 let mut map = BTreeMap::new();
