@@ -1,6 +1,9 @@
 #![feature(box_patterns)]
 #![feature(iterator_try_collect)]
 #![feature(async_fn_in_trait)]
+#![feature(test)]
+
+extern crate test;
 
 mod actor;
 mod context;
