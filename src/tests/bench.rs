@@ -85,3 +85,39 @@ fn test_bench_add(b: &mut Bencher) {
         });
     });
 }
+
+#[bench]
+fn test_bench_pow(b: &mut Bencher) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    b.iter(move || {
+        rt.block_on(async {
+            assert_eq!(
+                Ok(format!("16")),
+                parse_to_str(
+                    "2 ** 4",
+                    &mut ContextHandler::async_default().await,
+                    &mut SystemHandler::default()
+                )
+                .await
+            );
+        });
+    });
+}
+
+#[bench]
+fn test_bench_add_map(b: &mut Bencher) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    b.iter(move || {
+        rt.block_on(async {
+            assert_eq!(
+                Ok(format!("30")),
+                parse_to_str(
+                    "nat x = (nat (x + 1)) + {} + [\"key\" + x, x]\nlet { key30 } = nat 0 in key30",
+                    &mut ContextHandler::async_default().await,
+                    &mut SystemHandler::default()
+                )
+                .await
+            );
+        });
+    });
+}
