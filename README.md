@@ -48,6 +48,7 @@ The interpreter uses
 * [ ] Reduce problems with stack in Rust-code (*recursion*)
 * [x] Regular expression support
 * [ ] Simple communication between PGCL instances
+* [ ] Fix issues with matching infinite lists (empty list with inifinitly growing list)
 
 ## Structures
 
