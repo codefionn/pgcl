@@ -1256,17 +1256,16 @@ async fn import_std_lib(
     if let Some(ctx) = ctx.get_holder().get_path(&path).await {
         Ok(Syntax::Context(ctx.get_id(), system.get_id(), path))
     } else {
-        let code = if path == "std" {
-            include_str!("../modules/std.pgcl")
-        } else if path == "sys" {
-            include_str!("../modules/sys.pgcl")
-        } else if path == "str" {
-            include_str!("../modules/str.pgcl")
-        } else {
-            ctx.push_error(format!("Expected {path} to be a file"))
-                .await;
+        let code = match path.as_str() {
+            "std" => include_str!("../modules/std.pgcl"),
+            "sys" => include_str!("../modules/sys.pgcl"),
+            "str" => include_str!("../modules/str.pgcl"),
+            _ => {
+                ctx.push_error(format!("Expected {path} to be a file"))
+                    .await;
 
-            return Err(InterpreterError::ImportFileDoesNotExist(path));
+                return Err(InterpreterError::ImportFileDoesNotExist(path));
+            }
         };
 
         let holder = &mut ctx.get_holder();
