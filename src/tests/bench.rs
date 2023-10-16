@@ -121,3 +121,21 @@ fn test_bench_add_map(b: &mut Bencher) {
         });
     });
 }
+
+#[bench]
+fn test_bench_std_limit(b: &mut Bencher) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    b.iter(move || {
+        rt.block_on(async {
+            assert_eq!(
+                Ok(format!("[0, 1, 2, 3]")),
+                parse_to_str(
+                    "nat x = [x] + (nat (x + 1))\n(import std).limit 4 (nat 0)",
+                    &mut ContextHandler::async_default().await,
+                    &mut SystemHandler::default()
+                )
+                .await
+            );
+        });
+    });
+}

@@ -204,7 +204,7 @@ impl PrivateContext {
         lhs: &Syntax,
         rhs: &Syntax,
         values_defined_here: &mut Vec<String>,
-    ) -> bool {
+    ) -> Option<bool> {
         set_values_in_context(self, holder, lhs, rhs, values_defined_here).await
     }
 }
@@ -212,6 +212,7 @@ impl PrivateContext {
 enum ComparisonResult {
     Continue(Vec<(Syntax, Syntax)>),
     Matched(bool),
+    DefinitlyFalse(),
 }
 
 async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
@@ -436,7 +437,7 @@ impl Context {
         lhs: &Syntax,
         rhs: &Syntax,
         values_defined_here: &mut Vec<String>,
-    ) -> bool {
+    ) -> Option<bool> {
         self.ctx
             .lock()
             .await
@@ -626,7 +627,7 @@ impl ContextHandler {
         lhs: &Syntax,
         rhs: &Syntax,
         values_defined_here: &mut Vec<String>,
-    ) -> bool {
+    ) -> Option<bool> {
         self.holder
             .get(self.get_id())
             .await
@@ -684,23 +685,26 @@ pub async fn set_values_in_context(
     lhs: &Syntax,
     rhs: &Syntax,
     values_defined_here: &mut Vec<String>,
-) -> bool {
+) -> Option<bool> {
     let mut comparisons: VecDeque<(Syntax, Syntax)> = Default::default();
     comparisons.push_front((lhs.clone(), rhs.clone()));
     while let Some((lhs, rhs)) = comparisons.pop_front() {
         match set_values_in_context_one(ctx, holder, &lhs, &rhs, values_defined_here).await {
             ComparisonResult::Matched(result) => {
                 if !result {
-                    return false;
+                    return Some(false);
                 }
             }
             ComparisonResult::Continue(result) => {
                 comparisons.extend(result.into_iter());
             }
+            ComparisonResult::DefinitlyFalse() => {
+                return None;
+            }
         }
     }
 
-    true
+    Some(true)
 }
 
 pub async fn set_values_in_context_one(
@@ -710,7 +714,9 @@ pub async fn set_values_in_context_one(
     rhs: &Syntax,
     values_defined_here: &mut Vec<String>,
 ) -> ComparisonResult {
-    match (lhs, rhs) {
+    eprintln!("{lhs} == {rhs}");
+    let rhs = rhs.clone().reduce_all().await;
+    match (lhs, &rhs) {
         (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => {
             ComparisonResult::Continue(vec![(*a0.clone(), *a1.clone()), (*b0.clone(), *b1.clone())])
         }
@@ -744,8 +750,15 @@ pub async fn set_values_in_context_one(
             let str1: Vec<char> = str1.chars().collect();
             for i in 0..lst0.len() {
                 let str1 = Syntax::ValStr(format!("{}", str1[i]));
-                if !set_values_in_context(ctx, holder, &lst0[i], &str1, values_defined_here).await {
-                    return ComparisonResult::Matched(false);
+                match set_values_in_context(ctx, holder, &lst0[i], &str1, values_defined_here).await
+                {
+                    Some(false) => {
+                        return ComparisonResult::Matched(false);
+                    }
+                    None => {
+                        return ComparisonResult::DefinitlyFalse();
+                    }
+                    _ => {}
                 }
             }
 
@@ -770,24 +783,24 @@ pub async fn set_values_in_context_one(
 
             ComparisonResult::Continue(result)
         }
+        (Syntax::Lst(lst0), Syntax::BiOp(BiOpType::OpAdd, box Syntax::Lst(lst1), _))
+            if lst0.len() == 0 && lst1.len() > 0 =>
+        {
+            ComparisonResult::DefinitlyFalse()
+        }
         (Syntax::LstMatch(lst0), Syntax::BiOp(BiOpType::OpAdd, box Syntax::Lst(lst1), expr))
-            if lst0.len() + 1 == lst1.len() =>
+            if lst0.len() == lst1.len() + 1 =>
         {
             let mut result = Vec::new();
             let mut lst1: &[Syntax] = lst1;
             for i in 0..(lst0.len() - 1) {
-                if i == lst0.len() - 1 {
-                    let lst1 = Syntax::Lst(lst1.into());
-                    result.push((lst0[i].clone(), lst1));
-                    break;
-                } else {
-                    let lst1_val = lst1[0].clone();
-                    lst1 = &lst1[1..];
-                    result.push((lst0[i].clone(), lst1_val));
-                }
+                let lst1_val = lst1[0].clone();
+                lst1 = &lst1[1..];
+                result.push((lst0[i].clone(), lst1_val));
             }
 
             result.push((lst0[lst0.len() - 1].clone(), *expr.clone()));
+            eprintln!("{:?}", result);
 
             ComparisonResult::Continue(result)
         }
@@ -800,8 +813,15 @@ pub async fn set_values_in_context_one(
                 if i == end_idx {
                     let str1: String = str1.into_iter().collect();
                     let str1 = Syntax::ValStr(str1);
-                    if !set_values_in_context(ctx, holder, expr, &str1, values_defined_here).await {
-                        return ComparisonResult::Matched(false);
+                    match set_values_in_context(ctx, holder, expr, &str1, values_defined_here).await
+                    {
+                        Some(false) => {
+                            return ComparisonResult::Matched(false);
+                        }
+                        None => {
+                            return ComparisonResult::DefinitlyFalse();
+                        }
+                        _ => {}
                     }
 
                     break;
@@ -825,10 +845,16 @@ pub async fn set_values_in_context_one(
                     let c: String = str1.drain(0..len).collect();
                     let expr_str1 = Syntax::ValStr(c);
 
-                    if !set_values_in_context(ctx, holder, expr, &expr_str1, values_defined_here)
+                    match set_values_in_context(ctx, holder, expr, &expr_str1, values_defined_here)
                         .await
                     {
-                        return ComparisonResult::Matched(false);
+                        Some(false) => {
+                            return ComparisonResult::Matched(false);
+                        }
+                        None => {
+                            return ComparisonResult::DefinitlyFalse();
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -850,8 +876,14 @@ pub async fn set_values_in_context_one(
                         .await;
                     }
 
-                    if !set_values_in_context(ctx, holder, val, rhs, values_defined_here).await {
-                        return ComparisonResult::Matched(false);
+                    match set_values_in_context(ctx, holder, val, rhs, values_defined_here).await {
+                        Some(false) => {
+                            return ComparisonResult::Matched(false);
+                        }
+                        None => {
+                            return ComparisonResult::DefinitlyFalse();
+                        }
+                        _ => {}
                     }
                 } else {
                     return ComparisonResult::Matched(false);
@@ -885,9 +917,16 @@ pub async fn set_values_in_context_one(
                     }
 
                     if let Some(val) = val {
-                        if !set_values_in_context(ctx, holder, val, rhs, values_defined_here).await
+                        match set_values_in_context(ctx, holder, val, rhs, values_defined_here)
+                            .await
                         {
-                            return ComparisonResult::Matched(false);
+                            Some(false) => {
+                                return ComparisonResult::Matched(false);
+                            }
+                            None => {
+                                return ComparisonResult::DefinitlyFalse();
+                            }
+                            _ => {}
                         }
                     }
                 } else {
@@ -924,7 +963,7 @@ pub async fn set_values_in_context_one(
                     }
 
                     if let Some(val) = val {
-                        if !PrivateContext::set_values_in_context(
+                        match PrivateContext::set_values_in_context(
                             private_ctx,
                             holder,
                             val,
@@ -933,11 +972,17 @@ pub async fn set_values_in_context_one(
                         )
                         .await
                         {
-                            return ComparisonResult::Matched(false);
+                            Some(false) => {
+                                return ComparisonResult::Matched(false);
+                            }
+                            None => {
+                                return ComparisonResult::DefinitlyFalse();
+                            }
+                            Some(true) => {}
                         }
                     }
                 } else {
-                    return ComparisonResult::Matched(false);
+                    return ComparisonResult::DefinitlyFalse();
                 }
             }
 

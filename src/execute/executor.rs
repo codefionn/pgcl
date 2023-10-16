@@ -146,76 +146,76 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                         result.push((
                             executor.execute_once(lhs, false, no_change).await?,
                             executor.execute_once(rhs, false, no_change).await?,
-                        ))
+                        ));
                     }
 
                     Ok(result)
                 }
 
-                if no_change {
-                    let old_asgs = asgs.clone();
-                    let asgs = execute_asgs(
-                        asgs,
-                        true,
-                        self.ctx,
-                        self.system,
-                        self.show_steps,
-                        self.debug,
-                    )
-                    .await?;
+                let old_asgs = asgs.clone();
+                let asgs = execute_asgs(
+                    asgs,
+                    no_change,
+                    self.ctx,
+                    self.system,
+                    self.show_steps,
+                    self.debug,
+                )
+                .await?;
 
-                    if old_asgs == asgs {
-                        for (lhs, rhs) in asgs {
-                            let rhs = self.execute(rhs.clone(), false).await?;
-                            if !PrivateContext::set_values_in_context(
-                                &mut local_ctx,
-                                &mut self.ctx.get_holder(),
-                                &lhs,
-                                &rhs,
-                                &mut values_defined_here,
-                            )
-                            .await
-                            {
+                let is_same_asgs = old_asgs == asgs;
+                let mut is_true = true;
+                for (lhs, rhs) in asgs.clone() {
+                    match PrivateContext::set_values_in_context(
+                        &mut local_ctx,
+                        &mut self.ctx.get_holder(),
+                        &lhs,
+                        &rhs,
+                        &mut values_defined_here,
+                    )
+                    .await
+                    {
+                        Some(false) => {
+                            if no_change && is_same_asgs {
                                 local_ctx.remove_values(&mut values_defined_here);
                                 return Ok(*expr_false);
+                            } else {
+                                is_true = false;
                             }
                         }
-
-                        let mut result = expr_true.clone();
-                        for (key, value) in local_ctx
-                            .remove_values(&mut values_defined_here)
-                            .into_iter()
-                        {
-                            result = Box::new(result.replace_args(&key, &value).await);
+                        None => {
+                            local_ctx.remove_values(&mut values_defined_here);
+                            return Ok(*expr_false);
                         }
-
-                        Ok(*result)
-                    } else {
-                        Ok(Syntax::IfLet(asgs, expr_true, expr_false))
+                        _ => {}
                     }
-                } else {
-                    let asgs = execute_asgs(
-                        asgs,
-                        false,
-                        self.ctx,
-                        self.system,
-                        self.show_steps,
-                        self.debug,
-                    )
-                    .await?;
+                }
 
+                if is_true {
+                    let mut result = expr_true.clone();
+                    for (key, value) in local_ctx
+                        .remove_values(&mut values_defined_here)
+                        .into_iter()
+                    {
+                        result = Box::new(result.replace_args(&key, &value).await);
+                    }
+
+                    Ok(*result)
+                } else {
                     Ok(Syntax::IfLet(asgs, expr_true, expr_false))
                 }
             }
             Syntax::Match(expr, cases) => {
                 let mut new_cases = Vec::new();
+                let mut definitly_false_cnt = 0;
+                let cases_len = cases.len();
                 for (case_match, case_expr) in cases {
                     if case_match == Syntax::ValAny() {
                         new_cases.push((case_match, case_expr));
                         continue;
                     }
 
-                    if PrivateContext::set_values_in_context(
+                    match PrivateContext::set_values_in_context(
                         &mut local_ctx,
                         &mut self.ctx.get_holder(),
                         &case_match,
@@ -224,15 +224,21 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     )
                     .await
                     {
-                        let mut case_expr = case_expr;
-                        for (key, value) in local_ctx
-                            .remove_values(&mut values_defined_here)
-                            .into_iter()
-                        {
-                            case_expr = case_expr.replace_args(&key, &value).await;
-                        }
+                        Some(true) => {
+                            let mut case_expr = case_expr;
+                            for (key, value) in local_ctx
+                                .remove_values(&mut values_defined_here)
+                                .into_iter()
+                            {
+                                case_expr = case_expr.replace_args(&key, &value).await;
+                            }
 
-                        return Ok(case_expr);
+                            return Ok(case_expr);
+                        }
+                        None => {
+                            definitly_false_cnt += 1;
+                        }
+                        _ => {}
                     }
 
                     new_cases.push((case_match, case_expr));
@@ -240,7 +246,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
 
                 let old_expr = expr.clone();
                 let expr = self.execute_once(*expr, false, no_change).await?;
-                if no_change && *old_expr == expr {
+                if (no_change && *old_expr == expr) || definitly_false_cnt == cases_len {
                     if let Some(default_case_expr) = new_cases
                         .into_iter()
                         .filter(|(lhs, rhs)| *lhs == Syntax::ValAny())
@@ -525,22 +531,24 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                         // => Maybe it's a normal assignment of a let expression?
                         let old = rhs.clone();
                         let rhs = self.execute_once(*rhs, false, no_change).await?;
-                        if no_change && *old == rhs {
-                            if !self
-                                .ctx
-                                .set_values_in_context(&lhs.clone(), &rhs, &mut values_defined_here)
-                                .await
-                            {
-                                self.ctx.remove_values(&mut values_defined_here).await;
-                                self.ctx
-                                    .push_error(format!(
-                                        "{lhs} must be assignable to {rhs} but is not",
-                                    ))
-                                    .await;
-                            } else {
-                                values_defined_here.clear();
-                            }
-                        } else {
+                        let asg_result = self
+                            .ctx
+                            .set_values_in_context(&lhs.clone(), &rhs, &mut values_defined_here)
+                            .await;
+                        if (no_change && *old == rhs && asg_result == Some(false))
+                            || asg_result == None
+                        {
+                            self.ctx.remove_values(&mut values_defined_here).await;
+                            self.ctx
+                                .push_error(
+                                    format!("{lhs} must be assignable to {rhs} but is not",),
+                                )
+                                .await;
+                        }
+
+                        values_defined_here.clear();
+
+                        if asg_result == Some(false) {
                             return Ok(Syntax::Asg(lhs, Box::new(rhs)));
                         }
                     }
@@ -549,17 +557,16 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 }
             }
             Syntax::Let((lhs, rhs), expr) => {
-                if !local_ctx
+                let let_matches = local_ctx
                     .set_values_in_context(
                         &mut self.ctx.get_holder(),
                         &lhs,
                         &rhs,
                         &mut values_defined_here,
                     )
-                    .await
-                {
-                    local_ctx.remove_values(&mut values_defined_here);
-                } else {
+                    .await;
+
+                if (let_matches == Some(true)) {
                     let mut result = (*expr).clone();
                     for (key, value) in local_ctx
                         .remove_values(&mut values_defined_here)
@@ -571,8 +578,10 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     return Ok(result);
                 }
 
+                local_ctx.remove_values(&mut values_defined_here);
+
                 let new_rhs = self.execute_once(*rhs.clone(), first, no_change).await?;
-                if no_change && new_rhs == *rhs {
+                if (no_change && new_rhs == *rhs) || let_matches == None {
                     self.ctx
                         .push_error(format!(
                             "Let expression failed: let {lhs} = {rhs} in {expr}"
