@@ -449,3 +449,21 @@ async fn test_callize() {
         parse_to_str("std.callize [2, 0, 1]").await
     );
 }
+
+#[tokio::test]
+async fn test_infinite_list_matching() {
+    assert_eq!(
+        Ok(format!("[0, 1, 2, 3]")),
+        parse_to_str("nat x = [x] + (nat (x + 1))\n(import std).limit 4 (nat 0)",).await
+    );
+
+    assert_eq!(
+        Ok(format!("[0, 1, 2, 3]")),
+        parse_to_str("nat x = [x] + [x + 1] + (nat (x + 2))\n(import std).limit 4 (nat 0)",).await
+    );
+
+    assert_eq!(
+        Ok(format!("[0, 1, 2, 3]")),
+        parse_to_str("nat x = [x, x + 1] + (nat (x + 2))\n(import std).limit 4 (nat 0)",).await
+    );
+}

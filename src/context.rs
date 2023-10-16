@@ -723,8 +723,7 @@ pub async fn set_values_in_context_one(
     rhs: &Syntax,
     values_defined_here: &mut Vec<String>,
 ) -> ComparisonResult {
-    let rhs = rhs.clone().reduce_all().await;
-    match (lhs, &rhs) {
+    match (lhs, rhs) {
         (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => {
             ComparisonResult::Continue(vec![(*a0.clone(), *a1.clone()), (*b0.clone(), *b1.clone())])
         }
@@ -810,6 +809,26 @@ pub async fn set_values_in_context_one(
             result.push((lst0[lst0.len() - 1].clone(), *expr.clone()));
 
             ComparisonResult::Continue(result)
+        }
+        (Syntax::LstMatch(lst0), Syntax::BiOp(BiOpType::OpAdd, box Syntax::Lst(lst1), expr))
+            if lst0.len() < lst1.len() + 1 =>
+        {
+            let limit = lst1.len() + 1 - lst0.len();
+            let expr_lst = lst1[limit..].into_iter().cloned().collect();
+            let lst1 = lst1[..limit].into_iter().cloned().collect();
+
+            ComparisonResult::Continue(vec![(
+                Syntax::LstMatch(lst0.clone()),
+                Syntax::BiOp(
+                    BiOpType::OpAdd,
+                    Box::new(Syntax::Lst(lst1)),
+                    Box::new(Syntax::BiOp(
+                        BiOpType::OpAdd,
+                        Box::new(Syntax::Lst(expr_lst)),
+                        expr.clone(),
+                    )),
+                ),
+            )])
         }
         (Syntax::LstMatch(lst0), Syntax::ValStr(str1))
             if lst0.len() >= 2 && str1.chars().count() + 1 >= lst0.len() =>
