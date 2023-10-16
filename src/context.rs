@@ -215,6 +215,15 @@ enum ComparisonResult {
     DefinitlyFalse(),
 }
 
+impl From<Option<bool>> for ComparisonResult {
+    fn from(value: Option<bool>) -> Self {
+        match value {
+            Some(b) => ComparisonResult::Matched(b),
+            None => ComparisonResult::DefinitlyFalse(),
+        }
+    }
+}
+
 async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
     let args_len = fns[0].0.len();
     let arg_name = {
@@ -1003,6 +1012,10 @@ pub async fn set_values_in_context_one(
         (lhs, Syntax::ExplicitExpr(rhs)) => {
             ComparisonResult::Continue(vec![(lhs.clone(), *rhs.clone())])
         }
+        (Syntax::ValInt(lhs), Syntax::ValInt(rhs)) => (lhs == rhs).then_some(true).into(),
+        (Syntax::ValFlt(lhs), Syntax::ValFlt(rhs)) => (lhs == rhs).then_some(true).into(),
+        (Syntax::ValStr(lhs), Syntax::ValStr(rhs)) => (lhs == rhs).then_some(true).into(),
+        (Syntax::ValAtom(lhs), Syntax::ValAtom(rhs)) => (lhs == rhs).then_some(true).into(),
         (expr0, expr1) => ComparisonResult::Matched(expr0.eval_equal(expr1).await),
     }
 }
