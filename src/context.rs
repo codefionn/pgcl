@@ -723,7 +723,6 @@ pub async fn set_values_in_context_one(
     rhs: &Syntax,
     values_defined_here: &mut Vec<String>,
 ) -> ComparisonResult {
-    eprintln!("{lhs} == {rhs}");
     let rhs = rhs.clone().reduce_all().await;
     match (lhs, &rhs) {
         (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => {
@@ -809,7 +808,6 @@ pub async fn set_values_in_context_one(
             }
 
             result.push((lst0[lst0.len() - 1].clone(), *expr.clone()));
-            eprintln!("{:?}", result);
 
             ComparisonResult::Continue(result)
         }
