@@ -69,6 +69,19 @@ fn test_bench_cli_add(b: &mut Bencher) -> anyhow::Result<()> {
 }
 
 #[bench]
+fn test_bench_cli_add_flt(b: &mut Bencher) -> anyhow::Result<()> {
+    b.iter(|| {
+        let mut cmd = Command::cargo_bin("pgcl").unwrap();
+        cmd.write_stdin("1.0 + 2.0\n")
+            .assert()
+            .success()
+            .stdout(predicate::str::is_match(r"^3\n$").unwrap());
+    });
+
+    Ok(())
+}
+
+#[bench]
 fn test_bench_add(b: &mut Bencher) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     b.iter(move || {
@@ -77,6 +90,24 @@ fn test_bench_add(b: &mut Bencher) {
                 Ok(format!("5")),
                 parse_to_str(
                     "2 + 3",
+                    &mut ContextHandler::async_default().await,
+                    &mut SystemHandler::default()
+                )
+                .await
+            );
+        });
+    });
+}
+
+#[bench]
+fn test_bench_add_flt(b: &mut Bencher) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    b.iter(move || {
+        rt.block_on(async {
+            assert_eq!(
+                Ok(format!("5")),
+                parse_to_str(
+                    "2.0 + 3.0",
                     &mut ContextHandler::async_default().await,
                     &mut SystemHandler::default()
                 )
