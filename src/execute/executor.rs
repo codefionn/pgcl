@@ -102,6 +102,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     match id.as_str() {
                         "false" => false.into(),
                         "true" => true.into(),
+                        "null" => Syntax::ValAtom("none".to_string()),
                         _ => expr,
                     }
                 },
