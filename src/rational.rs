@@ -17,10 +17,14 @@ impl BigRational {
     /// Create a new rational
     #[inline]
     pub fn new<T: Into<BigDecimal>, S: Into<BigDecimal>>(quotient: T, fraction: S) -> Self {
-        Self {
+        let mut result = Self {
             quotient: quotient.into(),
             fraction: fraction.into(),
-        }
+        };
+
+        result.remove_floating_point();
+
+        result
     }
 
     pub fn split(self) -> (BigInt, BigInt) {
@@ -46,9 +50,9 @@ impl BigRational {
 
         let gcd: BigDecimal = a.gcd(&b).into();
 
-        self.quotient = self.quotient / gcd.clone()
+        self.quotient = BigDecimal::new(a, 0) / gcd.clone()
             * BigDecimal::from_i64(if is_negative { -1 } else { 1 }).unwrap();
-        self.fraction = self.fraction / gcd;
+        self.fraction = BigDecimal::new(b, 0) / gcd;
 
         self
     }
@@ -66,12 +70,16 @@ impl BigRational {
         let (_, quotient_pow) = self.quotient.as_bigint_and_exponent();
         let (_, fraction_pow) = self.fraction.as_bigint_and_exponent();
 
-        let pow = quotient_pow.min(fraction_pow);
-        if pow > 0 {
+        let pow = quotient_pow.max(fraction_pow);
+        if pow < 0 {
             return;
         }
 
-        let mul_pow: BigDecimal = BigInt::from_i64(10).unwrap().pow(-pow as u32).into();
+        if pow == 0 {
+            return;
+        }
+
+        let mul_pow: BigDecimal = BigInt::from_i64(10).unwrap().pow(pow as u32).into();
         self.quotient *= mul_pow.clone();
         self.fraction *= mul_pow;
     }
