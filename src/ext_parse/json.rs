@@ -184,14 +184,19 @@ pub fn encode_rec(
             let f: BigDecimal = f.clone().into();
             let result = f.to_string();
             if result.contains(".") {
-                Ok(result)
+                let result = result.trim_end_matches("0");
+                if result.ends_with(".") {
+                    Ok(format!("{}0", result))
+                } else {
+                    Ok(result.to_string())
+                }
             } else {
                 Ok(format!("{}.0", result))
             }
         }
         Syntax::ValAtom(s) if s == "true" => Ok(s),
         Syntax::ValAtom(s) if s == "false" => Ok(s),
-        Syntax::ValAtom(s) if s == "none" => Ok(s),
+        Syntax::ValAtom(s) if s == "none" => Ok("null".to_string()),
         expr => Err(EncodeError::UnexpectedExpr(expr)),
     }
 }
@@ -856,6 +861,70 @@ mod tests {
         assert_eq!(
             Ok("0.0".to_string()),
             encode(Syntax::ValFlt(BigRational::from_u32(0).unwrap()))
+        );
+        assert_eq!(
+            Ok("1.0".to_string()),
+            encode(Syntax::ValFlt(BigRational::from_u32(1).unwrap()))
+        );
+        assert_eq!(
+            Ok("1.1".to_string()),
+            encode(Syntax::ValFlt(BigRational::from_f32(1.1).unwrap()))
+        );
+        assert_eq!(
+            Ok("12.413".to_string()),
+            encode(Syntax::ValFlt(BigRational::from_f32(12.413).unwrap()))
+        );
+        assert_eq!(
+            Ok("-12.413".to_string()),
+            encode(Syntax::ValFlt(BigRational::from_f32(-12.413).unwrap()))
+        );
+    }
+
+    #[test]
+    fn encode_keywords() {
+        assert_eq!(
+            Ok("true".to_string()),
+            encode(Syntax::ValAtom("true".to_string()))
+        );
+        assert_eq!(
+            Ok("false".to_string()),
+            encode(Syntax::ValAtom("false".to_string()))
+        );
+        assert_eq!(
+            Ok("null".to_string()),
+            encode(Syntax::ValAtom("none".to_string()))
+        );
+    }
+
+    #[test]
+    fn encode_string() {
+        assert_eq!(
+            Ok("\"\\\"\"".to_string()),
+            encode(Syntax::ValStr("\"".to_string()))
+        );
+        assert_eq!(
+            Ok("\"\\\\\"".to_string()),
+            encode(Syntax::ValStr("\\".to_string()))
+        );
+        assert_eq!(
+            Ok("\"\\r\"".to_string()),
+            encode(Syntax::ValStr("\r".to_string()))
+        );
+        assert_eq!(
+            Ok("\"\\n\"".to_string()),
+            encode(Syntax::ValStr("\n".to_string()))
+        );
+        assert_eq!(
+            Ok("\"\\t\"".to_string()),
+            encode(Syntax::ValStr("\t".to_string()))
+        );
+        assert_eq!(
+            Ok("\"\\b\"".to_string()),
+            encode(Syntax::ValStr("\u{0008}".to_string()))
+        );
+        assert_eq!(
+            Ok("\"\\f\"".to_string()),
+            encode(Syntax::ValStr("\u{000C}".to_string()))
         );
     }
 
