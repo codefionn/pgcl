@@ -98,6 +98,21 @@ impl FromStr for BigRational {
     }
 }
 
+impl ToString for BigRational {
+    fn to_string(&self) -> String {
+        let x: BigDecimal = self.clone().into();
+        let result = x.to_string();
+        if result.contains(".") {
+            result
+                .trim_end_matches(|c| c == '0')
+                .trim_end_matches(|c| c == '.')
+                .to_owned()
+        } else {
+            result
+        }
+    }
+}
+
 impl FromPrimitive for BigRational {
     fn from_i8(n: i8) -> Option<Self> {
         Some(Self::new(BigInt::from_i8(n)?, BigInt::from_u8(1)?))

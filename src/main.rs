@@ -9,6 +9,7 @@ mod actor;
 mod context;
 mod errors;
 mod execute;
+mod ext_parse;
 mod gc;
 mod interpreter;
 mod lexer;

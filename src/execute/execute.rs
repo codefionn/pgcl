@@ -1358,19 +1358,7 @@ impl std::fmt::Display for Syntax {
                 Self::UnexpectedArguments() => "UnexpectedArguments".to_string(),
                 Self::ValAny() => "_".to_string(),
                 Self::ValInt(x) => x.to_string(),
-                Self::ValFlt(x) => {
-                    let x: BigDecimal = x.clone().into();
-                    let result = format!("{x}");
-                    if result.contains(".") {
-                        result
-                            .trim_end_matches(|c| c == '0')
-                            .trim_end_matches(|c| c == '.')
-                            .to_owned()
-                    } else {
-                        result
-                    }
-                }
-                .to_string(),
+                Self::ValFlt(x) => x.to_string(),
                 Self::ValStr(x) => val_str(x),
                 Self::ValRg(x) => val_str(x.as_str()),
                 Self::ValAtom(x) => format!("@{x}"),
