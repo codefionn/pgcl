@@ -135,7 +135,6 @@ async fn main() -> anyhow::Result<()> {
         };
         std::mem::drop(runner);
 
-        let mut exit_code = 0;
         if exit_code == 0 && systems.has_failed_asserts().await {
             exit_code = 1;
         }
