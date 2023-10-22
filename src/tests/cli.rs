@@ -183,7 +183,7 @@ fn test_foldr() -> anyhow::Result<()> {
 fn test_exit_0() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
 
-    cmd.write_stdin(r"sys = import sys; sys.exit 0")
+    cmd.pipe_stdin("tests/exit_0.pgcl")?
         .assert()
         .code(predicate::eq(0))
         .stdout(predicate::str::is_match(r"^$")?);
@@ -195,7 +195,7 @@ fn test_exit_0() -> anyhow::Result<()> {
 fn test_exit_1() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
 
-    cmd.write_stdin(r"sys = import sys; sys.exit 1")
+    cmd.pipe_stdin("tests/exit_1.pgcl")?
         .assert()
         .code(predicate::eq(1))
         .stdout(predicate::str::is_match(r"^$")?);
@@ -207,7 +207,79 @@ fn test_exit_1() -> anyhow::Result<()> {
 fn test_exit_2() -> anyhow::Result<()> {
     let mut cmd = Command::cargo_bin("pgcl")?;
 
-    cmd.write_stdin(r"sys = import sys; sys.exit 2")
+    cmd.pipe_stdin("tests/exit_2.pgcl")?
+        .assert()
+        .code(predicate::eq(2))
+        .stdout(predicate::str::is_match(r"^$")?);
+
+    Ok(())
+}
+
+#[test]
+fn test_exit_0_direct() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.arg("tests/exit_0.pgcl")
+        .assert()
+        .code(predicate::eq(0))
+        .stdout(predicate::str::is_match(r"^$")?);
+
+    Ok(())
+}
+
+#[test]
+fn test_exit_1_direct() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.arg("tests/exit_1.pgcl")
+        .assert()
+        .code(predicate::eq(1))
+        .stdout(predicate::str::is_match(r"^$")?);
+
+    Ok(())
+}
+
+#[test]
+fn test_exit_2_direct() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.arg("tests/exit_2.pgcl")
+        .assert()
+        .code(predicate::eq(2))
+        .stdout(predicate::str::is_match(r"^$")?);
+
+    Ok(())
+}
+
+#[test]
+fn test_exit_0_import() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin("import \"tests/exit_0.pgcl\"")
+        .assert()
+        .code(predicate::eq(0))
+        .stdout(predicate::str::is_match(r"^$")?);
+
+    Ok(())
+}
+
+#[test]
+fn test_exit_1_import() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin("import \"tests/exit_1.pgcl\"")
+        .assert()
+        .code(predicate::eq(1))
+        .stdout(predicate::str::is_match(r"^$")?);
+
+    Ok(())
+}
+
+#[test]
+fn test_exit_2_import() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+
+    cmd.write_stdin("import \"tests/exit_2.pgcl\"")
         .assert()
         .code(predicate::eq(2))
         .stdout(predicate::str::is_match(r"^$")?);

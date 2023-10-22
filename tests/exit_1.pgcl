@@ -1,0 +1,2 @@
+{ exit } = import sys
+exit 1
