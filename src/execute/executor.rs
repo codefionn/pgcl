@@ -321,7 +321,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                         .await
                     {
                         Ok(()) => Syntax::ValAtom("success".to_string()),
-                        Err(err) => Syntax::Tuple(
+                        Err(err) => Syntax::Call(
                             Box::new(Syntax::ValAtom("error".to_string())),
                             Box::new(Syntax::ValStr(format!("{}", err))),
                         ),
@@ -972,7 +972,10 @@ async fn build_system(
                 new_builtins_map.entry(syscall_type).or_insert_with(|| {
                     //#[cfg(debug_assertions)]
                     //debug!("{syscall_type:?}");
-                    Syntax::ValAtom("error".to_string())
+                    Syntax::Call(
+                        Box::new(Syntax::ValAtom("error".to_string())),
+                        Box::new(Syntax::ValAtom("RestrictedSystemCall".to_string())),
+                    )
                 });
             }
         } else if has_restrict_insecure {
@@ -983,7 +986,10 @@ async fn build_system(
                 new_builtins_map.entry(syscall_type).or_insert_with(|| {
                     //#[cfg(debug_assertions)]
                     //debug!("{syscall_type:?}");
-                    Syntax::ValAtom("error".to_string())
+                    Syntax::Call(
+                        Box::new(Syntax::ValAtom("error".to_string())),
+                        Box::new(Syntax::ValAtom("RestrictedSystemCall".to_string())),
+                    )
                 });
             }
         }

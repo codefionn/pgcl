@@ -206,7 +206,10 @@ impl PrivateSystem {
 
                 Ok(Some(Syntax::Map(map.into_iter().collect())))
             })
-            .unwrap_or(Ok(Some(Syntax::ValAtom("error".to_string())))),
+            .unwrap_or(Ok(Some(Syntax::Call(
+                Box::new(Syntax::ValAtom("error".to_string())),
+                Box::new(Syntax::ValAtom("Cmd".to_string())),
+            )))),
             (SystemCallType::Println, Syntax::ValStr(s)) => {
                 println!("{s}");
 
@@ -357,11 +360,11 @@ impl PrivateSystem {
             (SystemCallType::JsonEncode, expr) => match ext_parse::json::encode(expr.clone()) {
                 Ok(result) => Ok(Some(Syntax::ValStr(result))),
                 Err(ext_parse::json::EncodeError::UnexpectedExpr(_)) => Ok(None),
-                Err(ext_parse::json::EncodeError::NotImplemented) => Ok(Some(Syntax::Tuple(
+                Err(ext_parse::json::EncodeError::NotImplemented) => Ok(Some(Syntax::Call(
                     Box::new(Syntax::ValStr("error".to_string())),
                     Box::new(Syntax::ValStr("NotImplemented".to_string())),
                 ))),
-                Err(ext_parse::json::EncodeError::ReachedDepthLimit) => Ok(Some(Syntax::Tuple(
+                Err(ext_parse::json::EncodeError::ReachedDepthLimit) => Ok(Some(Syntax::Call(
                     Box::new(Syntax::ValStr("error".to_string())),
                     Box::new(Syntax::ValStr("ReachedDepthLimit".to_string())),
                 ))),
@@ -369,7 +372,7 @@ impl PrivateSystem {
             (SystemCallType::JsonDecode, Syntax::ValStr(s)) => {
                 match ext_parse::json::decode(s.as_str()) {
                     Ok(result) => Ok(Some(result)),
-                    Err(err) => Ok(Some(Syntax::Tuple(
+                    Err(err) => Ok(Some(Syntax::Call(
                         Box::new(Syntax::ValStr("error".to_string())),
                         Box::new(Syntax::ValStr(
                             match err {
