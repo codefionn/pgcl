@@ -46,7 +46,7 @@ impl System {
         expr: Syntax,
         show_steps: VerboseLevel,
         debug: bool,
-    ) -> Result<Syntax, InterpreterError> {
+    ) -> Result<Option<Syntax>, InterpreterError> {
         self.private_system
             .lock()
             .await
@@ -714,7 +714,7 @@ impl SystemHandler {
         expr: Syntax,
         show_steps: VerboseLevel,
         debug: bool,
-    ) -> Result<Syntax, InterpreterError> {
+    ) -> Result<Option<Syntax>, InterpreterError> {
         self.get_system(self.id)
             .await
             .unwrap()

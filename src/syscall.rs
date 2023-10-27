@@ -5,6 +5,7 @@ use crate::{
     context::ContextHandler,
     errors::InterpreterError,
     execute::{Executor, SignalType, Syntax},
+    ext_parse,
     rational::BigRational,
     runner::Runner,
     system::SystemHandler,
@@ -28,6 +29,8 @@ pub enum SystemCallType {
     CreateMsg,
     RecvMsg,
     Asserts,
+    JsonEncode,
+    JsonDecode,
 }
 
 impl SystemCallType {
@@ -44,6 +47,8 @@ impl SystemCallType {
             Self::CreateMsg => "createmsg",
             Self::RecvMsg => "recvmsg",
             Self::Asserts => "asserts",
+            Self::JsonEncode => "JsonEncode",
+            Self::JsonDecode => "JsonDecode",
         }
     }
 
@@ -60,6 +65,8 @@ impl SystemCallType {
             Self::CreateMsg,
             Self::RecvMsg,
             Self::Asserts,
+            Self::JsonEncode,
+            Self::JsonDecode,
         ]
     }
 
@@ -72,7 +79,9 @@ impl SystemCallType {
             | Self::Actor
             | Self::ExitActor
             | Self::CreateMsg
-            | Self::RecvMsg => true,
+            | Self::RecvMsg
+            | Self::JsonEncode
+            | Self::JsonDecode => true,
             _ => false,
         }
     }
@@ -117,16 +126,24 @@ impl PrivateSystem {
         expr: Syntax,
         show_steps: VerboseLevel,
         debug: bool,
-    ) -> Result<Syntax, InterpreterError> {
+    ) -> Result<Option<Syntax>, InterpreterError> {
         if let Some(expr) = self.map.get(&syscall) {
-            return Ok(expr.clone());
+            return Ok(Some(expr.clone()));
         }
 
         match (syscall, expr) {
             (SystemCallType::Typeof, expr) => {
-                fn create_syscall_type(expr: Box<Syntax>) -> Syntax {
+                fn create_syscall_type(
+                    expr: Box<Syntax>,
+                    ctx_id: usize,
+                    system_id: usize,
+                ) -> Syntax {
                     Syntax::Call(
-                        Box::new(Syntax::Id("syscall".to_string())),
+                        Box::new(Syntax::Contextual(
+                            ctx_id,
+                            system_id,
+                            Box::new(Syntax::Id("syscall".to_string())),
+                        )),
                         Box::new(Syntax::Tuple(
                             Box::new(Syntax::ValAtom("type".to_string())),
                             expr,
@@ -134,7 +151,7 @@ impl PrivateSystem {
                     )
                 }
 
-                Ok(match expr {
+                Ok(Some(match expr {
                     Syntax::ValInt(_) => Syntax::ValAtom("int".to_string()),
                     Syntax::ValFlt(_) => Syntax::ValAtom("float".to_string()),
                     Syntax::ValStr(_) => Syntax::ValAtom("string".to_string()),
@@ -144,8 +161,8 @@ impl PrivateSystem {
                     Syntax::Tuple(lhs, rhs) => Syntax::Call(
                         Box::new(Syntax::ValAtom("tuple".to_string())),
                         Box::new(Syntax::Tuple(
-                            Box::new(create_syscall_type(lhs)),
-                            Box::new(create_syscall_type(rhs)),
+                            Box::new(create_syscall_type(lhs, ctx.get_id(), system.get_id())),
+                            Box::new(create_syscall_type(rhs, ctx.get_id(), system.get_id())),
                         )),
                     ),
                     expr @ _ => {
@@ -154,7 +171,7 @@ impl PrivateSystem {
 
                         Syntax::UnexpectedArguments()
                     }
-                })
+                }))
             }
             (SystemCallType::MeasureTime, expr) => {
                 let now = Instant::now();
@@ -166,10 +183,10 @@ impl PrivateSystem {
                 let diff = now.elapsed().as_secs_f64();
                 let diff: BigRational = BigRational::from_f64(diff).unwrap();
 
-                Ok(Syntax::Tuple(
+                Ok(Some(Syntax::Tuple(
                     Box::new(Syntax::ValFlt(diff)),
                     Box::new(expr),
-                ))
+                )))
             }
             (SystemCallType::Cmd, Syntax::ValStr(cmd)) => if cfg!(target_os = "windows") {
                 Command::new("cmd").args(["/C", cmd.as_str()]).output()
@@ -187,31 +204,31 @@ impl PrivateSystem {
                 map.insert("stdout".to_string(), (Syntax::ValStr(stdout), true));
                 map.insert("stderr".to_string(), (Syntax::ValStr(stderr), true));
 
-                Ok(Syntax::Map(map.into_iter().collect()))
+                Ok(Some(Syntax::Map(map.into_iter().collect())))
             })
-            .unwrap_or(Ok(Syntax::ValAtom("error".to_string()))),
+            .unwrap_or(Ok(Some(Syntax::ValAtom("error".to_string())))),
             (SystemCallType::Println, Syntax::ValStr(s)) => {
                 println!("{s}");
 
-                Ok(Syntax::ValAny())
+                Ok(Some(Syntax::ValAny()))
             }
             (SystemCallType::Println, Syntax::ValInt(i)) => {
                 println!("{i}");
 
-                Ok(Syntax::ValAny())
+                Ok(Some(Syntax::ValAny()))
             }
             (SystemCallType::Println, Syntax::ValFlt(f)) => {
                 let f: BigDecimal = f.into();
                 println!("{f}");
 
-                Ok(Syntax::ValAny())
+                Ok(Some(Syntax::ValAny()))
             }
             (SystemCallType::Actor, Syntax::Tuple(init, actor_fn)) => {
                 let (handle, tx, running) =
                     crate::actor::create_actor(ctx.clone(), system.clone(), *init, *actor_fn).await;
                 let id = system.create_actor(handle, tx, running).await;
 
-                Ok(Syntax::Signal(SignalType::Actor, id))
+                Ok(Some(Syntax::Signal(SignalType::Actor, id)))
             }
             (SystemCallType::ExitActor, Syntax::Signal(signal_type, signal_id)) => {
                 match signal_type {
@@ -224,14 +241,14 @@ impl PrivateSystem {
                                         error!("{}", err);
                                     }
 
-                                    Ok(Syntax::ValAtom("true".to_string()))
+                                    Ok(Some(Syntax::ValAtom("true".to_string())))
                                 }
-                                Err(_) => Ok(Syntax::ValAtom("false".to_string())),
+                                Err(_) => Ok(Some(Syntax::ValAtom("false".to_string()))),
                             }
                         }
-                        _ => Ok(Syntax::ValAtom("false".to_string())),
+                        _ => Ok(Some(Syntax::ValAtom("false".to_string()))),
                     },
-                    _ => Ok(false.into()),
+                    _ => Ok(Some(false.into())),
                 }
             }
             (
@@ -287,7 +304,7 @@ impl PrivateSystem {
 
                 debug!("Trying HTTP Request for \"{}\"", uri);
                 if let Ok(uri) = uri.parse::<hyper::Uri>() {
-                    Ok(match uri.scheme_str() {
+                    Ok(Some(match uri.scheme_str() {
                         Some("http") => {
                             let client = hyper::Client::builder().build_http();
                             do_http_request(uri, method, headers, body, client).await?
@@ -302,9 +319,9 @@ impl PrivateSystem {
 
                             false.into()
                         }
-                    })
+                    }))
                 } else {
-                    Ok(Syntax::ValAtom("false".to_string()))
+                    Ok(Some(Syntax::ValAtom("false".to_string())))
                 }
             }
             (SystemCallType::ExitThisProgram, Syntax::ValInt(id)) => {
@@ -320,35 +337,75 @@ impl PrivateSystem {
             }
             (SystemCallType::CreateMsg, Syntax::ValAny()) => {
                 let handle = system.create_message().await;
-                Ok(Syntax::Signal(SignalType::Message, handle))
+                Ok(Some(Syntax::Signal(SignalType::Message, handle)))
             }
             (SystemCallType::RecvMsg, Syntax::Signal(SignalType::Message, id)) => system
                 .recv_message(id)
                 .await
-                .map_err(|err| InterpreterError::InternalError(format!("RecvMsg: {}", err))),
-            (SystemCallType::Asserts, Syntax::ValAny()) => {
-                (match system.count_assertions().await {
-                    Ok((len, successes, failures)) => Ok(Syntax::Tuple(
-                        Box::new(Syntax::Tuple(
-                            Box::new(Syntax::ValInt(len.into())),
-                            Box::new(Syntax::ValInt(successes.into())),
-                        )),
-                        Box::new(Syntax::ValInt(failures.into())),
+                .map_err(|err| InterpreterError::InternalError(format!("RecvMsg: {}", err)))
+                .map(|r| Some(r)),
+            (SystemCallType::Asserts, Syntax::ValAny()) => match system.count_assertions().await {
+                Ok((len, successes, failures)) => Ok(Some(Syntax::Tuple(
+                    Box::new(Syntax::Tuple(
+                        Box::new(Syntax::ValInt(len.into())),
+                        Box::new(Syntax::ValInt(successes.into())),
                     )),
-                    Err(err) => Err(err),
-                })
+                    Box::new(Syntax::ValInt(failures.into())),
+                ))),
+                Err(err) => Err(err),
+            },
+            (SystemCallType::JsonEncode, expr) => match ext_parse::json::encode(expr.clone()) {
+                Ok(result) => Ok(Some(Syntax::ValStr(result))),
+                Err(ext_parse::json::EncodeError::UnexpectedExpr(_)) => Ok(None),
+                Err(ext_parse::json::EncodeError::NotImplemented) => Ok(Some(Syntax::Tuple(
+                    Box::new(Syntax::ValStr("error".to_string())),
+                    Box::new(Syntax::ValStr("NotImplemented".to_string())),
+                ))),
+                Err(ext_parse::json::EncodeError::ReachedDepthLimit) => Ok(Some(Syntax::Tuple(
+                    Box::new(Syntax::ValStr("error".to_string())),
+                    Box::new(Syntax::ValStr("ReachedDepthLimit".to_string())),
+                ))),
+            },
+            (SystemCallType::JsonDecode, Syntax::ValStr(s)) => {
+                match ext_parse::json::decode(s.as_str()) {
+                    Ok(result) => Ok(Some(result)),
+                    Err(err) => Ok(Some(Syntax::Tuple(
+                        Box::new(Syntax::ValStr("error".to_string())),
+                        Box::new(Syntax::ValStr(
+                            match err {
+                                ext_parse::json::DecodeError::ReachedDepthLimit => {
+                                    "ReachedDepthLimit"
+                                }
+                                ext_parse::json::DecodeError::ExpectedEnd => "ExpectedEnd",
+                                ext_parse::json::DecodeError::NumberTooBig => "NumberTooBig",
+                                ext_parse::json::DecodeError::UnexpectedEnd => "UnexpectedEnd",
+                                ext_parse::json::DecodeError::ExpectedComma => "ExpectedComma",
+                                ext_parse::json::DecodeError::ExpectedString => "ExpectedString",
+                                ext_parse::json::DecodeError::ExpectedFraction => {
+                                    "ExpectedFraction"
+                                }
+                                ext_parse::json::DecodeError::ExpectedExponent => {
+                                    "ExpectedExponent"
+                                }
+                                ext_parse::json::DecodeError::UnexpectedCharacter => {
+                                    "UnexpectedCharacter"
+                                }
+                                ext_parse::json::DecodeError::ExpectedValueSeparator => {
+                                    "ExpectedValueSeparator"
+                                }
+                                ext_parse::json::DecodeError::ExpectedValidJSONDataType => {
+                                    "ExpectedValidJSONDataType"
+                                }
+                                ext_parse::json::DecodeError::InvalidUnicodeEscapeSequence => {
+                                    "InvalidUnicodeEscapeSequence"
+                                }
+                            }
+                            .to_string(),
+                        )),
+                    ))),
+                }
             }
-            (syscall, expr) => Ok(Syntax::Call(
-                Box::new(Syntax::Id("syscall".to_string())),
-                Box::new(Syntax::Tuple(
-                    Box::new(Syntax::ValAtom(syscall.to_systemcall().to_string())),
-                    Box::new(
-                        Executor::new(ctx, system, runner, show_steps, debug)
-                            .execute_once(expr, false, no_change)
-                            .await?,
-                    ),
-                )),
-            )),
+            (_, _) => Ok(None),
         }
     }
 

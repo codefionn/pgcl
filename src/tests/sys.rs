@@ -150,3 +150,11 @@ async fn test_msg_channel() {
         parse_to_str("msg = sys.channel\nmsg\nmsg 42\nsys.recv_channel msg").await
     );
 }
+
+#[tokio::test]
+async fn test_json() {
+    assert_eq!(
+        Ok("{ test: 0 }".to_string()),
+        parse_to_str("sys.json.decode (sys.json.encode { test: 0 })").await
+    );
+}

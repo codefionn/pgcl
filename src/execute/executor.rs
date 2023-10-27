@@ -262,6 +262,35 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     Ok(Syntax::Match(Box::new(expr), new_cases))
                 }
             }
+            Syntax::Call(
+                box Syntax::Contextual(ctx_id, system_id, box Syntax::Id(id)),
+                box Syntax::Tuple(box Syntax::ValAtom(syscall_id), expr),
+            ) if id == "syscall" => {
+                let mut ctx = self
+                    .ctx
+                    .get_holder()
+                    .get_handler(ctx_id)
+                    .await
+                    .ok_or(InterpreterError::ExpectedContext(ctx_id))?;
+                let mut system = self
+                    .system
+                    .get_handler(system_id)
+                    .await
+                    .ok_or(InterpreterError::ExpectedSytem(system_id))?;
+
+                make_syscall(
+                    self,
+                    Some((&mut ctx, &mut system)),
+                    no_change,
+                    syscall_id,
+                    expr,
+                )
+                .await
+            }
+            Syntax::Call(
+                box Syntax::Id(id),
+                box Syntax::Tuple(box Syntax::ValAtom(syscall_id), expr),
+            ) if id == "syscall" => make_syscall(self, None, no_change, syscall_id, expr).await,
             Syntax::Call(box Syntax::Signal(signal_type, signal_id), expr) => match signal_type {
                 SignalType::Actor => {
                     if let Some(tx) = self.system.get_actor(signal_id).await {
@@ -416,8 +445,16 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                             self.runner,
                             no_change,
                             id,
-                            rhs,
-                            expr.clone(),
+                            Box::new(Syntax::Contextual(
+                                self.ctx.get_id(),
+                                self.system.get_id(),
+                                rhs,
+                            )),
+                            Syntax::Contextual(
+                                self.ctx.get_id(),
+                                self.system.get_id(),
+                                Box::new(expr.clone()),
+                            ),
                             &mut values_defined_here,
                             self.show_steps,
                             self.debug,
@@ -863,10 +900,11 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 && haschanged
                 && self.show_steps >= VerboseLevel::Statements
             {
-                #[cfg(debug_assertions)]
-                log::debug!("{:?}", expr);
                 println!("{}", expr);
             }
+
+            #[cfg(debug_assertions)]
+            log::trace!("{:?}", expr);
 
             old = expr.clone();
             self.runner
@@ -1106,6 +1144,86 @@ async fn import_lib(
     }
 }
 
+/// Make a systemcall
+///
+/// ## Arguments
+///
+/// - `executor`: The executor that contains the systemcall
+/// - `ctx_and_system`: A tuple of the context and system to use or `None`,
+///   if the executor's context and system should be used
+/// - `no_change`: Was the expression changed?
+/// - `syscall_id`: Name of the syscall (of the atom)
+/// - `expr`: Expression used
+///
+/// ## Return Values
+///
+/// Returns the executed systemcall or if the systemcall was not applicable, the systemcall with
+/// the `expr` executed once
+async fn make_syscall<'a, 'b, 'c>(
+    executor: &mut Executor<'a, 'b, 'c>,
+    ctx_and_system: Option<(&mut ContextHandler, &mut SystemHandler)>,
+    no_change: bool,
+    syscall_id: String,
+    expr: Box<Syntax>,
+) -> Result<Syntax, InterpreterError> {
+    executor.hide_change = true;
+    let syscall: Result<SystemCallType, _> = syscall_id.as_str().try_into();
+
+    let is_contextual = ctx_and_system.is_some();
+    let (ctx, system) = ctx_and_system.unwrap_or((executor.ctx, executor.system));
+
+    let val_id = if is_contextual {
+        Syntax::Contextual(
+            ctx.get_id(),
+            system.get_id(),
+            Box::new(Syntax::Id("syscall".to_string())),
+        )
+    } else {
+        Syntax::Id("syscall".to_string())
+    };
+
+    match syscall {
+        Ok(syscall) => {
+            match system
+                .clone()
+                .do_syscall(
+                    ctx,
+                    system,
+                    executor.runner,
+                    no_change,
+                    syscall,
+                    *expr.clone(),
+                    executor.show_steps,
+                    executor.debug,
+                )
+                .await
+            {
+                Ok(Some(expr)) => Ok(expr),
+                Ok(None) => {
+                    log::trace!("{}", expr);
+                    log::trace!("{:?}", expr);
+                    Ok(Syntax::Call(
+                        Box::new(val_id),
+                        Box::new(Syntax::Tuple(
+                            Box::new(Syntax::ValAtom(syscall_id)),
+                            Box::new(executor.execute_once(*expr, false, no_change).await?),
+                        )),
+                    ))
+                }
+                Err(err) => Err(err),
+            }
+        }
+        Err(_) => {
+            log::error!("Invalid system call: {}", syscall_id);
+
+            Ok(Syntax::Call(
+                Box::new(val_id),
+                Box::new(Syntax::Tuple(Box::new(Syntax::ValAtom(syscall_id)), expr)),
+            ))
+        }
+    }
+}
+
 #[async_recursion]
 async fn make_call(
     ctx: &mut ContextHandler,
@@ -1233,21 +1351,6 @@ async fn make_call(
                     debug,
                 )
                 .await
-            }
-            ("syscall", Syntax::Tuple(box Syntax::ValAtom(id), expr)) => {
-                let syscall: Result<SystemCallType, _> = id.as_str().try_into();
-
-                match syscall {
-                    Ok(syscall) => {
-                        system
-                            .clone()
-                            .do_syscall(
-                                ctx, system, runner, no_change, syscall, *expr, show_steps, debug,
-                            )
-                            .await
-                    }
-                    Err(_) => Ok(original_expr),
-                }
             }
             _ => Ok(original_expr),
         }

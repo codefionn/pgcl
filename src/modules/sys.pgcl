@@ -62,3 +62,12 @@ export recv_channel
 ##
 asserts = syscall (@asserts, _)
 export asserts
+
+json_encode s   = syscall (@JsonEncode, s)
+json_decode obj = syscall (@JsonDecode, obj)
+json = {
+  encode: json_encode,
+  decode: json_decode,
+}
+
+export json
