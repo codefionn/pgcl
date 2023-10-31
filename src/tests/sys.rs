@@ -122,7 +122,7 @@ async fn test_typeof_intentionally_broken() {
         parse_to_str_custom(r"sys.type 2.0").await
     );
     assert_eq!(
-        Ok("@error".to_string()),
+        Ok("(@error @RestrictedSystemCall)".to_string()),
         parse_to_str_restrict(r"sys.type 2.0").await
     );
 }
@@ -130,7 +130,7 @@ async fn test_typeof_intentionally_broken() {
 #[tokio::test]
 async fn test_typeof_intentionally_broken_test_override() {
     assert_eq!(
-        Ok("@error".to_string()),
+        Ok("(@error @RestrictedSystemCall)".to_string()),
         parse_to_str_restrict_and_restrict_insecure(r"sys.type 2.0").await
     );
 }
