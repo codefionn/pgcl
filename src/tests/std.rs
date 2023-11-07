@@ -467,3 +467,23 @@ async fn test_infinite_list_matching() {
         parse_to_str("nat x = [x, x + 1] + (nat (x + 2))\n(import std).limit 4 (nat 0)",).await
     );
 }
+
+#[tokio::test]
+async fn test_left() {
+    assert_eq!(
+        Ok(format!("((1 2) 3)")),
+        parse_to_str("std.left (1 (2 3))").await
+    );
+    assert_eq!(
+        Ok(format!("(((4 1) 2) 3)")),
+        parse_to_str("std.left (4 (1 (2 3)))").await
+    );
+}
+
+#[tokio::test]
+async fn test_left_right() {
+    assert_eq!(
+        Ok(format!("((1 2) 3)")),
+        parse_to_str("std.left (std.right (1 2 3))").await
+    );
+}

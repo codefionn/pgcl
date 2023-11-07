@@ -18,6 +18,17 @@ right ((x y) z) = right (x (y z))
 right x = x
 export right
 
+##
+# Turns a right-associative expression into a left-associative expression
+#
+# ```
+# left (1 (2 3)) == ((1 2) 3)
+# ```
+##
+left (x (y z)) = left ((x y) z)
+left x = x
+export left
+
 ## 
 # Map elements in the list with the given `f` function
 ##
