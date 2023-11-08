@@ -1,5 +1,5 @@
 use async_recursion::async_recursion;
-use bigdecimal::{BigDecimal, ToPrimitive};
+use bigdecimal::ToPrimitive;
 use futures::{future::OptionFuture, StreamExt};
 use num::pow::Pow;
 use num::FromPrimitive;
@@ -893,7 +893,7 @@ impl Syntax {
             // If a contextual is in a contextual we can use just he inner contextual
             expr @ Self::Contextual(_, _, _) => expr,
             // Nothing can be done => revert to contextual
-            expr @ _ => Self::Contextual(ctx_id, system_id, Box::new(expr)),
+            expr => Self::Contextual(ctx_id, system_id, Box::new(expr)),
         }
     }
 

@@ -165,7 +165,7 @@ impl PrivateSystem {
                             Box::new(create_syscall_type(rhs, ctx.get_id(), system.get_id())),
                         )),
                     ),
-                    expr @ _ => {
+                    expr => {
                         ctx.push_error(format!("Cannot infer type from: {expr}"))
                             .await;
 
@@ -196,8 +196,8 @@ impl PrivateSystem {
             .await
             .map(|out| {
                 let status = out.status.code().unwrap_or(1);
-                let stdout = String::from_utf8(out.stdout).unwrap_or(String::new());
-                let stderr = String::from_utf8(out.stderr).unwrap_or(String::new());
+                let stdout = String::from_utf8(out.stdout).unwrap_or_default();
+                let stderr = String::from_utf8(out.stderr).unwrap_or_default();
 
                 let mut map = BTreeMap::new();
                 map.insert("status".to_string(), (Syntax::ValInt(status.into()), true));
@@ -346,7 +346,7 @@ impl PrivateSystem {
                 .recv_message(id)
                 .await
                 .map_err(|err| InterpreterError::InternalError(format!("RecvMsg: {}", err)))
-                .map(|r| Some(r)),
+                .map(Some),
             (SystemCallType::Asserts, Syntax::ValAny()) => match system.count_assertions().await {
                 Ok((len, successes, failures)) => Ok(Some(Syntax::Tuple(
                     Box::new(Syntax::Tuple(

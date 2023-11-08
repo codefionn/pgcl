@@ -1,4 +1,4 @@
-///! This module is for creating an untyped AST and creating an typed AST from it
+//! This module is for creating an untyped AST and creating an typed AST from it
 use std::collections::VecDeque;
 
 use log::warn;
@@ -179,13 +179,11 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
     }
 
     fn peek_nth(&mut self, offset: usize) -> Option<SyntaxKind> {
-        if self.buffer.len() <= offset {
-            if !self.bufferize(offset - self.buffer.len() + 1) {
-                return None;
-            }
+        if self.buffer.len() <= offset && !self.bufferize(offset - self.buffer.len() + 1) {
+            None
+        } else {
+            Some(self.buffer.get(offset)?.0)
         }
-
-        Some(self.buffer.get(offset)?.0)
     }
 
     fn next(&mut self) -> Option<(SyntaxKind, String)> {

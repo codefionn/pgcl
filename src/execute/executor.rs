@@ -250,7 +250,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 if (no_change && *old_expr == expr) || definitly_false_cnt == cases_len {
                     if let Some(default_case_expr) = new_cases
                         .into_iter()
-                        .filter(|(lhs, rhs)| *lhs == Syntax::ValAny())
+                        .filter(|(lhs, _)| *lhs == Syntax::ValAny())
                         .map(|(_, rhs)| rhs)
                         .next()
                     {
@@ -604,7 +604,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                     )
                     .await;
 
-                if (let_matches == Some(true)) {
+                if let_matches == Some(true) {
                     let mut result = (*expr).clone();
                     for (key, value) in local_ctx
                         .remove_values(&mut values_defined_here)
@@ -1054,7 +1054,7 @@ async fn unpack_params(
     }
 }
 
-const BUILTIN_MODULES: &[&'static str] = &["std", "sys", "str"];
+const BUILTIN_MODULES: &[&str] = &["std", "sys", "str"];
 
 /// Imports the specified library (including builtin libraries)
 async fn import_lib(

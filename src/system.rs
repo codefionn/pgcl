@@ -103,23 +103,21 @@ impl std::fmt::Debug for SystemActorMessage {
             Self::MarkUseSignal(signal_type, id, _) => {
                 f.write_str(format!("MarkUseSignal({:?}, {})", signal_type, id).as_str())
             }
-            Self::CollectGarbage(_) => f.write_str(format!("CollectGarbage()").as_str()),
-            Self::FinishedCollectGarbage() => {
-                f.write_str(format!("FinishedCollectGarbage()").as_str())
-            }
+            Self::CollectGarbage(_) => f.write_str("CollectGarbage()"),
+            Self::FinishedCollectGarbage() => f.write_str("FinishedCollectGarbage()"),
             Self::CreateSystem(map, _) => f.write_str(format!("CreateSystem({:?})", map).as_str()),
             Self::GetSystem(id, _) => f.write_str(format!("GetSystem({})", id).as_str()),
-            Self::CreateActor(_, _, _, _) => f.write_str(format!("CreateActor()").as_str()),
+            Self::CreateActor(_, _, _, _) => f.write_str("CreateActor()"),
             Self::GetActor(id, _) => f.write_str(format!("GetActor({})", id).as_str()),
             Self::GetActorLen(_) => f.write_str("GetActorLen()"),
-            Self::CreateMessage(_) => f.write_str(format!("CreateMessage()").as_str()),
+            Self::CreateMessage(_) => f.write_str("CreateMessage()"),
             Self::GetMessage(id, _) => f.write_str(format!("GetMessage({})", id).as_str()),
             Self::RecvMessage(id, _) => f.write_str(format!("RecvMessage({})", id).as_str()),
             Self::Exit(_) => f.write_str("Exit()"),
             Self::RealExit() => f.write_str("RealExit()"),
             Self::CreateRunner(_, _) => f.write_str("CreateRunner()"),
             Self::DropRunner(id) => f.write_str(format!("DropRunner({})", id).as_str()),
-            Self::SetLexer(_) => f.write_str(format!("SetLexer()").as_str()),
+            Self::SetLexer(_) => f.write_str("SetLexer()"),
             Self::Assert(lhs, rhs, msg, success) => {
                 if let Some(msg) = msg {
                     f.write_str(format!("RaiseAssert({lhs}, {rhs}, {msg}, {:?})", success).as_str())
@@ -214,9 +212,10 @@ impl SystemActor {
                 while running.load(Ordering::Relaxed) {
                     tokio::time::sleep(Duration::from_secs(10)).await;
                     let (tx_result, rx_result) = oneshot::channel();
-                    if let Err(_) = tx
+                    if tx
                         .send(SystemActorMessage::CollectGarbage(Some(tx_result)))
                         .await
+                        .is_err()
                     {
                         break;
                     }
@@ -341,9 +340,10 @@ impl SystemActor {
                 tokio::spawn(async move {
                     {
                         let (tx_result, rx_result) = oneshot::channel();
-                        if let Ok(_) = tx
+                        if tx
                             .send(SystemActorMessage::CollectGarbage(Some(tx_result)))
                             .await
+                            .is_ok()
                         {
                             let _ = rx_result.await;
                         }
@@ -357,9 +357,10 @@ impl SystemActor {
                         rx_result.await.unwrap() > 0
                     } {
                         let (tx_result, rx_result) = oneshot::channel();
-                        if let Ok(_) = tx
+                        if tx
                             .send(SystemActorMessage::CollectGarbage(Some(tx_result)))
                             .await
+                            .is_ok()
                         {
                             let _ = rx_result.await;
                         }
@@ -487,11 +488,7 @@ impl SystemActor {
 
         // Mark everying as not used
         for actor in self.actors.values_mut() {
-            if actor.running.load(Ordering::Relaxed) {
-                actor.used = true;
-            } else {
-                actor.used = false;
-            }
+            actor.used = actor.running.load(Ordering::Relaxed);
         }
 
         for msg in self.messages.values_mut() {
@@ -499,8 +496,7 @@ impl SystemActor {
         }
 
         let tx = self.tx.clone();
-        let runners_tx: Vec<mpsc::Sender<RunnerMessage>> =
-            self.runners.values().into_iter().cloned().collect();
+        let runners_tx: Vec<mpsc::Sender<RunnerMessage>> = self.runners.values().cloned().collect();
         let mut tx_lexer = self.tx_lexer.clone();
         let mut actors: Vec<mpsc::Sender<crate::actor::Message>> = self
             .actors
@@ -535,7 +531,7 @@ impl SystemActor {
                             let tx = tx.await;
 
                             let (result_tx, result_rx) = oneshot::channel();
-                            if let Ok(_) = tx.send(RunnerMessage::Sweep(result_tx)).await {
+                            if tx.send(RunnerMessage::Sweep(result_tx)).await.is_ok() {
                                 let _ = result_rx.await;
                             }
                         }),
@@ -628,13 +624,10 @@ impl SystemActor {
     pub async fn recv_message(&mut self, id: usize) -> Option<Syntax> {
         let rx = &mut self.messages.get_mut(&id)?.rx;
 
-        rx.recv()
-            .await
-            .map(|msg| match msg {
-                actor::Message::Signal(expr) => Some(expr),
-                _ => None,
-            })
-            .flatten()
+        rx.recv().await.and_then(|msg| match msg {
+            actor::Message::Signal(expr) => Some(expr),
+            _ => None,
+        })
     }
 
     pub fn get_message_sender(&self, id: usize) -> Option<mpsc::Sender<crate::actor::Message>> {
@@ -736,10 +729,7 @@ impl SystemHandler {
 
         get_system.await.ok()?;
 
-        match rx.await.ok()? {
-            Some(_) => Some(result),
-            None => None,
-        }
+        rx.await.ok()?.map(|_| result)
     }
 
     pub async fn get_expr_for_syscall(&mut self, syscall: SystemCallType) -> Option<Syntax> {
@@ -944,7 +934,7 @@ impl SystemHandler {
         let (tx, rx) = oneshot::channel();
         match self.system.send(SystemActorMessage::CountAsserts(tx)).await {
             Ok(()) => rx.await.map_err(|_| InterpreterError::UnknownError()),
-            Err(err) => Err(InterpreterError::UnknownError()),
+            Err(_) => Err(InterpreterError::UnknownError()),
         }
     }
 }

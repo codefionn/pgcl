@@ -1,6 +1,6 @@
-///! This module is for transforming a PGCL code/line into tokens
+//! This module is for transforming a PGCL code/line into tokens
 use logos::Logos;
-use num::{BigInt, Num};
+use num::Num;
 
 use crate::{errors::LexerError, parser::SyntaxKind};
 
@@ -232,7 +232,7 @@ impl TryInto<SyntaxKind> for Token {
             Token::Str(_) => Ok(SyntaxKind::Str),
             Token::Rg(_) => Ok(SyntaxKind::Rg),
             Token::NewLine => Ok(SyntaxKind::NewLine),
-            tok @ _ => Err(LexerError::UnexpectedToken(tok)),
+            tok => Err(LexerError::UnexpectedToken(tok)),
         }
     }
 }

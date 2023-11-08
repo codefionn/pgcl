@@ -191,8 +191,7 @@ impl PrivateContext {
             &self
                 .globals
                 .values()
-                .into_iter()
-                .chain(self.values.values().into_iter().flatten())
+                .chain(self.values.values().flatten())
                 .collect::<Vec<&Syntax>>(),
         )
         .await;
@@ -228,11 +227,9 @@ async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
     let args_len = fns[0].0.len();
     let arg_name = {
         let mut dont_use_varnames: HashSet<&String> = HashSet::new();
-        for i in 0..fns.len() {
+        for (lhs, rhs) in fns {
             let params_vars: HashSet<&String> = join_all(
-                fns[i]
-                    .0
-                    .iter()
+                lhs.iter()
                     .map(|param| async move { param.get_args().await }),
             )
             .await
@@ -242,7 +239,7 @@ async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
                 result
             });
 
-            dont_use_varnames.extend(fns[i].1.get_args().await.difference(&params_vars));
+            dont_use_varnames.extend(rhs.get_args().await.difference(&params_vars));
         }
 
         let mut params_vars: Vec<HashSet<&String>> =
