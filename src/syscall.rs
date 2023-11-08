@@ -382,7 +382,6 @@ impl PrivateSystem {
                                 ext_parse::json::DecodeError::ExpectedEnd => "ExpectedEnd",
                                 ext_parse::json::DecodeError::NumberTooBig => "NumberTooBig",
                                 ext_parse::json::DecodeError::UnexpectedEnd => "UnexpectedEnd",
-                                ext_parse::json::DecodeError::ExpectedComma => "ExpectedComma",
                                 ext_parse::json::DecodeError::ExpectedString => "ExpectedString",
                                 ext_parse::json::DecodeError::ExpectedFraction => {
                                     "ExpectedFraction"

@@ -205,7 +205,6 @@ pub fn encode_rec(
 pub enum DecodeError {
     UnexpectedCharacter,
     UnexpectedEnd,
-    ExpectedComma,
     ExpectedValidJSONDataType,
     ExpectedString,
     ExpectedValueSeparator,
@@ -342,6 +341,10 @@ fn eat_number<'a>(
                 let digit: i32 = digit.to_string().parse::<i32>().unwrap();
                 result = result.checked_add(digit).ok_or(DecodeError::NumberTooBig)?;
                 digits += 1;
+            }
+
+            if digits == 0 {
+                return Err(DecodeError::ExpectedExponent);
             }
 
             return Ok(result);
