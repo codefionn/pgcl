@@ -11,7 +11,6 @@ use crate::{execute::Syntax, lexer::Token, rational::BigRational};
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum EncodeError {
-    NotImplemented,
     ReachedDepthLimit,
     UnexpectedExpr(Syntax),
 }

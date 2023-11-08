@@ -360,10 +360,6 @@ impl PrivateSystem {
             (SystemCallType::JsonEncode, expr) => match ext_parse::json::encode(expr.clone()) {
                 Ok(result) => Ok(Some(Syntax::ValStr(result))),
                 Err(ext_parse::json::EncodeError::UnexpectedExpr(_)) => Ok(None),
-                Err(ext_parse::json::EncodeError::NotImplemented) => Ok(Some(Syntax::Call(
-                    Box::new(Syntax::ValStr("error".to_string())),
-                    Box::new(Syntax::ValStr("NotImplemented".to_string())),
-                ))),
                 Err(ext_parse::json::EncodeError::ReachedDepthLimit) => Ok(Some(Syntax::Call(
                     Box::new(Syntax::ValStr("error".to_string())),
                     Box::new(Syntax::ValStr("ReachedDepthLimit".to_string())),
