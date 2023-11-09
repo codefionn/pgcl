@@ -237,16 +237,19 @@ impl TryInto<SyntaxKind> for Token {
     }
 }
 
+/// Converts a decimal number into BigRational
 #[inline]
 fn dec_to_big_rational(num: &str) -> num::BigRational {
     num.parse().unwrap()
 }
 
+/// Converts a hexadecimal number into BigRational
 #[inline]
 fn hex_to_big_rational(num: &str) -> Result<num::BigRational, <Token as Logos>::Error> {
     num::BigRational::from_str_radix(&num[2..], 16).map_err(|_| LexerError::NumberTooBig())
 }
 
+/// Parse a string token into an actual string
 #[inline]
 fn parse_string(mystr: &str) -> Result<String, LexerError> {
     let mystr = &mystr[1..mystr.len() - 1];
@@ -290,6 +293,7 @@ fn parse_string(mystr: &str) -> Result<String, LexerError> {
     Ok(result)
 }
 
+/// Evaluate whether the given regex is correct
 #[inline]
 fn parse_re(re: &str) -> Result<String, LexerError> {
     if re.is_empty() {

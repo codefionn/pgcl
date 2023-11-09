@@ -18,6 +18,7 @@ use crate::{
     VerboseLevel,
 };
 
+/// Messages for communicating with actors
 pub enum Message {
     Signal(Syntax),
     Wakeup(),
@@ -45,6 +46,7 @@ struct Actor {
 }
 
 impl Actor {
+    /// Execute the actor
     async fn run_actor(mut self) {
         let mut runner = Runner::new(&mut self.system).await.unwrap();
         let executor = RwLock::new(Executor::new(
@@ -122,6 +124,7 @@ impl Actor {
     }
 }
 
+/// Create an actor
 pub async fn create_actor(
     ctx: ContextHandler,
     system: SystemHandler,

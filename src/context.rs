@@ -208,7 +208,15 @@ impl PrivateContext {
     }
 }
 
-enum ComparisonResult {
+/// Distinguish between comparisons, which have follow up comparisons, comparisons which are true
+/// and maybe false and those which are definitely false.
+///
+/// The *definitely false* case is important for the language, because an comparison in this
+/// language is executed as long as it is not true or the sub-expressions cannot be executed
+/// further (the last result is no different than the current one). The definitely false case
+/// prevents infinite recursion/execution, because it communicates, that further execution would
+/// also only result in a wrong result.
+pub enum ComparisonResult {
     Continue(Vec<(Syntax, Syntax)>),
     Matched(bool),
     DefinitlyFalse(),
@@ -223,6 +231,13 @@ impl From<Option<bool>> for ComparisonResult {
     }
 }
 
+/// Create a single expression from a multi-function expression.
+///
+/// ## Arguments
+///
+/// - `name`: Name of the function
+/// - `fns`: Slice of the different function declarations. The first value of the tuple are the
+///   function parameters (with patterns matching). The second value is the function body.
 async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
     let args_len = fns[0].0.len();
     let arg_name = {

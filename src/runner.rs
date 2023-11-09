@@ -3,13 +3,16 @@ use tokio::sync::{mpsc, oneshot};
 use crate::{context::ContextHandler, execute::Syntax, gc::mark_used, system::SystemHandler};
 
 pub enum RunnerMessage {
+    // Mark phase of the mark-and-sweep GC
     Mark(
         /* gc_even: */ bool,
         /* result: */ oneshot::Sender<()>,
     ),
+    // Sweep phase of the mark-and-sweep GC
     Sweep(/* result: */ oneshot::Sender<()>),
 }
 
+/// A runner is for handling system messages for running code like GC
 pub struct Runner {
     id: usize,
     rx: mpsc::Receiver<RunnerMessage>,
@@ -28,6 +31,7 @@ impl Runner {
         })
     }
 
+    /// Handle system messages. If there are no messages => don't block execution.
     pub async fn handle(
         &mut self,
         ctx: Option<&mut ContextHandler>,
