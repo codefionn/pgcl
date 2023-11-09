@@ -169,7 +169,7 @@ fn int_to_flt(x: num::BigInt) -> BigRational {
 impl Syntax {
     /// This method reduces the function with very little outside information.
     ///
-    /// Should be used for optimizing an expressing before evaluating it.
+    /// Should be used for optimizing/normalizing an expressing before evaluating it.
     #[async_recursion]
     pub async fn reduce(self) -> Self {
         match self {
@@ -831,6 +831,12 @@ impl Syntax {
         }
     }
 
+    /// Function for reducing a contextual
+    ///
+    /// ## Arguments
+    ///
+    /// - `ctx_id`: The context id of the contextual
+    /// - `system_id`: The system id of the contextual
     async fn reduce_contextual(self, ctx_id: usize, system_id: usize) -> Self {
         match self {
             expr @ (Self::ValAny()
@@ -897,6 +903,7 @@ impl Syntax {
         }
     }
 
+    /// Reduce the expression until it cannot be reduced anymore
     pub async fn reduce_all(self) -> Self {
         let mut expr = self;
         loop {
@@ -911,6 +918,7 @@ impl Syntax {
         expr
     }
 
+    /// Replace all variables (identifiers) with the value `key` with the expression `value`.
     #[async_recursion]
     pub async fn replace_args(self, key: &String, value: &Syntax) -> Syntax {
         match self {
@@ -1074,7 +1082,7 @@ impl Syntax {
         }
     }
 
-    /// ## Return
+    /// ## Return value
     ///
     /// Returns (identifiers, containing expresions)
     fn get_one_arg<'a>(&'a self) -> (Vec<&'a String>, Vec<&'a Syntax>) {
@@ -1171,50 +1179,23 @@ impl Syntax {
     }
 
     pub fn exprs<'a>(&'a self) -> Vec<&'a Syntax> {
-        match self {
-            Self::Id(id) => vec![],
-            Self::Program(expr) => expr.iter().collect(),
-            Self::Lambda(id, box expr) => vec![expr],
-            Self::Call(box lhs, box rhs)
-            | Self::Asg(box lhs, box rhs)
-            | Self::Tuple(box lhs, box rhs)
-            | Self::BiOp(_, box lhs, box rhs) => vec![lhs, rhs],
-            Self::Let((box lhs, box rhs), box expr) => vec![lhs, rhs, expr],
-            Self::If(box cond, box expr_true, box expr_false) => {
-                vec![cond, expr_true, expr_false]
+        let mut broadsearch: VecDeque<&'a Syntax> = VecDeque::new();
+        let mut result: Vec<&Syntax> = Vec::new();
+        broadsearch.push_front(self);
+
+        // Cache if expression already processed
+        let mut searched: HashSet<&Syntax> = HashSet::new();
+        while let Some(expr) = broadsearch.pop_front() {
+            if !searched.insert(expr) {
+                continue;
             }
-            Self::IfLet(asgs, box expr_true, box expr_false) => asgs
-                .iter()
-                .map(|(lhs, rhs)| vec![lhs, rhs])
-                .flatten()
-                .chain([expr_true, expr_false].into_iter())
-                .collect(),
-            Self::Match(box expr, cases) => cases
-                .iter()
-                .map(|(lhs, rhs)| vec![lhs, rhs])
-                .flatten()
-                .chain([expr].into_iter())
-                .collect(),
-            Self::UnexpectedArguments()
-            | Self::ValAny()
-            | Self::ValInt(_)
-            | Self::ValFlt(_)
-            | Self::ValStr(_)
-            | Self::ValRg(_)
-            | Self::ValAtom(_) => vec![],
-            Self::Lst(lst) => lst.iter().collect(),
-            Self::LstMatch(lst) => lst.iter().collect(),
-            Self::Map(map) => map.iter().map(|e| &e.1 .0).collect(),
-            Self::MapMatch(map) => map.iter().filter_map(|e| e.2.as_ref()).collect(),
-            Self::ExplicitExpr(expr) => vec![expr],
-            Self::Pipe(expr) => vec![expr],
-            Self::Context(_, _, _) => vec![],
-            Self::Contextual(_, _, _) => vec![],
-            Self::Signal(_, _) => vec![],
-            Self::FnOp(_) => vec![],
-            Self::UnOp(UnOpType::OpImmediate, expr) => vec![expr],
-            Self::EmptyTuple() => vec![],
+
+            let (_, exprs) = expr.get_one_arg();
+            result.extend(exprs.iter());
+            broadsearch.extend(exprs.iter());
         }
+
+        result
     }
 
     /// Evaluate, if both statements are equal with type-coercion
