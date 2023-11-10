@@ -476,3 +476,37 @@ fn test_std_stdin() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_str_syscall_stdin() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.pipe_stdin("./tests/str_syscall.pgcl")
+        .unwrap()
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"true\nfalse\n").unwrap());
+
+    Ok(())
+}
+
+#[test]
+fn test_str_syscall() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.arg("./tests/str_syscall.pgcl")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"true\nfalse\n").unwrap());
+
+    Ok(())
+}
+
+#[test]
+fn test_str_import() -> anyhow::Result<()> {
+    let mut cmd = Command::cargo_bin("pgcl")?;
+    cmd.write_stdin("import \"./tests/str_syscall.pgcl\"")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"true\nfalse\n").unwrap());
+
+    Ok(())
+}

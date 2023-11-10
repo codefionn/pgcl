@@ -1,0 +1,25 @@
+#!/usr/bin/env pgcl
+
+# This example tries to show how to use strings and regular expressions in pgcl.
+
+sys = import sys
+
+bool_to_str @true  = "true"
+bool_to_str @false = "false"
+bool_to_str _      = "error"
+
+is_alphanumeric r/^[a-zA-Z0-9]+$/ = @true
+is_alphanumeric _                 = @false
+
+debug_assert (
+  is_alphanumeric "test",
+  @true
+)
+debug_assert (
+  is_alphanumeric ".",
+  @false
+)
+
+is_alphanumeric "test"
+sys.println (bool_to_str (is_alphanumeric "test"))
+sys.println (bool_to_str (is_alphanumeric "."))

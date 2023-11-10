@@ -265,6 +265,18 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
             Syntax::Call(
                 box Syntax::Contextual(ctx_id, system_id, box Syntax::Id(id)),
                 box Syntax::Tuple(box Syntax::ValAtom(syscall_id), expr),
+            ) if id == "syscall"
+                && ctx_id == self.get_ctx().get_id()
+                && system_id == self.get_system().get_id() =>
+            {
+                Ok(Syntax::Call(
+                    Box::new(Syntax::Id(id)),
+                    Box::new(Syntax::Tuple(Box::new(Syntax::ValAtom(syscall_id)), expr)),
+                ))
+            }
+            Syntax::Call(
+                box Syntax::Contextual(ctx_id, system_id, box Syntax::Id(id)),
+                box Syntax::Tuple(box Syntax::ValAtom(syscall_id), expr),
             ) if id == "syscall" => {
                 let mut ctx = self
                     .ctx
@@ -422,6 +434,11 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 result*/
                 Ok(fn_expr.replace_args(&id, &expr).await)
             }
+            Syntax::Call(box Syntax::Contextual(ctx_id, system_id, box Syntax::Id(id)), rhs)
+                if ctx_id == self.get_ctx().get_id() && system_id == self.get_system().get_id() =>
+            {
+                Ok(Syntax::Call(Box::new(Syntax::Id(id)), rhs))
+            }
             Syntax::Call(box Syntax::Contextual(ctx_id, system_id, box Syntax::Id(id)), rhs) => {
                 self.hide_change = true;
 
@@ -462,6 +479,11 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                         .await?,
                     ),
                 ))
+            }
+            Syntax::Call(box Syntax::Contextual(ctx_id, system_id, lhs), rhs)
+                if ctx_id == self.get_ctx().get_id() && system_id == self.get_system().get_id() =>
+            {
+                Ok(Syntax::Call(lhs, rhs))
             }
             Syntax::Call(box Syntax::Contextual(ctx_id, system_id, lhs), rhs) => {
                 self.hide_change = true;
