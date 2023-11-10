@@ -874,6 +874,7 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
         let mut expr = expr;
         let mut old = expr.clone();
         let mut haschanged = true;
+        let mut printed_last_statement = false;
         loop {
             self.hide_change = false;
 
@@ -888,6 +889,13 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 if haschanged {
                     haschanged = false;
                 } else {
+                    if !printed_last_statement
+                        && self.show_steps >= VerboseLevel::Statements
+                        && expr != Syntax::ValAny()
+                    {
+                        println!("{}", expr);
+                    }
+
                     break;
                 }
             } else {
@@ -901,6 +909,9 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 && self.show_steps >= VerboseLevel::Statements
             {
                 println!("{}", expr);
+                printed_last_statement = true;
+            } else {
+                printed_last_statement = false;
             }
 
             #[cfg(debug_assertions)]
