@@ -522,28 +522,37 @@ impl<I: Iterator<Item = (SyntaxKind, String)>> Parser<I> {
                     }
 
                     self.skip_newlines();
-
+                    self.tuple.push(false);
                     if self.peek() == Some(SyntaxKind::OpMatchCase) {
-                        self.next();
+                        self.next(); // eat  '=>'
                         self.skip_newlines();
                         self.parse_expr(false);
-                        self.skip_newlines();
                     } else {
                         self.errors.push("Expected '=>' case operator".to_string());
                     }
+                    self.tuple.pop();
 
-                    if self.peek() == Some(SyntaxKind::OpComma) {
-                        self.next();
-                        self.skip_newlines();
-                    } else {
-                        break;
+                    self.skip_newlines();
+                    match self.peek() {
+                        Some(SyntaxKind::OpComma) => {
+                            self.next();
+                            self.skip_newlines();
+                        }
+                        _ => {
+                            break;
+                        }
                     }
                 }
 
-                if self.peek() == Some(SyntaxKind::Semicolon) {
-                    self.next();
-                } else {
-                    self.errors.push("Expected semicolon ';'".to_string());
+                match self.peek() {
+                    Some(SyntaxKind::Semicolon) => {
+                        self.next();
+                    }
+                    Some(SyntaxKind::ParenRight) => {}
+                    peeked => {
+                        self.errors
+                            .push(format!("Expected semicolon ';' or ')' not {:?}", peeked));
+                    }
                 }
 
                 self.builder.finish_node();
