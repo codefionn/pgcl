@@ -884,7 +884,10 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
             expr @ Syntax::Signal(_, _) => Ok(expr),
             expr @ Syntax::FnOp(_) => Ok(expr),
             expr @ Syntax::EmptyTuple() => Ok(expr),
-            Syntax::UnOp(UnOpType::OpImmediate, expr) => Ok(*expr),
+            Syntax::UnOp(UnOpType::OpImmediate, expr) => {
+                let expr = self.execute(*expr, first).await?;
+                Ok(expr)
+            }
         }?;
 
         Ok(expr)
