@@ -1,5 +1,5 @@
 # Natural numbers
-{ right } = import std
+{ right } = $ import std
 
 add x (@succ y) = add (@succ x) y
 add x @zero     = x

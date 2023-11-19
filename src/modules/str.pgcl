@@ -9,3 +9,12 @@ export join
 
 len = std.len
 export len
+
+split _ "" = []
+split _ [] = []
+split n s  = let lhs = [join "" (std.limit n s)] in (match (std.offset n s) then
+  [] => lhs,
+  "" => lhs,
+  rhs => lhs + split n (join rhs)
+)
+export split

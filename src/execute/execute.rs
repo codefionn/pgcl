@@ -116,7 +116,6 @@ pub enum Syntax {
     /// The contained regex is asserted to be correct at anywhere this is created
     ValRg(/* regex: */ String),
     Signal(SignalType, usize),
-    UnexpectedArguments(),
 }
 
 impl Syntax {
@@ -126,23 +125,35 @@ impl Syntax {
             _ => false,
         }
     }
-}
 
-impl Syntax {
     fn is_val_flt(&self) -> bool {
         match self {
             Self::ValFlt(_) => true,
             _ => false,
         }
     }
-}
 
-impl Syntax {
     fn is_val_str(&self) -> bool {
         match self {
             Self::ValStr(_) => true,
             _ => false,
         }
+    }
+
+    pub fn can_match_anything(&self) -> bool {
+        match self {
+            Syntax::Id(_)
+            | Syntax::ValAny()
+            | Syntax::ExplicitExpr(box Syntax::Id(_) | box Syntax::ValAny()) => true,
+            _ => false,
+        }
+    }
+
+    pub fn unexpected_arguments() -> Self {
+        Self::Call(
+            Box::new(Self::ValAtom("error".to_string())),
+            Box::new(Self::ValAtom("UnexpectedArguments".to_string())),
+        )
     }
 }
 
@@ -363,7 +374,7 @@ impl Syntax {
                     let y: u64 = (-y).try_into().unwrap();
                     Self::ValFlt(BigRational::new(1, x.pow(y)))
                 } else {
-                    Self::UnexpectedArguments()
+                    Self::unexpected_arguments()
                 }
             }
             Self::BiOp(BiOpType::OpPow, box Self::ValFlt(x), box Self::ValInt(y)) => {
@@ -823,7 +834,6 @@ impl Syntax {
                 expr.reduce_contextual(ctx_id, system_id).await
             }
             expr @ Self::Context(_, _, _) => expr,
-            Self::UnexpectedArguments() => self,
             Self::UnOp(UnOpType::OpImmediate, expr) => {
                 Self::UnOp(UnOpType::OpImmediate, Box::new(expr.reduce().await))
             }
@@ -921,7 +931,7 @@ impl Syntax {
     /// Replace all variables (identifiers) with the value `key` with the expression `value`.
     #[async_recursion]
     pub async fn replace_args(self, key: &String, value: &Syntax) -> Syntax {
-        match self {
+        match self.reduce_all().await {
             Self::Program(exprs) => Self::Program(
                 futures::stream::iter(
                     exprs
@@ -933,11 +943,11 @@ impl Syntax {
                 .await,
             ),
             Self::Id(id) if *id == *key => value.clone(),
-            Self::Id(_) => self,
+            expr @ Self::Id(_) => expr,
             Self::Lambda(id, expr) if *id != *key => {
                 Self::Lambda(id, Box::new(expr.replace_args(key, value).await))
             }
-            Self::Lambda(_, _) => self,
+            expr @ Self::Lambda(_, _) => expr,
             Self::Call(lhs, rhs) => {
                 let lhs = lhs.replace_args(key, value).await;
                 let rhs = rhs.replace_args(key, value).await;
@@ -1002,24 +1012,26 @@ impl Syntax {
                 }
             }
             Self::Match(expr, cases) => {
-                let cases: Vec<(Syntax, Syntax)> = futures::stream::iter(
-                    cases
-                        .into_iter()
-                        .map(|(lhs, rhs)| async { (lhs, rhs.replace_args(key, value).await) }),
-                )
-                .buffered(4)
-                .collect()
-                .await;
+                let cases: Vec<(Syntax, Syntax)> =
+                    futures::stream::iter(cases.into_iter().map(|(lhs, rhs)| async {
+                        if lhs.get_args().await.contains(key) {
+                            (lhs, rhs)
+                        } else {
+                            (lhs, rhs.replace_args(key, value).await)
+                        }
+                    }))
+                    .buffered(4)
+                    .collect()
+                    .await;
 
                 Self::Match(Box::new(expr.replace_args(key, value).await), cases)
             }
-            Self::UnexpectedArguments() => self,
-            Self::ValAny() => self,
-            Self::ValInt(_) => self,
-            Self::ValFlt(_) => self,
-            Self::ValStr(_) => self,
-            Self::ValRg(_) => self,
-            Self::ValAtom(_) => self,
+            expr @ (Self::ValAny()
+            | Self::ValInt(_)
+            | Self::ValFlt(_)
+            | Self::ValStr(_)
+            | Self::ValRg(_)
+            | Self::ValAtom(_)) => expr,
             Self::Lst(lst) => Self::Lst(
                 futures::stream::iter(
                     lst.into_iter()
@@ -1115,8 +1127,7 @@ impl Syntax {
                     .chain([expr].into_iter())
                     .collect(),
             ),
-            Self::UnexpectedArguments()
-            | Self::ValAny()
+            Self::ValAny()
             | Self::ValInt(_)
             | Self::ValFlt(_)
             | Self::ValStr(_)
@@ -1196,6 +1207,31 @@ impl Syntax {
         }
 
         result
+    }
+
+    pub fn has_id_or_lambda(&self) -> bool {
+        let mut broadsearch: VecDeque<&Syntax> = VecDeque::new();
+        broadsearch.push_front(self);
+
+        let mut searched: HashSet<&Syntax> = HashSet::new();
+        while let Some(expr) = broadsearch.pop_front() {
+            if let Self::Lambda(_, _) = expr {
+                return true;
+            }
+
+            if !searched.insert(expr) {
+                continue;
+            }
+
+            let (ids, exprs) = expr.get_one_arg();
+            if !ids.is_empty() {
+                return true;
+            }
+
+            broadsearch.extend(exprs.iter());
+        }
+
+        false
     }
 
     /// Evaluate, if both statements are equal with type-coercion
@@ -1336,7 +1372,6 @@ impl std::fmt::Display for Syntax {
                 ),
                 Self::If(cond, lhs, rhs) => format!("if {cond} then {lhs} else {rhs}"),
                 Self::Id(id) => id.to_string(),
-                Self::UnexpectedArguments() => "UnexpectedArguments".to_string(),
                 Self::ValAny() => "_".to_string(),
                 Self::ValInt(x) => x.to_string(),
                 Self::ValFlt(x) => x.to_string(),

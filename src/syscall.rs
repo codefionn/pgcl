@@ -169,7 +169,7 @@ impl PrivateSystem {
                         ctx.push_error(format!("Cannot infer type from: {expr}"))
                             .await;
 
-                        Syntax::UnexpectedArguments()
+                        Syntax::unexpected_arguments()
                     }
                 }))
             }

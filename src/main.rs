@@ -82,6 +82,10 @@ pub struct Args {
     #[arg(short, long, default_value_t = false)]
     debug: bool,
 
+    /// Optimize standard library calls
+    #[arg(short, long, default_value_t = true)]
+    optimize: bool,
+
     /// Script to execute
     #[arg(value_name = "FILE")]
     file: Option<PathBuf>,

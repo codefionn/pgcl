@@ -218,6 +218,8 @@ impl PrivateContext {
 /// also only result in a wrong result.
 pub enum ComparisonResult {
     Continue(Vec<(Syntax, Syntax)>),
+    /// Turns definitly false into just false
+    ContinueJustFalse(Vec<(Syntax, Syntax)>),
     Matched(bool),
     DefinitlyFalse(),
 }
@@ -295,9 +297,51 @@ async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
         }
     };
 
-    fn build_fn_part(params: &[String], fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
-        if fns.is_empty() {
-            Syntax::UnexpectedArguments()
+    fn build_fn_part(params: &[String], fns: Vec<(Vec<Syntax>, Syntax)>) -> Syntax {
+        fn build_fn_case_match(mut args: Vec<Syntax>) -> Syntax {
+            let expr = args.pop().unwrap();
+            if args.is_empty() {
+                expr
+            } else {
+                Syntax::Tuple(Box::new(build_fn_case_match(args)), Box::new(expr))
+            }
+        }
+
+        let mut cases = Vec::new();
+        let mut has_any_case = false;
+
+        for (fn_params, fn_body) in fns {
+            if has_any_case {
+                continue;
+            }
+
+            has_any_case = fn_params.iter().all(|expr| expr.can_match_anything());
+
+            let case_match = build_fn_case_match(fn_params.into_iter().rev().collect());
+            cases.push((case_match, fn_body.clone()));
+        }
+
+        if !has_any_case {
+            cases.push((Syntax::ValAny(), Syntax::unexpected_arguments()));
+        }
+
+        fn build_match_expr(params: &[String]) -> Box<Syntax> {
+            let id_expr = Box::new(Syntax::Id(params[params.len() - 1].clone()));
+            if params.len() == 1 {
+                id_expr
+            } else {
+                Box::new(Syntax::Tuple(
+                    build_match_expr(&params[..params.len() - 1]),
+                    id_expr,
+                ))
+            }
+        }
+
+        let match_expr = build_match_expr(&params.iter().cloned().rev().collect::<Vec<String>>());
+
+        Syntax::Match(match_expr, cases)
+        /*if fns.is_empty() {
+            Syntax::unexpected_arguments()
         } else {
             let (args, body) = &fns[fns.len() - 1];
             let mut asgs = Vec::new();
@@ -310,13 +354,13 @@ async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
                 Box::new(body.clone()),
                 Box::new(build_fn_part(params, &fns[..fns.len() - 1])),
             )
-        }
+        }*/
     }
 
     fn build_fn_with_args(
         params: &[String],
         all_params: &[String],
-        fns: &[(Vec<Syntax>, Syntax)],
+        fns: Vec<(Vec<Syntax>, Syntax)>,
     ) -> Syntax {
         if params.is_empty() {
             build_fn_part(all_params, fns)
@@ -334,10 +378,8 @@ async fn build_fn(name: &str, fns: &[(Vec<Syntax>, Syntax)]) -> Syntax {
 
     let params: Vec<String> = (0..args_len).map(arg_name).collect();
 
-    let mut fns: Vec<(Vec<Syntax>, Syntax)> = fns.to_vec();
-    fns.reverse();
-
-    build_fn_with_args(&params, &params, &fns).reduce().await
+    let fns: Vec<(Vec<Syntax>, Syntax)> = fns.to_vec();
+    build_fn_with_args(&params, &params, fns).reduce().await
 }
 
 impl PartialEq for PrivateContext {
@@ -709,6 +751,7 @@ pub async fn set_values_in_context(
 ) -> Option<bool> {
     let mut comparisons: VecDeque<(Syntax, Syntax)> = Default::default();
     comparisons.push_front((lhs.clone(), rhs.clone()));
+    let mut definitely_false_just_false = false;
     while let Some((lhs, rhs)) = comparisons.pop_front() {
         match set_values_in_context_one(ctx, holder, &lhs, &rhs, values_defined_here).await {
             ComparisonResult::Matched(result) => {
@@ -716,11 +759,19 @@ pub async fn set_values_in_context(
                     return Some(false);
                 }
             }
+            ComparisonResult::ContinueJustFalse(result) => {
+                definitely_false_just_false = true;
+                comparisons.extend(result.into_iter());
+            }
             ComparisonResult::Continue(result) => {
                 comparisons.extend(result.into_iter());
             }
             ComparisonResult::DefinitlyFalse() => {
-                return None;
+                if definitely_false_just_false {
+                    return Some(false);
+                } else {
+                    return None;
+                }
             }
         }
     }
@@ -738,6 +789,9 @@ pub async fn set_values_in_context_one(
     match (lhs, rhs) {
         (Syntax::Tuple(a0, b0), Syntax::Tuple(a1, b1)) => {
             ComparisonResult::Continue(vec![(*a0.clone(), *a1.clone()), (*b0.clone(), *b1.clone())])
+        }
+        (Syntax::Context(ctx_id0, system_id0, _), Syntax::Context(ctx_id1, system_id1, _)) => {
+            ComparisonResult::Matched(ctx_id0 == ctx_id1 && system_id0 == system_id1)
         }
         (Syntax::Call(a0, b0), Syntax::Call(a1, b1)) => {
             ComparisonResult::Continue(vec![(*a0.clone(), *a1.clone()), (*b0.clone(), *b1.clone())])
@@ -1045,6 +1099,41 @@ pub async fn set_values_in_context_one(
         (Syntax::ValFlt(lhs), Syntax::ValFlt(rhs)) => (lhs == rhs).then_some(true).into(),
         (Syntax::ValStr(lhs), Syntax::ValStr(rhs)) => (lhs == rhs).then_some(true).into(),
         (Syntax::ValAtom(lhs), Syntax::ValAtom(rhs)) => (lhs == rhs).then_some(true).into(),
+        (Syntax::Lst(_), Syntax::ValStr(_))
+        | (Syntax::Lst(_), Syntax::Map(_))
+        | (Syntax::Lst(_), Syntax::ValFlt(_))
+        | (Syntax::Lst(_), Syntax::ValInt(_))
+        | (Syntax::Lst(_), Syntax::Tuple(_, _))
+        | (Syntax::ValStr(_), Syntax::Lst(_))
+        | (Syntax::ValStr(_), Syntax::Map(_))
+        | (Syntax::ValStr(_), Syntax::ValAtom(_))
+        | (Syntax::ValStr(_), Syntax::ValFlt(_))
+        | (Syntax::ValStr(_), Syntax::ValInt(_))
+        | (Syntax::ValStr(_), Syntax::Tuple(_, _))
+        | (Syntax::LstMatch(_), Syntax::ValStr(_))
+        | (Syntax::LstMatch(_), Syntax::ValFlt(_))
+        | (Syntax::LstMatch(_), Syntax::ValInt(_))
+        | (Syntax::LstMatch(_), Syntax::Map(_))
+        | (Syntax::LstMatch(_), Syntax::Tuple(_, _))
+        | (Syntax::ValAtom(_), Syntax::Lst(_))
+        | (Syntax::ValAtom(_), Syntax::ValFlt(_))
+        | (Syntax::ValAtom(_), Syntax::ValStr(_))
+        | (Syntax::ValAtom(_), Syntax::ValInt(_))
+        | (Syntax::ValAtom(_), Syntax::Map(_))
+        | (Syntax::ValAtom(_), Syntax::Tuple(_, _))
+        | (Syntax::ValFlt(_), Syntax::Lst(_))
+        | (Syntax::ValFlt(_), Syntax::ValAtom(_))
+        | (Syntax::ValFlt(_), Syntax::ValStr(_))
+        | (Syntax::ValFlt(_), Syntax::Tuple(_, _))
+        | (Syntax::ValFlt(_), Syntax::Map(_))
+        | (Syntax::ValInt(_), Syntax::ValAtom(_))
+        | (Syntax::ValInt(_), Syntax::ValStr(_))
+        | (Syntax::ValInt(_), Syntax::Lst(_))
+        | (Syntax::ValInt(_), Syntax::Map(_))
+        | (Syntax::Tuple(_, _), Syntax::ValAtom(_))
+        | (Syntax::Tuple(_, _), Syntax::ValStr(_))
+        | (Syntax::Tuple(_, _), Syntax::Lst(_))
+        | (Syntax::Tuple(_, _), Syntax::Map(_)) => ComparisonResult::DefinitlyFalse(),
         (expr0, expr1) => ComparisonResult::Matched(expr0.eval_equal(expr1).await),
     }
 }

@@ -487,3 +487,15 @@ async fn test_left_right() {
         parse_to_str("std.left (std.right (1 2 3))").await
     );
 }
+
+//#[tokio::test]
+//async fn test_str_split() {
+//    assert_eq!(
+//        Ok(format!("[\"x\"]")),
+//        parse_to_str("std.str.split 1 \"x\"").await
+//    );
+//    assert_eq!(
+//        Ok(format!("[\"x\", \"y\"]")),
+//        parse_to_str("std.str.split 1 \"xy\"").await
+//    );
+//}

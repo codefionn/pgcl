@@ -207,59 +207,70 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 }
             }
             Syntax::Match(expr, cases) => {
+                let old_expr = *expr.clone();
+                let expr = self.execute_once(*expr.clone(), false, no_change).await?;
+                let definitely_no_change = no_change && expr == old_expr;
                 let mut new_cases = Vec::new();
                 let mut definitly_false_cnt = 0;
                 let cases_len = cases.len();
+                let mut processed = 0;
                 for (case_match, case_expr) in cases {
                     if case_match == Syntax::ValAny() {
                         new_cases.push((case_match, case_expr));
-                        continue;
-                    }
-
-                    match PrivateContext::set_values_in_context(
-                        &mut local_ctx,
-                        &mut self.ctx.get_holder(),
-                        &case_match,
-                        &expr,
-                        &mut values_defined_here,
-                    )
-                    .await
-                    {
-                        Some(true) => {
-                            let mut case_expr = case_expr;
-                            for (key, value) in local_ctx
-                                .remove_values(&mut values_defined_here)
-                                .into_iter()
+                    } else {
+                        match PrivateContext::set_values_in_context(
+                            &mut local_ctx,
+                            &mut self.ctx.get_holder(),
+                            &case_match,
+                            &expr,
+                            &mut values_defined_here,
+                        )
+                        .await
+                        {
+                            Some(true)
+                                if processed == definitly_false_cnt || definitely_no_change =>
                             {
-                                case_expr = case_expr.replace_args(&key, &value).await;
-                            }
+                                let mut case_expr = case_expr;
+                                for (key, value) in local_ctx
+                                    .remove_values(&mut values_defined_here)
+                                    .into_iter()
+                                {
+                                    case_expr = case_expr.replace_args(&key, &value).await;
+                                }
 
-                            return Ok(case_expr);
+                                return Ok(case_expr);
+                            }
+                            None => {
+                                definitly_false_cnt += 1;
+                            }
+                            _ => {
+                                new_cases.push((case_match, case_expr));
+                            }
                         }
-                        None => {
-                            definitly_false_cnt += 1;
-                        }
-                        _ => {}
+
+                        local_ctx.remove_values(&mut values_defined_here);
                     }
 
-                    new_cases.push((case_match, case_expr));
+                    processed += 1;
                 }
 
-                let old_expr = expr.clone();
-                let expr = self.execute_once(*expr, false, no_change).await?;
-                if (no_change && *old_expr == expr) || definitly_false_cnt == cases_len {
-                    if let Some(default_case_expr) = new_cases
-                        .into_iter()
-                        .filter(|(lhs, _)| *lhs == Syntax::ValAny())
-                        .map(|(_, rhs)| rhs)
-                        .next()
-                    {
-                        Ok(default_case_expr)
-                    } else {
-                        Err(InterpreterError::NoMatchCaseMatched())
-                    }
-                } else {
+                if new_cases.len() != cases_len {
                     Ok(Syntax::Match(Box::new(expr), new_cases))
+                } else {
+                    if definitely_no_change || definitly_false_cnt == cases_len {
+                        if let Some(default_case_expr) = new_cases
+                            .into_iter()
+                            .filter(|(lhs, _)| *lhs == Syntax::ValAny())
+                            .map(|(_, rhs)| rhs)
+                            .next()
+                        {
+                            Ok(default_case_expr)
+                        } else {
+                            Err(InterpreterError::NoMatchCaseMatched(expr))
+                        }
+                    } else {
+                        Ok(Syntax::Match(Box::new(expr), new_cases))
+                    }
                 }
             }
             Syntax::Call(
@@ -769,12 +780,6 @@ impl<'a, 'b, 'c> Executor<'a, 'b, 'c> {
                 let rhs = self.execute_once(*rhs, false, no_change).await?;
 
                 Ok(Syntax::Tuple(Box::new(lhs), Box::new(rhs)))
-            }
-            Syntax::UnexpectedArguments() => {
-                self.ctx
-                    .push_error("Unexpected arguments".to_string())
-                    .await;
-                Ok(expr)
             }
             Syntax::Lst(lst) => {
                 let mut result = Vec::with_capacity(lst.len());

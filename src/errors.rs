@@ -1,4 +1,4 @@
-use crate::{lexer::Token, parser::SyntaxKind};
+use crate::{execute::Syntax, lexer::Token, parser::SyntaxKind};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum InterpreterError {
@@ -11,7 +11,7 @@ pub enum InterpreterError {
     UnexpectedExpressionEmpty(SyntaxKind),
     ExpectedExpression(),
     ExpectedMatchCase(),
-    NoMatchCaseMatched(),
+    NoMatchCaseMatched(Syntax),
     ExpectedRHSExpression(),
     ExpectedLHSExpression(),
     ExpectedIdentifier(),
