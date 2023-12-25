@@ -2075,6 +2075,73 @@ async fn test_regex() {
 }
 
 #[tokio::test]
+async fn test_regex_no_r() {
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            "/test/ \"test\"",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str(
+            "/^test$/ \"test\"",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@true, [\"test\"])".to_string()),
+        parse_to_str(
+            "let (/^test$/ m) = \"test\" in m",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@true, [\"test\", \"te\"])".to_string()),
+        parse_to_str(
+            "let (/^(te)st$/ m) = \"test\" in m",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@true, [\"test\", \"te\"])".to_string()),
+        parse_to_str(
+            "let (/^(te)?st$/ m) = \"test\" in m",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@true, [\"st\", @none])".to_string()),
+        parse_to_str(
+            "let (/^(te)?st$/ m) = \"st\" in m",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(@true, [\"test\", \"te\", \"e\"])".to_string()),
+        parse_to_str(
+            "let (/^(t(e))?st$/ m) = \"test\" in m",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+}
+
+#[tokio::test]
 async fn test_map_add_lst() {
     assert_eq!(
         Ok("{}".to_string()),

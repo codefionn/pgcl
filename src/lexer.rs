@@ -142,6 +142,7 @@ pub enum Token {
     // Another madness of a regex
     //#[regex(r"rg\u{0022}([^\u{0022}]|\\\u{0022})*\u{0022}", |lex| parse_re(lex.slice()))]
     #[regex(r"r/([^ /\n\r\\]|\\/|\\)+/", |lex| parse_re(lex.slice()))]
+    #[regex(r"/([^ /\n\r\\]|\\/|\\)+/", |lex| parse_re(lex.slice()))]
     Rg(String),
 
     #[token("\n\r")]
