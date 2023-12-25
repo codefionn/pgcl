@@ -934,9 +934,9 @@ pub async fn set_values_in_context_one(
                         _ => match &lst0[i + 1] {
                             Syntax::ValStr(s) if s.len() > 0 => {
                                 let s: Vec<char> = s.chars().collect();
-                                match str1.windows(s.len()).position(|x| x == s) {
-                                    Some(idx) => idx,
-                                    None => {
+                                match str1[1..].windows(s.len()).position(|x| x == s) {
+                                    Some(idx) => idx + 1,
+                                    _ => {
                                         return ComparisonResult::Matched(false);
                                     }
                                 }

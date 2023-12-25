@@ -2323,6 +2323,15 @@ async fn test_contains_string() {
         .await
     );
     assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str(
+            "if let [x:\"test\":y] = \"testy\" then x + y else @false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
         Ok("\"x\"".to_string()),
         parse_to_str(
             "if let [x:\"test\":y] = \"xtest\" then x + y else @false",
