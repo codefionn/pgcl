@@ -158,3 +158,27 @@ async fn test_json() {
         parse_to_str("sys.json.decode (sys.json.encode { test: 0 })").await
     );
 }
+
+#[tokio::test]
+async fn test_fs() {
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str("sys.fs.write \"test\" \"1\"").await
+    );
+    assert_eq!(
+        Ok("\"1\"".to_string()),
+        parse_to_str("sys.fs.read \"test\"").await
+    );
+    assert_eq!(
+        Ok("@true".to_string()),
+        parse_to_str("sys.fs.delete \"test\"").await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str("sys.fs.read \"test\"").await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str("sys.fs.delete \"test\"").await
+    );
+}

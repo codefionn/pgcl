@@ -172,6 +172,12 @@ impl From<bool> for Syntax {
     }
 }
 
+impl From<String> for Syntax {
+    fn from(value: String) -> Self {
+        Self::ValStr(value)
+    }
+}
+
 #[inline]
 fn int_to_flt(x: num::BigInt) -> BigRational {
     x.to_string().parse().unwrap()

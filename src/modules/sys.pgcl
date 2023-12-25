@@ -71,3 +71,26 @@ json = {
 }
 
 export json
+
+##
+# Write `contents` to `file`
+# @var string file
+# @var string content
+# @return @true|@false
+##
+fs_write file content = syscall (@WriteFile, (file, content))
+##
+# Read contets from `file`
+# @var string file
+# @return string|@false
+##
+fs_read  file         = syscall (@ReadFile, file)
+
+fs_delete file        = syscall (@DeleteFile, file)
+fs = {
+  write: fs_write,
+  read: fs_read,
+  delete: fs_delete,
+}
+
+export fs

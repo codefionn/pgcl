@@ -31,6 +31,9 @@ pub enum SystemCallType {
     Asserts,
     JsonEncode,
     JsonDecode,
+    ReadFile,
+    WriteFile,
+    DeleteFile,
 }
 
 impl SystemCallType {
@@ -49,6 +52,9 @@ impl SystemCallType {
             Self::Asserts => "asserts",
             Self::JsonEncode => "JsonEncode",
             Self::JsonDecode => "JsonDecode",
+            Self::ReadFile => "ReadFile",
+            Self::WriteFile => "WriteFile",
+            Self::DeleteFile => "DeleteFile",
         }
     }
 
@@ -67,6 +73,9 @@ impl SystemCallType {
             Self::Asserts,
             Self::JsonEncode,
             Self::JsonDecode,
+            Self::ReadFile,
+            Self::WriteFile,
+            Self::DeleteFile,
         ]
     }
 
@@ -401,6 +410,25 @@ impl PrivateSystem {
                             .to_string(),
                         )),
                     ))),
+                }
+            }
+            (
+                SystemCallType::WriteFile,
+                Syntax::Tuple(box Syntax::ValStr(to), box Syntax::ValStr(content)),
+            ) => match std::fs::write(to, content) {
+                std::io::Result::Ok(_) => Ok(Some(true.into())),
+                std::io::Result::Err(_) => Ok(Some(false.into())),
+            },
+            (SystemCallType::ReadFile, Syntax::ValStr(from)) => match std::fs::read(from) {
+                std::io::Result::Ok(content) => {
+                    Ok(Some(String::from_utf8_lossy(&content).to_string().into()))
+                }
+                std::io::Result::Err(_) => Ok(Some(false.into())),
+            },
+            (SystemCallType::DeleteFile, Syntax::ValStr(path)) => {
+                match std::fs::remove_file(path) {
+                    std::io::Result::Ok(_) => Ok(Some(true.into())),
+                    std::io::Result::Err(_) => Ok(Some(false.into())),
                 }
             }
             (_, _) => Ok(None),
