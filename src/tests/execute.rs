@@ -2310,3 +2310,61 @@ async fn test_infinite_match_map() {
         .await
     );
 }
+
+#[tokio::test]
+async fn test_contains_string() {
+    assert_eq!(
+        Ok("\"xy\"".to_string()),
+        parse_to_str(
+            "if let [x:\"test\":y] = \"xtesty\" then x + y else @false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("\"x\"".to_string()),
+        parse_to_str(
+            "if let [x:\"test\":y] = \"xtest\" then x + y else @false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("\"x01y\"".to_string()),
+        parse_to_str(
+            "if let [x:\"test\":y] = \"x0test1y\" then x + y else @false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("(\"x0\", \"1y\")".to_string()),
+        parse_to_str(
+            "if let [x:\"test\":y] = \"x0test1y\" then (x, y) else @false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("@false".to_string()),
+        parse_to_str(
+            "if let [x:\"test\":y] = \"x0tes1y\" then x + y else @false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("((\"x\", \"0\"), \"1y\")".to_string()),
+        parse_to_str(
+            "if let [z:x:\"test\":y] = \"x0test1y\" then (z, x, y) else @false",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+}
