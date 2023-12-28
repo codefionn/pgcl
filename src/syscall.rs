@@ -417,18 +417,27 @@ impl PrivateSystem {
                 Syntax::Tuple(box Syntax::ValStr(to), box Syntax::ValStr(content)),
             ) => match std::fs::write(to, content) {
                 std::io::Result::Ok(_) => Ok(Some(true.into())),
-                std::io::Result::Err(_) => Ok(Some(false.into())),
+                std::io::Result::Err(err) => Ok(Some(Syntax::Call(
+                    Box::new(Syntax::ValAtom("error".to_string())),
+                    Box::new(Syntax::ValStr(err.to_string())),
+                ))),
             },
             (SystemCallType::ReadFile, Syntax::ValStr(from)) => match std::fs::read(from) {
                 std::io::Result::Ok(content) => {
                     Ok(Some(String::from_utf8_lossy(&content).to_string().into()))
                 }
-                std::io::Result::Err(_) => Ok(Some(false.into())),
+                std::io::Result::Err(err) => Ok(Some(Syntax::Call(
+                    Box::new(Syntax::ValAtom("error".to_string())),
+                    Box::new(Syntax::ValStr(err.to_string())),
+                ))),
             },
             (SystemCallType::DeleteFile, Syntax::ValStr(path)) => {
                 match std::fs::remove_file(path) {
                     std::io::Result::Ok(_) => Ok(Some(true.into())),
-                    std::io::Result::Err(_) => Ok(Some(false.into())),
+                    std::io::Result::Err(err) => Ok(Some(Syntax::Call(
+                        Box::new(Syntax::ValAtom("error".to_string())),
+                        Box::new(Syntax::ValStr(err.to_string())),
+                    ))),
                 }
             }
             (_, _) => Ok(None),

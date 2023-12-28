@@ -175,10 +175,10 @@ async fn test_fs() {
     );
     assert_eq!(
         Ok("@false".to_string()),
-        parse_to_str("sys.fs.read \"test\"").await
+        parse_to_str("if let (@error _) = sys.fs.read \"test\" then @false else @true").await
     );
     assert_eq!(
         Ok("@false".to_string()),
-        parse_to_str("sys.fs.delete \"test\"").await
+        parse_to_str("if let (@error _) = sys.fs.delete \"test\" then @false else @true").await
     );
 }
