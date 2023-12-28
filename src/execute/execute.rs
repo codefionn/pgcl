@@ -1,4 +1,5 @@
 use async_recursion::async_recursion;
+use bigdecimal::num_bigint::Sign;
 use bigdecimal::ToPrimitive;
 use futures::{future::OptionFuture, StreamExt};
 use num::pow::Pow;
@@ -154,6 +155,17 @@ impl Syntax {
             Box::new(Self::ValAtom("error".to_string())),
             Box::new(Self::ValAtom("UnexpectedArguments".to_string())),
         )
+    }
+
+    fn count_matches<'a>(&'a self, fn_match: impl Fn(&'a Syntax) -> Option<&'a Syntax>) -> usize {
+        let mut result = 0;
+        let mut last = self;
+        while let Some(expr) = fn_match(last) {
+            result += 1;
+            last = expr;
+        }
+
+        result
     }
 }
 
@@ -775,6 +787,33 @@ impl Syntax {
             Self::BiOp(BiOpType::OpNeq, _, box Self::ValAny()) => {
                 Self::ValAtom("false".to_string())
             }
+            Self::BiOp(BiOpType::OpPeriod, box Self::Tuple(lhs, rhs), box Self::ValInt(n))
+                if n.sign() != Sign::Minus && n.to_usize().is_some() =>
+            {
+                let nnum = n.to_usize().unwrap();
+                let matches = lhs.count_matches(|expr| match expr {
+                    Self::Tuple(lhs, _) => Some(lhs),
+                    Self::Contextual(_, _, box Self::Tuple(lhs, _)) => Some(lhs),
+                    _ => None,
+                });
+
+                if matches + 1 == nnum {
+                    *rhs
+                } else if nnum == 0 && matches == 0 {
+                    *lhs
+                } else if matches >= nnum {
+                    Self::BiOp(BiOpType::OpPeriod, lhs, Box::new(Self::ValInt(n)))
+                } else {
+                    Self::BiOp(
+                        BiOpType::OpPeriod,
+                        Box::new(Self::Tuple(lhs, rhs)),
+                        Box::new(Self::ValInt(n)),
+                    )
+                }
+            }
+            Self::BiOp(op, a, b) => {
+                Self::BiOp(op, Box::new(a.reduce().await), Box::new(b.reduce().await))
+            }
             Self::Call(box Self::Lambda(id, box Self::Id(id_in_expr)), expr)
                 if id == id_in_expr =>
             {
@@ -794,9 +833,6 @@ impl Syntax {
                 Box::new(lhs.reduce().await),
                 Box::new(rhs.reduce().await),
             ),
-            Self::BiOp(op, a, b) => {
-                Self::BiOp(op, Box::new(a.reduce().await), Box::new(b.reduce().await))
-            }
             Self::Lst(lst) => Self::Lst(
                 futures::stream::iter(lst.into_iter().map(|expr| async { expr.reduce().await }))
                     .buffered(4)

@@ -2377,3 +2377,34 @@ async fn test_contains_string() {
         .await
     );
 }
+
+#[tokio::test]
+async fn test_tuple_period() {
+    assert_eq!(
+        Ok("0".to_string()),
+        parse_to_str(
+            "(0, 1).0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("1".to_string()),
+        parse_to_str(
+            "(1, 0).0",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+    assert_eq!(
+        Ok("0".to_string()),
+        parse_to_str(
+            "(1, 0).1",
+            &mut ContextHandler::async_default().await,
+            &mut SystemHandler::default()
+        )
+        .await
+    );
+}

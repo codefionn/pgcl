@@ -100,7 +100,7 @@ pub enum Token {
     #[token(";")]
     Semicolon,
 
-    #[regex(r"[0-9]*\.[0-9]+", |lex| lex.slice().to_string())]
+    #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().to_string())]
     Flt(String),
 
     #[regex(r"[0-9]+", |lex| dec_to_big_rational(lex.slice()))]
