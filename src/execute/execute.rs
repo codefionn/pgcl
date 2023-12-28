@@ -889,6 +889,7 @@ impl Syntax {
     ///
     /// - `ctx_id`: The context id of the contextual
     /// - `system_id`: The system id of the contextual
+    #[async_recursion]
     async fn reduce_contextual(self, ctx_id: usize, system_id: usize) -> Self {
         match self {
             expr @ (Self::ValAny()
@@ -927,7 +928,10 @@ impl Syntax {
             Self::BiOp(BiOpType::OpPeriod, lhs, rhs) => Self::BiOp(
                 BiOpType::OpPeriod,
                 Box::new(Self::Contextual(ctx_id, system_id, lhs).reduce().await),
-                Box::new(rhs.reduce().await),
+                Box::new(match rhs.reduce().await {
+                    id @ Self::Id(_) => id,
+                    expr => expr.reduce_contextual(ctx_id, system_id).await,
+                }),
             ),
             Self::BiOp(op, lhs, rhs) => Self::BiOp(
                 op,
