@@ -1,10 +1,10 @@
-# PGCL
+# pgcl
 
 ```
 This interpreter and programming language are subject to huge change.
 ```
 
-PGCL - *pretty good calculator language* - is a language for basic
+pgcl - *pretty good calculator language* - is a language for basic
 calculations. Designed for (*my*) rapid success doing calculations. It is also
 an educational tool, which tries to visualize how functional programming
 languages *could* work.
@@ -47,7 +47,7 @@ The interpreter uses
 * [ ] Save memory with more shared memory between expressions in context
 * [ ] Reduce problems with stack in Rust-code (*recursion*)
 * [x] Regular expression support
-* [ ] Simple communication between PGCL instances
+* [ ] Simple communication between pgcl instances
 * [x] Fix issues with matching infinite lists (empty list with inifinitly growing list)
 
 ## Structures
