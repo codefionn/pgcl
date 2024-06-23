@@ -86,6 +86,13 @@ The interpreter uses
   add @zero y = y
   add (@succ x) y = add x (@succ y)
   ```
+- Mutation supports with *actors*:
+  ```
+  $ sys.actor 0 \x \y (
+    sys.println (fib 10);
+    x + 1
+  )
+  ```
 - Values:
   - Strings: `"Test"`
   - Atoms: `@test`
