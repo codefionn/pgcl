@@ -7,7 +7,27 @@ This interpreter and programming language are subject to huge change.
 pgcl - *pretty good calculator language* - is a language for basic
 calculations. Designed for (*my*) rapid success doing calculations. It is also
 an educational tool, which tries to visualize how functional programming
-languages *could* work.
+languages *could* work:
+
+```
+> add x y = x + y
+> add1 = add 1
+> add 1 2
+((\y match (1, y) then (x, y) => (x + y)) 2)
+match (1, 2) then (x, y) => (x + y)
+(1 + 2)
+3
+3
+3
+> add1 2
+((\y match (1, y) then (x, y) => (x + y)) 2)
+match (1, 2) then (x, y) => (x + y)
+(1 + 2)
+3
+3
+3
+>
+```
 
 It is a functional programming language.
 
