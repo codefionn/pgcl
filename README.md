@@ -88,11 +88,13 @@ The interpreter uses
   ```
 - Mutation supports with *actors*:
   ```
-  $ sys.actor 0 \x \y (
+  actor = $ sys.actor 0 \x \y (
     sys.println (fib 10);
     x + 1
   )
+  actor @test
   ```
+  Where `0` is the initial state, `x` is the current state and `y` is the given input.
 - Values:
   - Strings: `"Test"`
   - Atoms: `@test`
