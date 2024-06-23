@@ -4,10 +4,10 @@
 This interpreter and programming language are subject to huge change.
 ```
 
-pgcl - *pretty good calculator language* - is a language for basic
-calculations. Designed for (*my*) rapid success doing calculations. It is also
-an educational tool, which tries to visualize how functional programming
-languages *could* work:
+pgcl - *pretty good calculator language* - is a language for basic calculations
+(a Python replacement). Designed for (*my*) rapid success doing calculations.
+It is also an educational tool, which tries to visualize how functional
+programming languages *could* work:
 
 ```
 > add x y = x + y
@@ -28,8 +28,6 @@ match (1, 2) then (x, y) => (x + y)
 3
 >
 ```
-
-It is a functional programming language.
 
 Fundamentally this programming language reduces expressions. Expressions are
 reduced as long as they cannot be reduced any longer. This means that the ``5 +
